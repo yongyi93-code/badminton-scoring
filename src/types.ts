@@ -48,6 +48,40 @@ export type Fee = {
   paidPlayerIds: string[]
 }
 
+/**
+ * 打法模式。
+ * free     自由模式 —— 公平轮转配对，什么时候结束自己决定
+ * king     车轮赛（打上打落）—— 赢的留场，输的排队尾
+ * rotation 轮转赛（X 人转）—— 开局生成固定赛程，打完为止
+ */
+export type SessionFormat = 'free' | 'king' | 'rotation'
+
+export const FORMAT_LABELS: Record<SessionFormat, string> = {
+  free: '自由模式',
+  king: '车轮赛',
+  rotation: '轮转赛',
+}
+
+/**
+ * 结束条件。三项都可留空 = 不限。
+ * totalMatches / durationMinutes 是「上限」，谁先到就提示该结束了；
+ * perPlayerMatches 是「下限」，用来提示「还有几个人没打够」。
+ */
+export type EndCondition = {
+  /** 总场数上限 */
+  totalMatches?: number
+  /** 时长上限（分钟） */
+  durationMinutes?: number
+  /** 每人至少打满几场 */
+  perPlayerMatches?: number
+}
+
+/** 车轮赛默认连胜上限，防止高手组合霸场一整晚 */
+export const DEFAULT_STREAK_CAP = 3
+
+/** 轮转赛默认每人打几场 */
+export const DEFAULT_ROTATION_PER_PLAYER = 6
+
 export type Session = {
   id: string
   /** ISO 日期字符串 yyyy-mm-dd */
@@ -66,7 +100,21 @@ export type Session = {
   status: 'active' | 'ended'
   createdAt: number
   endedAt?: number
+
+  /* --- 以下都是 v1.1 新增，旧数据没有这些字段，全部按可选处理 --- */
+
+  /** 打法模式；缺失视为 'free'，保证 v1 存下来的球局还能打开 */
+  format?: SessionFormat
+  endCondition?: EndCondition
+  /** 车轮赛连胜上限，0 = 不限 */
+  kingStreakCap?: number
+  /** 轮转赛生成赛程时设的每人场数，仅用于展示 */
+  rotationPerPlayer?: number
 }
+
+/** 旧数据没有 format 字段，统一从这里取，避免各处散落 ?? 'free' */
+export const formatOf = (session: Session): SessionFormat =>
+  session.format ?? 'free'
 
 /**
  * 一局的发球初始状态。

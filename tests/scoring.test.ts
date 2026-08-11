@@ -152,29 +152,51 @@ describe('双打发球方与站位推导', () => {
     expect(s.receiverId).toBe('a1') // a1 此刻在左区
   })
 
-  it('不变式：发球者永远是发球方站在发球区的那个人', () => {
-    // 用固定种子的伪随机跑 500 条不同的逐分序列，逐分校验不变式
-    let seed = 20260810
-    const rand = () => {
-      seed = (seed * 1103515245 + 12345) % 2147483648
-      return seed / 2147483648
-    }
-    const m = doublesMatch()
-    for (let trial = 0; trial < 500; trial++) {
-      const points: TeamSide[] = []
-      for (let i = 0; i < 40; i++) {
-        points.push(rand() < 0.5 ? 'A' : 'B')
-        const s = deriveServe(withPoints(m, points), 0)!
-        expect(s.serverId).toBe(s.positions[s.servingTeam][s.serveCourt])
-        // 接发球员必是对方站在同名发球区的人（右发右、左发左）
-        const receiving = s.servingTeam === 'A' ? 'B' : 'A'
-        expect(s.receiverId).toBe(s.positions[receiving][s.serveCourt])
-        // 每队两人始终一左一右，不会重叠
-        expect(s.positions.A.right).not.toBe(s.positions.A.left)
-        expect(s.positions.B.right).not.toBe(s.positions.B.left)
+  it(
+    '不变式：发球者永远是发球方站在发球区的那个人',
+    () => {
+      // 用固定种子的伪随机跑 200 条不同的逐分序列，每加一分都校验一次不变式。
+      //
+      // 违规先收集、最后一次性断言：deriveServe 每次都从头重推（O(n²)），
+      // 再叠加每分 4 次 expect 的话，这个测试会卡在默认 5 秒超时上下抖动，
+      // CI 上会随机翻车。收集写法把 expect 从上万次降到 1 次。
+      let seed = 20260810
+      const rand = () => {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return seed / 2147483648
       }
-    }
-  })
+      const m = doublesMatch()
+      const violations: string[] = []
+
+      for (let trial = 0; trial < 200; trial++) {
+        const points: TeamSide[] = []
+        for (let i = 0; i < 30; i++) {
+          points.push(rand() < 0.5 ? 'A' : 'B')
+          const s = deriveServe(withPoints(m, points), 0)!
+          const where = `trial ${trial} 第 ${i + 1} 分 [${points.join('')}]`
+
+          if (s.serverId !== s.positions[s.servingTeam][s.serveCourt]) {
+            violations.push(`${where}：发球者不在发球区`)
+          }
+          // 接发球员必是对方站在同名发球区的人（右发右、左发左）
+          const receiving = s.servingTeam === 'A' ? 'B' : 'A'
+          if (s.receiverId !== s.positions[receiving][s.serveCourt]) {
+            violations.push(`${where}：接发球员站位不对`)
+          }
+          // 每队两人始终一左一右，不会重叠
+          if (
+            s.positions.A.right === s.positions.A.left ||
+            s.positions.B.right === s.positions.B.left
+          ) {
+            violations.push(`${where}：同队两人站到同一区`)
+          }
+        }
+      }
+
+      expect(violations).toEqual([])
+    },
+    15_000,
+  )
 
   it('直接输入比分的局没有逐分记录，推导返回 null', () => {
     const m = doublesMatch()

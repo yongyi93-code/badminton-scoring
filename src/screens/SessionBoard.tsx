@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { playerMap, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
@@ -17,8 +17,23 @@ import {
 import { Avatar } from '@/components/PlayerBits'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
 import { pickNextMatch, playerLoads } from '@/lib/rotation'
+import {
+  buildSchedule,
+  courtHolder,
+  matchInput,
+  queueOrder,
+  sessionProgress,
+  type SessionProgress,
+} from '@/lib/sessionFormat'
 import { formatDate } from '@/lib/format'
-import type { Match, MatchType, Player, Session } from '@/types'
+import {
+  FORMAT_LABELS,
+  formatOf,
+  type Match,
+  type MatchType,
+  type Player,
+  type Session,
+} from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 场地卡片
@@ -67,6 +82,63 @@ function TeamLine({
   )
 }
 
+/** 进度条：只显示设了的项，没设的不占地方 */
+function ProgressStrip({ progress }: { progress: SessionProgress }) {
+  const bars = [
+    progress.scheduleTotal !== undefined && {
+      label: '赛程',
+      text: `第 ${progress.played} / ${progress.scheduleTotal} 场`,
+      ratio: progress.scheduleTotal
+        ? progress.played / progress.scheduleTotal
+        : 0,
+    },
+    progress.totalTarget && {
+      label: '场数',
+      text: `${progress.played} / ${progress.totalTarget} 场`,
+      ratio: progress.played / progress.totalTarget,
+    },
+    progress.durationTarget && {
+      label: '时间',
+      text: `${progress.elapsedMinutes} / ${progress.durationTarget} 分钟`,
+      ratio: progress.elapsedMinutes / progress.durationTarget,
+    },
+    progress.perPlayerTarget && {
+      label: '每人',
+      text: `最少 ${progress.perPlayerMin} / ${progress.perPlayerTarget} 场`,
+      ratio: progress.perPlayerMin / progress.perPlayerTarget,
+    },
+  ].filter(Boolean) as { label: string; text: string; ratio: number }[]
+
+  if (bars.length === 0) return null
+
+  return (
+    <Card className="space-y-2.5">
+      {bars.map((b) => (
+        <div key={b.label}>
+          <div className="mb-1 flex items-baseline justify-between text-xs">
+            <span className="text-ink-400">{b.label}</span>
+            <span className="tnum text-ink-300">{b.text}</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-ink-800">
+            <div
+              className="h-full rounded-full bg-lime-glow transition-[width]"
+              style={{ width: `${Math.min(100, Math.max(0, b.ratio * 100))}%` }}
+            />
+          </div>
+        </div>
+      ))}
+      {progress.estimatedMatchesLeft !== undefined && !progress.shouldWrapUp && (
+        <p className="text-xs text-ink-400">
+          按目前节奏，剩下的时间还够打{' '}
+          <span className="font-semibold text-lime-glow">
+            {progress.estimatedMatchesLeft} 场
+          </span>
+        </p>
+      )}
+    </Card>
+  )
+}
+
 function CourtCard({
   index,
   match,
@@ -76,6 +148,7 @@ function CourtCard({
   onArrange,
   onManage,
   arranging,
+  holder,
 }: {
   index: number
   match: Match | undefined
@@ -85,6 +158,7 @@ function CourtCard({
   onArrange: () => void
   onManage: () => void
   arranging: boolean
+  holder?: { ids: string[]; streak: number } | null
 }) {
   if (!match) {
     return (
@@ -111,6 +185,9 @@ function CourtCard({
       <div className="mb-2.5 flex items-center justify-between">
         <span className="text-sm font-semibold text-lime-glow">{index + 1} 号场</span>
         <div className="flex items-center gap-2">
+          {holder && holder.streak > 0 && (
+            <Pill tone="lime">守场 {holder.streak} 连胜</Pill>
+          )}
           {session.rules.bestOf === 3 && (
             <Pill>
               第 {gi + 1} 局 · {sets.A}:{sets.B}
@@ -160,6 +237,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const allMatches = useApp((s) => s.matches)
   const players = useApp((s) => s.players)
   const addMatch = useApp((s) => s.addMatch)
+  const addMatches = useApp((s) => s.addMatches)
   const updateMatch = useApp((s) => s.updateMatch)
   const deleteMatch = useApp((s) => s.deleteMatch)
   const updateSession = useApp((s) => s.updateSession)
@@ -176,12 +254,22 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const [swapping, setSwapping] = useState<{ match: Match; playerId: string } | null>(null)
   const [pickingRest, setPickingRest] = useState<Player | null>(null)
   const [mustInclude, setMustInclude] = useState<string[]>([])
+  const [showAllSchedule, setShowAllSchedule] = useState(false)
 
   const names = useMemo(() => playerMap(players), [players])
   const matches = useMemo(
     () => (session ? sessionMatches(allMatches, session.id) : []),
     [allMatches, session],
   )
+
+  // 设了时长上限时进度条要自己走，每 30 秒重算一次就够了
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!session?.endCondition?.durationMinutes) return
+    if (session.status !== 'active') return
+    const timer = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [session?.endCondition?.durationMinutes, session?.status])
 
   if (!session) {
     return (
@@ -207,10 +295,25 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const busyIds = [...live, ...queued].flatMap((m) => [...m.teamA, ...m.teamB])
   const onCourt = new Map(live.map((m) => [m.courtIndex, m]))
 
+  const format = formatOf(session)
+  const progress = sessionProgress(session, matches, now)
+
   const loads = playerLoads(attending, matches)
-  const waiting = loads.filter(
-    (l) => !busyIds.includes(l.playerId) && !restingIds.includes(l.playerId),
-  )
+  const loadById = new Map(loads.map((l) => [l.playerId, l]))
+
+  // 车轮赛的等待区就是排队顺序（最久没上场的在前），不是按已打场数排
+  const waiting =
+    format === 'king'
+      ? queueOrder(attending, matches, {
+          excludeIds: restingIds,
+          busyIds,
+        })
+          .map((id) => loadById.get(id))
+          .filter((l): l is NonNullable<typeof l> => Boolean(l))
+      : loads.filter(
+          (l) =>
+            !busyIds.includes(l.playerId) && !restingIds.includes(l.playerId),
+        )
 
   function buildMatch(
     pairing: { teamA: string[]; teamB: string[]; type: MatchType },
@@ -279,6 +382,30 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       ...m.teamA,
       ...m.teamB,
     ])
+
+    // 车轮赛的公平性完全由队列决定，不能用平衡算法配对，
+    // 否则会越过等最久的人。空场时就按队头顺序直接组队。
+    if (format === 'king') {
+      const teamSize = type === 'singles' ? 1 : 2
+      const queue = queueOrder(attending, fresh, {
+        excludeIds: restingIds,
+        busyIds: busyNow,
+      })
+      if (queue.length < teamSize * 2) {
+        setNotice(`排队区只有 ${queue.length} 人，还开不了一场`)
+        return
+      }
+      buildMatch(
+        {
+          teamA: queue.slice(0, teamSize),
+          teamB: queue.slice(teamSize, teamSize * 2),
+          type,
+        },
+        courtIndex,
+      )
+      return
+    }
+
     const { pairing, reason } = pickNextMatch({
       attending,
       matches: fresh,
@@ -376,13 +503,78 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
     setPickingRest(null)
   }
 
+  /** 参与自动排场的人：出席且没在休息 */
+  const schedulable = attending.filter((p) => !restingIds.includes(p.id))
+
+  /**
+   * 有人提前走、有人晚到之后重排剩余赛程。
+   * 只删还没打的，已经打完的一场都不动，并且把已打记录喂回算法，
+   * 免得重新生成后又撞回刚打过的搭档。
+   */
+  function regenerateSchedule() {
+    const fresh = sessionMatches(useApp.getState().matches, session!.id)
+    const done = fresh.filter((m) => m.status === 'done')
+    fresh.filter((m) => m.status === 'queued').forEach((m) => deleteMatch(m.id))
+
+    const target = session!.rotationPerPlayer ?? 6
+    const playedCounts = schedulable.map(
+      (p) =>
+        done.filter((m) => m.teamA.includes(p.id) || m.teamB.includes(p.id))
+          .length,
+    )
+    const minPlayed = playedCounts.length ? Math.min(...playedCounts) : 0
+    const left = Math.max(1, target - minPlayed)
+
+    const schedule = buildSchedule({
+      attending: schedulable,
+      courtCount: session!.courtCount,
+      type: session!.defaultType,
+      perPlayer: left,
+      history: done,
+    })
+    if (!schedule.pairings.length) {
+      setNotice(schedule.reason ?? '排不出剩余赛程')
+      return
+    }
+    addMatches(schedule.pairings.map((p) => matchInput(p, session!.id, null)))
+    setNotice(`已按现在的 ${schedulable.length} 人重排了 ${schedule.pairings.length} 场`)
+  }
+
+  /** 轮转赛：在赛程后面再接几场 */
+  function appendSchedule(count: number) {
+    const fresh = sessionMatches(useApp.getState().matches, session!.id)
+    const schedule = buildSchedule({
+      attending: schedulable,
+      courtCount: session!.courtCount,
+      type: session!.defaultType,
+      perPlayer: 1,
+      total: count,
+      history: fresh,
+    })
+    if (!schedule.pairings.length) {
+      setNotice(schedule.reason ?? '排不出更多场次')
+      return
+    }
+    addMatches(schedule.pairings.map((p) => matchInput(p, session!.id, null)))
+  }
+
+  /** 自由模式 / 车轮赛：把上限往后推 */
+  function extendLimit() {
+    const fresh = useApp.getState().sessions.find((x) => x.id === sessionId)
+    if (!fresh) return
+    const end = { ...(fresh.endCondition ?? {}) }
+    if (end.totalMatches) end.totalMatches += 5
+    if (end.durationMinutes) end.durationMinutes += 30
+    updateSession(sessionId, { endCondition: end })
+  }
+
   const courts = Array.from({ length: session.courtCount }, (_, i) => i)
 
   return (
     <Screen>
       <TopBar
         title={session.venue || '球局'}
-        subtitle={`${formatDate(session.date)} · ${attending.length} 人 · 已打 ${finished.length} 场`}
+        subtitle={`${FORMAT_LABELS[format]} · ${formatDate(session.date)} · ${attending.length} 人 · 已打 ${finished.length} 场`}
         onBack={() => resetTo({ name: 'home' })}
         right={
           <Button size="sm" variant="ghost" onClick={() => setEndOpen(true)}>
@@ -392,11 +584,40 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       />
 
       <Body className="pb-32">
+        {progress.shouldWrapUp && (
+          <div className="rounded-card border border-lime-glow/40 bg-lime-glow/10 px-4 py-3.5">
+            <p className="font-semibold text-lime-glow">{progress.wrapUpReason}</p>
+            {progress.unmetFloor && (
+              <p className="mt-1 text-sm text-amber-300">{progress.unmetFloor}</p>
+            )}
+            <div className="mt-3 flex gap-2">
+              <Button
+                size="sm"
+                variant="primary"
+                className="flex-1"
+                onClick={() => setEndOpen(true)}
+              >
+                去结算
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="flex-1"
+                onClick={() => (format === 'rotation' ? appendSchedule(4) : extendLimit())}
+              >
+                {format === 'rotation' ? '再排 4 场' : '再加一点'}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {notice && (
           <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3.5 py-2.5 text-sm text-amber-200">
             {notice}
           </div>
         )}
+
+        <ProgressStrip progress={progress} />
 
         <div className="space-y-3">
           {courts.map((i) => (
@@ -406,10 +627,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
               match={onCourt.get(i)}
               session={session}
               names={names}
+              holder={format === 'king' ? courtHolder(matches, i) : null}
               arranging={waiting.length < (type === 'singles' ? 2 : 4) && queued.length === 0}
               onScore={() => push({ name: 'score', matchId: onCourt.get(i)!.id })}
               onArrange={() => arrange(i)}
-
               onManage={() => setManaging(onCourt.get(i)!)}
             />
           ))}
@@ -417,24 +638,39 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
         <SectionTitle
           right={
-            <button
-              className="text-xs text-lime-glow disabled:text-ink-500"
-              onClick={() => arrange('queue')}
-            >
-              + 预排一场
-            </button>
+            format === 'rotation' ? (
+              <button className="text-xs text-lime-glow" onClick={regenerateSchedule}>
+                按现在的人重排
+              </button>
+            ) : format === 'king' ? null : (
+              <button
+                className="text-xs text-lime-glow disabled:text-ink-500"
+                onClick={() => arrange('queue')}
+              >
+                + 预排一场
+              </button>
+            )
           }
         >
-          排队中
+          {format === 'rotation'
+            ? `赛程（还剩 ${queued.length} 场）`
+            : '排队中'}
         </SectionTitle>
 
         {queued.length === 0 ? (
           <p className="text-sm text-ink-400">
-            没有预排的比赛。场地空出来时点「排下一场」即可，也可以先预排让大家知道下一场是谁。
+            {format === 'rotation'
+              ? '赛程都打完了。可以「再排 4 场」加时，或者去结算。'
+              : format === 'king'
+                ? '下一场由这一场谁赢决定，打完记分自动排上，不用预排。'
+                : '没有预排的比赛。场地空出来时点「排下一场」即可，也可以先预排让大家知道下一场是谁。'}
           </p>
         ) : (
           <div className="space-y-2">
-            {queued.map((m, idx) => (
+            {(format === 'rotation' && !showAllSchedule
+              ? queued.slice(0, 3)
+              : queued
+            ).map((m, idx) => (
               <Card key={m.id}>
                 <div className="mb-2 flex items-center justify-between">
                   <Pill>下一场 {idx + 1}</Pill>
@@ -442,9 +678,16 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                     <Button size="sm" variant="ghost" onClick={() => reshuffle(m)}>
                       重排
                     </Button>
-                    <Button size="sm" variant="danger" onClick={() => deleteMatch(m.id)}>
-                      取消
-                    </Button>
+                    {/* 轮转赛删掉单场会打乱整份赛程，改用「按现在的人重排」 */}
+                    {format !== 'rotation' && (
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => deleteMatch(m.id)}
+                      >
+                        取消
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -453,23 +696,49 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 </div>
               </Card>
             ))}
+            {format === 'rotation' && queued.length > 3 && (
+              <button
+                onClick={() => setShowAllSchedule((v) => !v)}
+                className="w-full py-2 text-center text-sm text-lime-glow"
+              >
+                {showAllSchedule
+                  ? '收起'
+                  : `查看全部赛程（还剩 ${queued.length} 场）`}
+              </button>
+            )}
           </div>
         )}
 
-        <SectionTitle>等待区（{waiting.length} 人）</SectionTitle>
+        <SectionTitle>
+          {format === 'king'
+            ? `排队顺序（${waiting.length} 人）`
+            : `等待区（${waiting.length} 人）`}
+        </SectionTitle>
 
-        <div>
-          <p className="mb-1.5 text-xs text-ink-400">下一场排什么</p>
-          <Segmented
-            value={type}
-            onChange={(v) => setNextType(v)}
-            options={[
-              { value: 'doubles', label: '双打' },
-              { value: 'singles', label: '单打' },
-              { value: 'mixed', label: '混双' },
-            ]}
-          />
-        </div>
+        {format === 'king' && (
+          <p className="text-sm text-ink-400">
+            队头两人下一场上。赢的留场
+            {(session.kingStreakCap ?? 0) > 0
+              ? `，连赢 ${session.kingStreakCap} 场强制下场休息`
+              : '，赢到底'}
+            。
+          </p>
+        )}
+
+        {format !== 'rotation' && (
+          <div>
+            <p className="mb-1.5 text-xs text-ink-400">下一场排什么</p>
+            <Segmented
+              value={type}
+              onChange={(v) => setNextType(v)}
+              options={[
+                { value: 'doubles', label: '双打' },
+                { value: 'singles', label: '单打' },
+                { value: 'mixed', label: '混双' },
+              ]}
+            />
+          </div>
+        )}
 
         <div className="space-y-2">
           {waiting.map((l, idx) => {

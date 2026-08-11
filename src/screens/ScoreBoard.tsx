@@ -26,7 +26,14 @@ import {
   type ServeState,
 } from '@/lib/scoring'
 import { useWakeLock } from '@/lib/wakeLock'
-import type { Player, Rules, TeamSide } from '@/types'
+import { kingOfCourtNext, matchInput } from '@/lib/sessionFormat'
+import {
+  DEFAULT_STREAK_CAP,
+  formatOf,
+  type Player,
+  type Rules,
+  type TeamSide,
+} from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 站位图：双打最常吵的就是「谁该发、站哪边」
@@ -253,8 +260,71 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
     updateMatch(fresh.id, { games })
   }
 
+  /**
+   * 把当前这场当成已结束，算出车轮赛的下一场。
+   * 结束前预览和结束后真排都用这个，保证界面上看到的和实际排出来的一致。
+   * （连胜要把当前这场算进去，所以这里手动把它标成 done）
+   */
+  const previewKing = () => {
+    if (formatOf(session) !== 'king' || !winner) return null
+    const all = useApp
+      .getState()
+      .matches.filter((m) => m.sessionId === session.id)
+      .sort((a, b) => a.seq - b.seq)
+    const current = all.find((m) => m.id === matchId)
+    if (!current) return null
+    const asDone = { ...current, status: 'done' as const }
+    const timeline = all.map((m) => (m.id === matchId ? asDone : m))
+    const attending = session.playerIds
+      .map((id) => names.get(id))
+      .filter((p): p is Player => Boolean(p))
+    const busyIds = timeline
+      .filter((m) => m.status === 'playing' && m.id !== matchId)
+      .flatMap((m) => [...m.teamA, ...m.teamB])
+
+    return kingOfCourtNext({
+      attending,
+      matches: timeline,
+      finished: asDone,
+      streakCap: session.kingStreakCap ?? DEFAULT_STREAK_CAP,
+      excludeIds: session.restingIds ?? [],
+      busyIds,
+    })
+  }
+
+  const kingNext = gameOver && winner ? previewKing() : null
+
+  /** 轮转赛 / 车轮赛：打完自动把下一场顶到同一片场，不用回看板再点一次 */
+  const autoArrangeNext = () => {
+    const format = formatOf(session)
+    if (format === 'free') return
+    const courtIndex = match.courtIndex ?? 0
+    const state = useApp.getState()
+    const all = state.matches
+      .filter((m) => m.sessionId === session.id)
+      .sort((a, b) => a.seq - b.seq)
+
+    if (format === 'rotation') {
+      const next = all.find((m) => m.status === 'queued')
+      if (next) {
+        state.updateMatch(next.id, {
+          courtIndex,
+          status: 'playing',
+          startedAt: Date.now(),
+        })
+      }
+      return
+    }
+
+    const out = previewKing()
+    if (out?.pairing) {
+      state.addMatch(matchInput(out.pairing, session.id, courtIndex))
+    }
+  }
+
   const finishMatch = () => {
     updateMatch(match.id, { status: 'done', endedAt: Date.now() })
+    autoArrangeNext()
     back()
   }
 
@@ -360,9 +430,43 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                   拿下这一局 {Math.max(game.a, game.b)}:{Math.min(game.a, game.b)}
                 </span>
               </p>
+              {kingNext && (
+                <div className="rounded-xl border border-ink-700 bg-ink-850 px-3.5 py-2.5 text-center text-sm">
+                  {kingNext.cappedOut ? (
+                    <p className="text-amber-300">
+                      {kingNext.streak} 连胜到顶，
+                      {(game.a > game.b ? match.teamA : match.teamB)
+                        .map((id) => names.get(id)?.name)
+                        .join('/')}
+                      下场休息
+                    </p>
+                  ) : (
+                    <p className="text-lime-glow">
+                      守场成功 · {kingNext.streak} 连胜
+                    </p>
+                  )}
+                  {kingNext.pairing ? (
+                    <p className="mt-1 text-ink-300">
+                      下一场：
+                      {kingNext.pairing.teamA
+                        .map((id) => names.get(id)?.name)
+                        .join('/')}
+                      {' 对 '}
+                      {kingNext.pairing.teamB
+                        .map((id) => names.get(id)?.name)
+                        .join('/')}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-amber-300">{kingNext.reason}</p>
+                  )}
+                </div>
+              )}
+
               {winner ? (
                 <Button variant="primary" size="lg" block onClick={finishMatch}>
-                  结束比赛，回到看板
+                  {kingNext?.pairing || formatOf(session) === 'rotation'
+                    ? '结束比赛，排下一场'
+                    : '结束比赛，回到看板'}
                 </Button>
               ) : (
                 <Button variant="primary" size="lg" block onClick={startNextGame}>
@@ -374,18 +478,32 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               </Button>
             </div>
           ) : (
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                className="flex-1"
-                disabled={!game.points || game.points.length === 0}
-                onClick={() => undoLast()}
-              >
-                撤销
-              </Button>
-              <Button variant="soft" className="flex-1" onClick={back}>
-                先回看板
-              </Button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  className="flex-1"
+                  disabled={!game.points || game.points.length === 0}
+                  onClick={() => undoLast()}
+                >
+                  撤销
+                </Button>
+                <Button variant="soft" className="flex-1" onClick={back}>
+                  先回看板
+                </Button>
+              </div>
+              {/*
+                场地时间到了、或者比分输错卡在没打完的状态时的出口。
+                按当前比分算胜负（谁分高谁赢），不然这场会一直挂在场上。
+              */}
+              {game.a !== game.b && (
+                <button
+                  onClick={finishMatch}
+                  className="w-full py-1.5 text-center text-sm text-ink-400 underline decoration-ink-700 underline-offset-4"
+                >
+                  提前结束这一场（按 {game.a}:{game.b} 算）
+                </button>
+              )}
             </div>
           )}
         </div>

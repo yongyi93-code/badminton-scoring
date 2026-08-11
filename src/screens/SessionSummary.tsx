@@ -21,7 +21,14 @@ import { computeStats, mvpOf, rankPlayers } from '@/lib/ranking'
 import { money, splitFee } from '@/lib/fee'
 import { shareNodeAsImage } from '@/lib/shareImage'
 import { duration, formatDateFull, percent, signed } from '@/lib/format'
-import { RANK_MIN_GAMES, type Player, type PlayerStats, type Session } from '@/types'
+import {
+  FORMAT_LABELS,
+  formatOf,
+  RANK_MIN_GAMES,
+  type Player,
+  type PlayerStats,
+  type Session,
+} from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 战绩分享图（离屏渲染后截成 PNG）
@@ -286,6 +293,16 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                 </p>
               </Card>
             )}
+
+            <p className="text-sm text-ink-400">
+              {FORMAT_LABELS[formatOf(session)]}
+              {session.rotationPerPlayer
+                ? ` · 每人 ${session.rotationPerPlayer} 场的赛程`
+                : ''}
+              {formatOf(session) === 'king' && (session.kingStreakCap ?? 0) > 0
+                ? ` · 连胜上限 ${session.kingStreakCap}`
+                : ''}
+            </p>
 
             <div className="grid grid-cols-3 gap-2">
               {[

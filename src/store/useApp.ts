@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
   DEFAULT_RULES,
+  type EndCondition,
   type Gender,
   type Level,
   type Match,
@@ -9,6 +10,7 @@ import {
   type Player,
   type Rules,
   type Session,
+  type SessionFormat,
 } from '@/types'
 
 export const STORAGE_KEY = 'badminton-scoring-v1'
@@ -25,6 +27,10 @@ export type SessionDraft = {
   playerIds: string[]
   defaultType: MatchType
   rules?: Partial<Rules>
+  format?: SessionFormat
+  endCondition?: EndCondition
+  kingStreakCap?: number
+  rotationPerPlayer?: number
 }
 
 /** 导出/导入的备份文件结构 */
@@ -53,6 +59,7 @@ type AppState = {
   deleteSession: (id: string) => void
 
   addMatch: (match: Omit<Match, 'id' | 'seq'>) => Match
+  addMatches: (matches: Omit<Match, 'id' | 'seq'>[]) => Match[]
   updateMatch: (id: string, patch: Partial<Omit<Match, 'id'>>) => void
   replaceMatch: (match: Match) => void
   deleteMatch: (id: string) => void
@@ -111,9 +118,29 @@ export const useApp = create<AppState>()(
           },
           status: 'active',
           createdAt: Date.now(),
+          format: draft.format ?? 'free',
+          endCondition: draft.endCondition,
+          kingStreakCap: draft.kingStreakCap,
+          rotationPerPlayer: draft.rotationPerPlayer,
         }
         set((s) => ({ sessions: [session, ...s.sessions] }))
         return session
+      },
+
+      /** 轮转赛开局时一次写入整份赛程 */
+      addMatches(inputs) {
+        const created: Match[] = []
+        set((s) => {
+          let seq = s.matches.filter(
+            (m) => m.sessionId === inputs[0]?.sessionId,
+          ).length
+          for (const input of inputs) {
+            seq += 1
+            created.push({ ...input, id: newId(), seq })
+          }
+          return { matches: [...s.matches, ...created] }
+        })
+        return created
       },
 
       updateSession(id, patch) {

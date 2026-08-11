@@ -17,12 +17,21 @@ import {
 import { PlayerRow } from '@/components/PlayerBits'
 import { PlayerEditor } from './Players'
 import { todayISO } from '@/lib/format'
-import { DEFAULT_RULES, type MatchType } from '@/types'
+import { buildSchedule, matchInput } from '@/lib/sessionFormat'
+import {
+  DEFAULT_ROTATION_PER_PLAYER,
+  DEFAULT_RULES,
+  DEFAULT_STREAK_CAP,
+  type EndCondition,
+  type MatchType,
+  type SessionFormat,
+} from '@/types'
 
 export function SessionSetup() {
   const players = useApp((s) => s.players)
   const sessions = useApp((s) => s.sessions)
   const createSession = useApp((s) => s.createSession)
+  const addMatches = useApp((s) => s.addMatches)
   const back = useNav((s) => s.back)
   const replace = useNav((s) => s.replace)
 
@@ -39,6 +48,14 @@ export function SessionSetup() {
   const [showRules, setShowRules] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [addOpen, setAddOpen] = useState(false)
+
+  const [format, setFormat] = useState<SessionFormat>('free')
+  const [streakCap, setStreakCap] = useState(DEFAULT_STREAK_CAP)
+  const [perPlayer, setPerPlayer] = useState(DEFAULT_ROTATION_PER_PLAYER)
+  // 0 表示不限
+  const [capMatches, setCapMatches] = useState(0)
+  const [capMinutes, setCapMinutes] = useState(0)
+  const [floorPerPlayer, setFloorPerPlayer] = useState(0)
 
   const roster = useMemo(
     () => players.filter((p) => !p.archived),
@@ -76,7 +93,27 @@ export function SessionSetup() {
       return null
     })()
 
+  // 轮转赛的赛程预览：人一勾就重算，让人开局前就知道要打多少场
+  const chosenPlayers = useMemo(
+    () => roster.filter((p) => selected.includes(p.id)),
+    [roster, selected],
+  )
+  const preview = useMemo(() => {
+    if (format !== 'rotation') return null
+    return buildSchedule({
+      attending: chosenPlayers,
+      courtCount,
+      type: defaultType,
+      perPlayer,
+    })
+  }, [format, chosenPlayers, courtCount, defaultType, perPlayer])
+
   function start() {
+    const endCondition: EndCondition = {}
+    if (capMatches > 0) endCondition.totalMatches = capMatches
+    if (capMinutes > 0) endCondition.durationMinutes = capMinutes
+    if (floorPerPlayer > 0) endCondition.perPlayerMatches = floorPerPlayer
+
     const session = createSession({
       date,
       venue,
@@ -84,7 +121,27 @@ export function SessionSetup() {
       playerIds: selected,
       defaultType,
       rules: { pointsToWin, winBy2, bestOf, cap: Math.max(30, pointsToWin + 9) },
+      format,
+      endCondition: Object.keys(endCondition).length ? endCondition : undefined,
+      kingStreakCap: format === 'king' ? streakCap : undefined,
+      rotationPerPlayer: format === 'rotation' ? perPlayer : undefined,
     })
+
+    // 轮转赛开局就把整份赛程写成排队中的比赛，之后「排下一场」直接顶上去
+    if (format === 'rotation') {
+      const schedule = buildSchedule({
+        attending: chosenPlayers,
+        courtCount,
+        type: defaultType,
+        perPlayer,
+      })
+      if (schedule.pairings.length) {
+        addMatches(
+          schedule.pairings.map((p) => matchInput(p, session.id, null)),
+        )
+      }
+    }
+
     replace({ name: 'board', sessionId: session.id })
   }
 
@@ -165,6 +222,126 @@ export function SessionSetup() {
               </Field>
             </div>
           )}
+        </Card>
+
+        <Card className="space-y-4">
+          <Field label="打法模式">
+            <Segmented
+              value={format}
+              onChange={setFormat}
+              options={[
+                { value: 'free', label: '自由' },
+                { value: 'king', label: '车轮赛' },
+                { value: 'rotation', label: '轮转赛' },
+              ]}
+            />
+          </Field>
+
+          <p className="text-sm leading-relaxed text-ink-400">
+            {format === 'free' &&
+              '照顾公平自动配对，边打边排。想打多久打多久，也可以在下面设个上限。'}
+            {format === 'king' &&
+              '打上打落：赢的两人留在场上，输的两人下场排到队尾，队头两人组队上来挑战。'}
+            {format === 'rotation' &&
+              '开局就把整份赛程排好，每人场数均等、搭档尽量不重复，打完自动结算。'}
+          </p>
+
+          {format === 'king' && (
+            <Field
+              label="连胜上限"
+              hint={
+                streakCap === 0
+                  ? '不限：赢到底才下场。强弱差距大时会有人整晚打不到几场'
+                  : `连赢 ${streakCap} 场就强制下场休息，防止高手组合霸场一整晚`
+              }
+            >
+              <Stepper
+                value={streakCap}
+                onChange={setStreakCap}
+                min={0}
+                max={10}
+                suffix={streakCap === 0 ? '（不限）' : '连胜'}
+              />
+            </Field>
+          )}
+
+          {format === 'rotation' && (
+            <>
+              <Field label="每人打几场">
+                <Stepper
+                  value={perPlayer}
+                  onChange={setPerPlayer}
+                  min={1}
+                  max={20}
+                  suffix="场"
+                />
+              </Field>
+              <div className="rounded-xl border border-ink-700 bg-ink-800/50 px-3.5 py-3">
+                {preview && preview.pairings.length > 0 ? (
+                  <>
+                    <p className="text-sm">
+                      <span className="text-ink-300">
+                        {selected.length} 人 · {courtCount} 片场 ·{' '}
+                      </span>
+                      <span className="font-semibold text-lime-glow">
+                        共 {preview.pairings.length} 场
+                      </span>
+                    </p>
+                    <p className="mt-1 text-xs text-ink-400">
+                      {preview.perPlayerMin === preview.perPlayerMax
+                        ? `每人正好 ${preview.perPlayerMin} 场`
+                        : `每人 ${preview.perPlayerMin}–${preview.perPlayerMax} 场`}
+                      {preview.matchesPerRound > 1 &&
+                        ` · 每轮同时开 ${preview.matchesPerRound} 片场`}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-ink-400">
+                    {preview?.reason ?? '先在下面勾选今晚到场的人'}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
+          <div className="space-y-3 border-t border-ink-800 pt-3">
+            <p className="text-sm text-ink-300">
+              结束条件
+              <span className="ml-1 text-xs text-ink-400">
+                （留 0 = 不限；到点只提示，不会自动结束）
+              </span>
+            </p>
+            {format !== 'rotation' && (
+              <Field label="打满几场">
+                <Stepper
+                  value={capMatches}
+                  onChange={setCapMatches}
+                  min={0}
+                  max={60}
+                  suffix={capMatches === 0 ? '（不限）' : '场'}
+                />
+              </Field>
+            )}
+            <Field label="打多久" hint="按小时租场的话填这个，看板会显示还够打几场">
+              <Stepper
+                value={capMinutes}
+                onChange={setCapMinutes}
+                min={0}
+                max={360}
+                step={30}
+                suffix={capMinutes === 0 ? '（不限）' : '分钟'}
+              />
+            </Field>
+            <Field label="每人至少打">
+              <Stepper
+                value={floorPerPlayer}
+                onChange={setFloorPerPlayer}
+                min={0}
+                max={20}
+                suffix={floorPerPlayer === 0 ? '（不限）' : '场'}
+              />
+            </Field>
+          </div>
         </Card>
 
         <SectionTitle
