@@ -1,0 +1,103 @@
+import type { Player, PlayerStats } from '@/types'
+import { Avatar } from './PlayerBits'
+import { Pill, cx } from './ui'
+import { percent, signed, streakLabel } from '@/lib/format'
+
+const medal = (rank: number) =>
+  rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null
+
+export function RankRow({
+  rank,
+  stats,
+  player,
+  onClick,
+  highlight,
+}: {
+  rank: number
+  stats: PlayerStats
+  player: Player | undefined
+  onClick?: () => void
+  highlight?: boolean
+}) {
+  const streak = streakLabel(stats.streak)
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left',
+        highlight
+          ? 'border-lime-glow/50 bg-lime-glow/10'
+          : 'border-ink-700/70 bg-ink-850 active:bg-ink-800',
+        !stats.qualified && 'opacity-70',
+      )}
+    >
+      <span className="tnum w-7 shrink-0 text-center text-sm font-semibold text-ink-400">
+        {rank === 0 ? '–' : (medal(rank) ?? rank)}
+      </span>
+      <Avatar name={player?.name ?? '?'} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-medium">{player?.name ?? '已删除的球员'}</span>
+          {streak && (
+            <Pill tone={stats.streak > 0 ? 'lime' : 'neutral'}>{streak}</Pill>
+          )}
+        </span>
+        <span className="tnum mt-0.5 block text-xs text-ink-400">
+          {stats.wins}胜{stats.losses}负 · 净分 {signed(stats.diff)}
+          {!stats.qualified && ' · 场次不足'}
+        </span>
+      </span>
+      <span className="tnum shrink-0 text-right">
+        <span className="block text-lg font-bold">{percent(stats.winRate)}</span>
+        <span className="block text-xs text-ink-400">{stats.games} 场</span>
+      </span>
+    </button>
+  )
+}
+
+export function RankTable({
+  ranked,
+  playersById,
+  onPick,
+  minGames,
+}: {
+  ranked: PlayerStats[]
+  playersById: Map<string, Player>
+  onPick?: (playerId: string) => void
+  minGames: number
+}) {
+  const qualified = ranked.filter((r) => r.qualified)
+  const rest = ranked.filter((r) => !r.qualified)
+
+  return (
+    <div className="space-y-2">
+      {qualified.map((s, i) => (
+        <RankRow
+          key={s.playerId}
+          rank={i + 1}
+          stats={s}
+          player={playersById.get(s.playerId)}
+          onClick={onPick ? () => onPick(s.playerId) : undefined}
+          highlight={i === 0}
+        />
+      ))}
+
+      {rest.length > 0 && (
+        <>
+          <p className="pt-2 text-xs text-ink-400">
+            以下球员不足 {minGames} 场，不参与排名
+          </p>
+          {rest.map((s) => (
+            <RankRow
+              key={s.playerId}
+              rank={0}
+              stats={s}
+              player={playersById.get(s.playerId)}
+              onClick={onPick ? () => onPick(s.playerId) : undefined}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}

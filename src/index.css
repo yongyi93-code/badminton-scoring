@@ -1,0 +1,61 @@
+@import 'tailwindcss';
+
+@theme {
+  /* 深色球馆配色：深海军蓝底 + 羽球荧光绿点睛 */
+  --color-ink-950: #070d18;
+  --color-ink-900: #0b1220;
+  --color-ink-850: #101a2b;
+  --color-ink-800: #16223a;
+  --color-ink-700: #1f2d4a;
+  --color-ink-600: #2c3d61;
+  --color-ink-400: #6b7ea3;
+  --color-ink-300: #96a6c4;
+  --color-ink-100: #e6ecf7;
+
+  --color-lime-glow: #c9f94a;
+  --color-lime-deep: #8fbe17;
+
+  --color-teamA: #38bdf8;
+  --color-teamB: #fb923c;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+
+  --radius-card: 1rem;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-ink-900);
+    color: var(--color-ink-100);
+    font-family: var(--font-sans);
+    overscroll-behavior-y: contain;
+  }
+
+  /* 比分等数字统一等宽，避免跳动 */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+}
+
+@utility safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+@utility safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
