@@ -18,6 +18,7 @@ import { PlayerRow } from '@/components/PlayerBits'
 import { PlayerEditor } from './Players'
 import { todayISO } from '@/lib/format'
 import { buildSchedule, matchInput } from '@/lib/sessionFormat'
+import { recentVenues, venueKey } from '@/lib/venues'
 import {
   DEFAULT_ROTATION_PER_PLAYER,
   DEFAULT_RULES,
@@ -36,6 +37,7 @@ export function SessionSetup() {
   const replace = useNav((s) => s.replace)
 
   const lastVenue = sessions[0]?.venue ?? ''
+  const knownVenues = useMemo(() => recentVenues(sessions).slice(0, 6), [sessions])
   const lastCourts = sessions[0]?.courtCount ?? 2
 
   const [date, setDate] = useState(todayISO())
@@ -164,13 +166,33 @@ export function SessionSetup() {
             </Field>
           </div>
 
-          <Field label="球馆">
+          <Field
+            label="球馆"
+            hint="排行榜可以按球馆分开看，所以同一个场馆尽量用同一个名字"
+          >
             <input
               className={inputClass}
               value={venue}
               onChange={(e) => setVenue(e.target.value)}
               placeholder="例如 城中羽球馆"
             />
+            {knownVenues.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {knownVenues.map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setVenue(v)}
+                    className={
+                      venueKey(venue) === venueKey(v)
+                        ? "rounded-full border border-lime-glow bg-lime-glow/15 px-3 py-1.5 text-xs text-lime-glow"
+                        : "rounded-full border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-ink-300 active:bg-ink-800"
+                    }
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            )}
           </Field>
 
           <Field label="默认赛制" hint="自动排场时用这个，单场也可以临时改">

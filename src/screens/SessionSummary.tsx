@@ -19,6 +19,7 @@ import { Avatar } from '@/components/PlayerBits'
 import { RankTable } from '@/components/RankTable'
 import { computeStats, mvpOf, rankPlayers } from '@/lib/ranking'
 import { money, splitFee } from '@/lib/fee'
+import { matchesAtVenue, playerIdsAtVenue, venueLabel } from '@/lib/venues'
 import { shareNodeAsImage } from '@/lib/shareImage'
 import { duration, formatDateFull, percent, signed } from '@/lib/format'
 import {
@@ -41,6 +42,7 @@ function ShareCard({
   names,
   matchCount,
   perPerson,
+  venueKing,
   innerRef,
 }: {
   session: Session
@@ -49,6 +51,8 @@ function ShareCard({
   names: Map<string, Player>
   matchCount: number
   perPerson: number
+  /** 这个球馆的累计第一，发到群里让人知道该挑战谁 */
+  venueKing: { name: string; winRate: number; games: number } | null
   innerRef: React.Ref<HTMLDivElement>
 }) {
   const top = ranked.filter((r) => r.qualified).slice(0, 8)
@@ -105,6 +109,22 @@ function ShareCard({
           </div>
         )}
 
+        {venueKing && (
+          <div className="mt-2 flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-4 py-3">
+            <span className="text-2xl">👑</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] tracking-widest text-ink-400 uppercase">
+                {venueLabel(session.venue)}累计第一
+              </p>
+              <p className="truncate text-lg font-bold">{venueKing.name}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-lg font-bold">{percent(venueKing.winRate)}</p>
+              <p className="text-[11px] text-ink-400">{venueKing.games} 场</p>
+            </div>
+          </div>
+        )}
+
         <p className="mt-5 mb-2 text-[11px] tracking-[0.18em] text-ink-400 uppercase">
           今晚排名
         </p>
@@ -152,6 +172,7 @@ function ShareCard({
 export function SessionSummary({ sessionId }: { sessionId: string }) {
   const session = useApp((s) => s.sessions.find((x) => x.id === sessionId))
   const allMatches = useApp((s) => s.matches)
+  const allSessions = useApp((s) => s.sessions)
   const players = useApp((s) => s.players)
   const updateSession = useApp((s) => s.updateSession)
   const reopenSession = useApp((s) => s.reopenSession)
@@ -174,6 +195,21 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
     () => (session ? rankPlayers(computeStats(matches, session.playerIds)) : []),
     [matches, session],
   )
+
+  /** 这个球馆的累计第一 —— 挑战者该找的人 */
+  const venueKing = useMemo(() => {
+    if (!session) return null
+    const ms = matchesAtVenue(allSessions, allMatches, session.venue)
+    const ids = playerIdsAtVenue(allSessions, allMatches, session.venue)
+    const top = rankPlayers(computeStats(ms, ids)).find((r) => r.qualified)
+    if (!top) return null
+    return {
+      playerId: top.playerId,
+      name: names.get(top.playerId)?.name ?? '已删除的球员',
+      winRate: top.winRate,
+      games: top.games,
+    }
+  }, [session, allSessions, allMatches, names])
 
   if (!session) {
     return (
@@ -292,6 +328,29 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                   今晚没有人打满 {RANK_MIN_GAMES} 场，不评 MVP。
                 </p>
               </Card>
+            )}
+
+            {venueKing && (
+              <button
+                onClick={() => push({ name: 'profile', playerId: venueKing.playerId })}
+                className="flex w-full items-center gap-3 rounded-xl border border-ink-700/70 bg-ink-850 px-3.5 py-3 text-left active:bg-ink-800"
+              >
+                <span className="text-2xl">👑</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs text-ink-400">
+                    {venueLabel(session.venue)}累计第一
+                  </span>
+                  <span className="block truncate font-semibold">
+                    {venueKing.name}
+                  </span>
+                </span>
+                <span className="tnum shrink-0 text-right">
+                  <span className="block font-bold">{percent(venueKing.winRate)}</span>
+                  <span className="block text-xs text-ink-400">
+                    {venueKing.games} 场
+                  </span>
+                </span>
+              </button>
             )}
 
             <p className="text-sm text-ink-400">
@@ -480,6 +539,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
         names={names}
         matchCount={done.length}
         perPerson={fee.perPerson}
+        venueKing={venueKing}
         innerRef={shareRef}
       />
     </Screen>
