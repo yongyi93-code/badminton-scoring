@@ -38,9 +38,16 @@ function Star({ x, y, r, on, color }: { x: number; y: number; r: number; on: boo
 export function RankMedal({
   level,
   className,
+  compact,
 }: {
   level: LevelInfo
   className?: string
+  /**
+   * 不画底下那排星。
+   * 缩到列表里那么小的时候 5 颗星只会糊成一排点，
+   * 旁边的文字已经写了「5★」，画出来反而抢地方。
+   */
+  compact?: boolean
 }) {
   const { index, tier, star } = level
   const base = tier.color
@@ -54,7 +61,13 @@ export function RankMedal({
   const isTop = index === PET_LEVELS.length - 1
 
   return (
-    <svg viewBox="0 0 100 100" className={className} role="img" aria-label={`${tier.name} ${tier.label}`}>
+    <svg
+      // 不画星就把下面那条空白裁掉，徽章本体能占满整个方框
+      viewBox={compact ? '0 0 100 90' : '0 0 100 100'}
+      className={className}
+      role="img"
+      aria-label={`${tier.name} ${tier.label}`}
+    >
       <title>
         {tier.name} {tier.label}
         {star !== null ? ` ${star} 星` : ''}
@@ -109,7 +122,7 @@ export function RankMedal({
       )}
 
       {/* 段位内进度：五颗星 */}
-      {star !== null && (
+      {star !== null && !compact && (
         <g>
           {Array.from({ length: STARS_PER_TIER }, (_, i) => (
             <Star
@@ -138,7 +151,7 @@ export function RankChip({ level }: { level: LevelInfo }) {
         color: level.tier.color,
       }}
     >
-      <RankMedal level={level} className="size-4" />
+      <RankMedal level={level} className="size-4" compact />
       {level.tier.name}
       {level.star !== null && <span className="opacity-70">{level.star}★</span>}
     </span>

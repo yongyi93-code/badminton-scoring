@@ -186,6 +186,22 @@ export function winCount(playerId: string, matches: Match[]): number {
 export const earnedPoints = (playerId: string, matches: Match[]): number =>
   winCount(playerId, matches) * WIN_POINTS
 
+/**
+ * 一次扫完算出所有人的累计积分。
+ * 排行榜要给每一行都标段位，逐个调 earnedPoints 会把比赛表扫 N 遍。
+ */
+export function earnedPointsByPlayer(matches: Match[]): Map<string, number> {
+  const wins = new Map<string, number>()
+  for (const m of decidedMatches(matches)) {
+    const side = matchWinnerBySets(m)
+    if (!side) continue
+    for (const id of side === 'A' ? m.teamA : m.teamB) {
+      wins.set(id, (wins.get(id) ?? 0) + 1)
+    }
+  }
+  return new Map([...wins].map(([id, n]) => [id, n * WIN_POINTS]))
+}
+
 /* ------------------------------------------------------------------ *
  * 宠物档案
  * ------------------------------------------------------------------ */
