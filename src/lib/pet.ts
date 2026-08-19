@@ -12,8 +12,11 @@ import type { Match } from '@/types'
  * 落库的只有「花掉了多少」和「买了什么」—— 这两个没法从比赛推导。
  * ------------------------------------------------------------------ */
 
-/** 赢一场给多少分。输了不给，这是选好胜心最强的那档规则 */
+/** 赢一场加多少段位分 */
 export const WIN_POINTS = 10
+
+/** 输一场扣多少段位分（正数，算的时候是减掉） */
+export const LOSS_POINTS = 10
 
 export type PetKind = 'dog' | 'cat' | 'fish'
 
@@ -94,56 +97,86 @@ export type LevelTier = {
   color: string
 }
 
-/** 每个段位内部分几颗星。最高段位不分星，和 Dota 一样直接看分数 */
+/** 每个段位内部分几颗星 */
 export const STARS_PER_TIER = 5
+
+/** 冠绝之上每多少分升一级（冠绝 1、冠绝 2……） */
+export const IMMORTAL_STEP = 100
 
 /**
  * 段位照搬 Dota 那一套八段。
- * 等级看「累计赚到的分」，不看余额 —— 买东西花钱不该掉段。
  *
- * 门槛按 1-500 / 501-1000 / 1001-2500 / 2501-3000 定，
- * 之后每段 500 分。换算成场数（赢一场 10 分）：
- * 卫士 50 胜、中军 100 胜、统帅 250 胜、传奇 300 胜、
- * 万古 350 胜、超凡 400 胜、冠绝 450 胜。
+ * 门槛看的是「段位分」= 赢的场数 × 10 − 输的场数 × 10，赢加输减、可以为负。
+ * 换算成净胜场：卫士 +10、中军 +20、统帅 +30、传奇 +50、
+ * 万古 +70、超凡 +85、冠绝 +100。
+ *
+ * 到了冠绝还能继续往上，每 100 分（净胜 10 场）加一级，显示成「Immortal 1」。
  */
 export const PET_LEVELS: LevelTier[] = [
   { name: 'Herald', label: '先锋', min: 0, color: '#8fa07d' },
-  { name: 'Guardian', label: '卫士', min: 501, color: '#9fb0bf' },
-  { name: 'Crusader', label: '中军', min: 1001, color: '#5fb8a8' },
-  { name: 'Archon', label: '统帅', min: 2501, color: '#7fc47f' },
-  { name: 'Legend', label: '传奇', min: 3001, color: '#e3b344' },
-  { name: 'Ancient', label: '万古', min: 3501, color: '#b98cd8' },
-  { name: 'Divine', label: '超凡', min: 4001, color: '#7fb3ff' },
-  { name: 'Immortal', label: '冠绝', min: 4501, color: '#ff8a3d' },
+  { name: 'Guardian', label: '卫士', min: 100, color: '#9fb0bf' },
+  { name: 'Crusader', label: '中军', min: 200, color: '#5fb8a8' },
+  { name: 'Archon', label: '统帅', min: 300, color: '#7fc47f' },
+  { name: 'Legend', label: '传奇', min: 500, color: '#e3b344' },
+  { name: 'Ancient', label: '万古', min: 700, color: '#b98cd8' },
+  { name: 'Divine', label: '超凡', min: 850, color: '#7fb3ff' },
+  { name: 'Immortal', label: '冠绝', min: 1000, color: '#ff8a3d' },
 ]
 
 export type LevelInfo = {
   /** 段位下标，和 ShopItem.minLevel 对应 */
   index: number
   tier: LevelTier
-  /** 下一段，已到顶为 null */
+  /** 显示用的完整名字，例如 'Archon' 或 'Immortal 3' */
+  display: string
+  /**
+   * 冠绝之上的编号：0 = 冠绝本身，1 = 冠绝 1，以此类推。
+   * 没到冠绝为 null。
+   */
+  immortalRank: number | null
+  /** 下一段，已进冠绝为 null（冠绝之上按编号无限涨） */
   next: LevelTier | null
-  /** 距离下一段还差多少分，已到顶为 0 */
+  /** 距离下一段（或下一个冠绝编号）还差多少分 */
   toNext: number
-  /** 当前段位内的进度 0~1，已到顶为 1 */
+  /** 当前段位内的进度 0~1 */
   progress: number
   /**
    * 段位内的第几颗星（1~5）。
-   * 最高段位不分星，返回 null —— Dota 那里也是直接看分数排名。
+   * 冠绝不分星，改用编号，返回 null。
    */
   star: number | null
 }
 
-export function levelOf(earned: number): LevelInfo {
-  const pts = Math.max(0, earned)
+/**
+ * 由段位分算出段位。
+ *
+ * 段位分可以是负的（输多过赢），负分一律按 0 处理落在最低段 ——
+ * 打得再差也就是先锋，不设「负段位」，不然新手会被劝退。
+ */
+export function levelOf(rankPoints: number): LevelInfo {
+  const pts = Math.max(0, rankPoints)
   let index = 0
   for (let i = 0; i < PET_LEVELS.length; i++) {
     if (pts >= PET_LEVELS[i].min) index = i
   }
   const tier = PET_LEVELS[index]
   const next = PET_LEVELS[index + 1] ?? null
+
+  // 冠绝：不再有下一段，改成每 IMMORTAL_STEP 分一个编号，可以一直往上
   if (!next) {
-    return { index, tier, next: null, toNext: 0, progress: 1, star: null }
+    const over = pts - tier.min
+    const immortalRank = Math.floor(over / IMMORTAL_STEP)
+    const intoStep = over - immortalRank * IMMORTAL_STEP
+    return {
+      index,
+      tier,
+      display: immortalRank > 0 ? `${tier.name} ${immortalRank}` : tier.name,
+      immortalRank,
+      next: null,
+      toNext: IMMORTAL_STEP - intoStep,
+      progress: intoStep / IMMORTAL_STEP,
+      star: null,
+    }
   }
 
   const span = next.min - tier.min
@@ -151,6 +184,8 @@ export function levelOf(earned: number): LevelInfo {
   return {
     index,
     tier,
+    display: tier.name,
+    immortalRank: null,
     next,
     toNext: next.min - pts,
     progress,
@@ -159,7 +194,7 @@ export function levelOf(earned: number): LevelInfo {
   }
 }
 
-/** 某段位第 n 颗星对应多少累计分，用来告诉人「再赢几场亮下一颗星」 */
+/** 某段位第 n 颗星对应多少段位分，用来告诉人「再赢几场亮下一颗星」 */
 export function starThreshold(tierIndex: number, star: number): number {
   const tier = PET_LEVELS[tierIndex]
   const next = PET_LEVELS[tierIndex + 1]
@@ -172,34 +207,86 @@ export function starThreshold(tierIndex: number, star: number): number {
  * 积分
  * ------------------------------------------------------------------ */
 
-/** 某人赢了多少场 —— 口径和排行榜完全一致 */
-export function winCount(playerId: string, matches: Match[]): number {
+export type PlayerRecord = { wins: number; losses: number }
+
+/** 某人的胜负场次 —— 口径和排行榜完全一致 */
+export function recordOf(playerId: string, matches: Match[]): PlayerRecord {
   let wins = 0
+  let losses = 0
   for (const m of decidedMatches(matches)) {
     const side = sideOf(m, playerId)
-    if (side && matchWinnerBySets(m) === side) wins += 1
+    if (!side) continue
+    if (matchWinnerBySets(m) === side) wins += 1
+    else losses += 1
   }
-  return wins
+  return { wins, losses }
 }
 
-/** 累计赚到的分（实时推导，不落库） */
-export const earnedPoints = (playerId: string, matches: Match[]): number =>
-  winCount(playerId, matches) * WIN_POINTS
+/** 兼容旧叫法：只关心赢了几场的地方还在用 */
+export const winCount = (playerId: string, matches: Match[]): number =>
+  recordOf(playerId, matches).wins
 
 /**
- * 一次扫完算出所有人的累计积分。
- * 排行榜要给每一行都标段位，逐个调 earnedPoints 会把比赛表扫 N 遍。
+ * 段位分：赢一场加，输一场减，可以为负。
+ * 这是「现在什么水平」，打得差会掉下来。
  */
-export function earnedPointsByPlayer(matches: Match[]): Map<string, number> {
-  const wins = new Map<string, number>()
-  for (const m of decidedMatches(matches)) {
-    const side = matchWinnerBySets(m)
-    if (!side) continue
-    for (const id of side === 'A' ? m.teamA : m.teamB) {
-      wins.set(id, (wins.get(id) ?? 0) + 1)
-    }
+export const rankPointsFrom = (r: PlayerRecord): number =>
+  r.wins * WIN_POINTS - r.losses * LOSS_POINTS
+
+/**
+ * 金币：只按赢的场次算，输球不扣。
+ *
+ * 特意和段位分分开。要是买装备的钱也跟着输球缩水，
+ * 会出现「昨天买得起、今天输两场就买不起」，甚至已经攒着准备买的钱凭空蒸发 ——
+ * 那样大家会不敢打，正好和这套东西的目的相反。
+ * 段位掉可以，攒下的家当不能被没收。
+ */
+export const coinsFrom = (r: PlayerRecord): number => r.wins * WIN_POINTS
+
+export type Progress = {
+  wins: number
+  losses: number
+  /** 段位分，可为负 */
+  rankPoints: number
+  /** 累计赚到的金币（还没扣花掉的） */
+  coins: number
+  level: LevelInfo
+}
+
+const progressFrom = (r: PlayerRecord): Progress => {
+  const rankPoints = rankPointsFrom(r)
+  return {
+    ...r,
+    rankPoints,
+    coins: coinsFrom(r),
+    level: levelOf(rankPoints),
   }
-  return new Map([...wins].map(([id, n]) => [id, n * WIN_POINTS]))
+}
+
+export const progressOf = (playerId: string, matches: Match[]): Progress =>
+  progressFrom(recordOf(playerId, matches))
+
+/**
+ * 一次扫完算出所有人的战绩与段位。
+ * 排行榜每一行都要段位，逐个调 progressOf 会把比赛表扫 N 遍。
+ */
+export function progressByPlayer(matches: Match[]): Map<string, Progress> {
+  const records = new Map<string, PlayerRecord>()
+  const bump = (id: string, won: boolean) => {
+    const cur = records.get(id) ?? { wins: 0, losses: 0 }
+    if (won) cur.wins += 1
+    else cur.losses += 1
+    records.set(id, cur)
+  }
+
+  for (const m of decidedMatches(matches)) {
+    const winner = matchWinnerBySets(m)
+    if (!winner) continue
+    for (const id of m.teamA) bump(id, winner === 'A')
+    for (const id of m.teamB) bump(id, winner === 'B')
+  }
+
+  return new Map([...records].map(([id, r]) => [id, progressFrom(r)]))
 }
 
 /* ------------------------------------------------------------------ *
@@ -233,24 +320,27 @@ export const newPet = (playerId: string, kind: PetKind): PetProfile => ({
   createdAt: Date.now(),
 })
 
-/** 还能花多少。理论上不会为负，真出现了也夹到 0，界面不至于显示负数 */
-export const balanceOf = (pet: PetProfile | undefined, earned: number): number =>
-  Math.max(0, earned - (pet?.spent ?? 0))
+/** 还剩多少金币能花。金币只增不减，所以正常不会为负，夹一下防御 */
+export const balanceOf = (pet: PetProfile | undefined, coins: number): number =>
+  Math.max(0, coins - (pet?.spent ?? 0))
 
 export type BuyBlock = 'owned' | 'level' | 'money' | null
 
 /**
  * 能不能买。返回挡住的原因，界面直接拿来显示，
- * 免得每处自己拼「等级不够」还是「钱不够」。
+ * 免得每处自己拼「段位不够」还是「金币不够」。
+ *
+ * 两道关分别看两个数：段位门槛看段位分（会掉），价格看金币（不会掉）。
+ * 所以输球可能让你暂时买不了某件高段位的货，但不会没收已经买下的东西。
  */
 export function buyBlocker(
   item: ShopItem,
   pet: PetProfile | undefined,
-  earned: number,
+  progress: Progress,
 ): BuyBlock {
   if (pet?.owned.includes(item.id)) return 'owned'
-  if (levelOf(earned).index < item.minLevel) return 'level'
-  if (balanceOf(pet, earned) < item.price) return 'money'
+  if (progress.level.index < item.minLevel) return 'level'
+  if (balanceOf(pet, progress.coins) < item.price) return 'money'
   return null
 }
 

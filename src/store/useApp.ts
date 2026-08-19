@@ -7,6 +7,7 @@ import {
   type PetKind,
   type PetProfile,
   type PetSlot,
+  type Progress,
 } from '@/lib/pet'
 import {
   DEFAULT_RULES,
@@ -80,8 +81,8 @@ type AppState = {
   /** 领养或换一只宠物；已有装备保留，换种类不用重新买 */
   adoptPet: (playerId: string, kind: PetKind) => void
   renamePet: (playerId: string, name: string) => void
-  /** 买下道具并扣分。买不起 / 等级不够 / 已拥有都返回 false，不改动任何东西 */
-  buyItem: (playerId: string, itemId: string, earned: number) => boolean
+  /** 买下道具并扣金币。买不起 / 段位不够 / 已拥有都返回 false，不改动任何东西 */
+  buyItem: (playerId: string, itemId: string, progress: Progress) => boolean
   /** 戴上或脱下某个槽位的装备，itemId 传 null 表示脱下 */
   equipItem: (playerId: string, slot: PetSlot, itemId: string | null) => void
 
@@ -243,12 +244,12 @@ export const useApp = create<AppState>()(
         }))
       },
 
-      buyItem(playerId, itemId, earned) {
+      buyItem(playerId, itemId, progress) {
         const item = itemById(itemId)
         if (!item) return false
         const pet = get().pets.find((p) => p.playerId === playerId)
         if (!pet) return false
-        if (buyBlocker(item, pet, earned) !== null) return false
+        if (buyBlocker(item, pet, progress) !== null) return false
 
         set((s) => ({
           pets: s.pets.map((p) =>

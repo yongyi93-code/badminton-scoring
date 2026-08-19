@@ -21,7 +21,7 @@ import {
   venueSummaries,
 } from '@/lib/venues'
 import { formatDate, percent, signed } from '@/lib/format'
-import { earnedPointsByPlayer, levelOf, type LevelInfo } from '@/lib/pet'
+import { LOSS_POINTS, progressByPlayer, WIN_POINTS, type LevelInfo } from '@/lib/pet'
 import { RANK_MIN_GAMES } from '@/types'
 
 type Scope = 'session' | 'all'
@@ -73,9 +73,10 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
    * 否则同一个人在两个榜上显示两个段位，谁也说不清哪个才算数。
    */
   const levelsById = useMemo(() => {
-    const points = earnedPointsByPlayer(matches)
     const map = new Map<string, LevelInfo>()
-    for (const [playerId, earned] of points) map.set(playerId, levelOf(earned))
+    for (const [playerId, prog] of progressByPlayer(matches)) {
+      map.set(playerId, prog.level)
+    }
     return map
   }, [matches])
 
@@ -191,8 +192,8 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
               净分差 = 本人所在队伍的总得分 − 总失分，
               双打里搭档的表现也会算进你的净分差。
               <br />
-              段位按赢的总场数算（赢一场 10 分），是跨场馆的整体水平，
-              不会因为切换场馆而变。
+              段位看段位分：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}。
+              算的是跨场馆的整体水平，不会因为切换场馆而变。
               {scope === 'all' && venue !== null && (
                 <>
                   <br />
