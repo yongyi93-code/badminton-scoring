@@ -21,6 +21,7 @@ import {
   venueSummaries,
 } from '@/lib/venues'
 import { formatDate, percent, signed } from '@/lib/format'
+import { earnedPointsByPlayer, levelOf, type LevelInfo } from '@/lib/pet'
 import { RANK_MIN_GAMES } from '@/types'
 
 type Scope = 'session' | 'all'
@@ -65,6 +66,18 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
     )
     return rankPlayers(computeStats(matches, everyone))
   }, [scope, session, venue, sessions, matches, players])
+
+  /**
+   * 段位一律按「所有比赛」算，不跟着场馆筛选走。
+   * 段位是这个人的整体水平，换个场馆看名次会变、但段位不该变，
+   * 否则同一个人在两个榜上显示两个段位，谁也说不清哪个才算数。
+   */
+  const levelsById = useMemo(() => {
+    const points = earnedPointsByPlayer(matches)
+    const map = new Map<string, LevelInfo>()
+    for (const [playerId, earned] of points) map.set(playerId, levelOf(earned))
+    return map
+  }, [matches])
 
   const champion = ranked.find((r) => r.qualified) ?? null
   /**
@@ -169,6 +182,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
             <RankTable
               ranked={ranked}
               playersById={names}
+              levelsById={levelsById}
               minGames={RANK_MIN_GAMES}
               onPick={(playerId) => push({ name: 'profile', playerId })}
             />
@@ -176,6 +190,9 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
               排名口径：胜率 ↓ → 净分差 ↓ → 场数 ↓。
               净分差 = 本人所在队伍的总得分 − 总失分，
               双打里搭档的表现也会算进你的净分差。
+              <br />
+              段位按赢的总场数算（赢一场 10 分），是跨场馆的整体水平，
+              不会因为切换场馆而变。
               {scope === 'all' && venue !== null && (
                 <>
                   <br />

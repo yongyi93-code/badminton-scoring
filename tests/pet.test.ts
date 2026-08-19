@@ -3,6 +3,7 @@ import {
   balanceOf,
   buyBlocker,
   earnedPoints,
+  earnedPointsByPlayer,
   itemById,
   levelOf,
   newPet,
@@ -72,6 +73,22 @@ describe('积分', () => {
 
   it('没上过场的人 0 分', () => {
     const ms = [match('m1', ['p1'], ['p2'], 'A')]
+    expect(earnedPoints('p9', ms)).toBe(0)
+  })
+
+  it('一次扫完的批量算法和逐个算的结果一致', () => {
+    const ms = [
+      match('m1', ['p1', 'p2'], ['p3', 'p4'], 'A'),
+      match('m2', ['p1', 'p3'], ['p2', 'p4'], 'B'),
+      match('m3', ['p1'], ['p2'], 'A'),
+      { ...match('m4', ['p1'], ['p2'], 'A'), status: 'playing' as const },
+    ]
+    const batch = earnedPointsByPlayer(ms)
+    for (const id of ['p1', 'p2', 'p3', 'p4']) {
+      expect(batch.get(id) ?? 0).toBe(earnedPoints(id, ms))
+    }
+    // 一场没赢过的人不进这张表，取不到时按 0 处理
+    expect(batch.get('p9')).toBeUndefined()
     expect(earnedPoints('p9', ms)).toBe(0)
   })
 

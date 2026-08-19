@@ -21,6 +21,7 @@ import { computeStats, mvpOf, rankPlayers } from '@/lib/ranking'
 import { money, splitFee } from '@/lib/fee'
 import { matchesAtVenue, playerIdsAtVenue, venueLabel } from '@/lib/venues'
 import { shareNodeAsImage } from '@/lib/shareImage'
+import { earnedPointsByPlayer, levelOf, type LevelInfo } from '@/lib/pet'
 import { duration, formatDateFull, percent, signed } from '@/lib/format'
 import {
   FORMAT_LABELS,
@@ -195,6 +196,15 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
     () => (session ? rankPlayers(computeStats(matches, session.playerIds)) : []),
     [matches, session],
   )
+
+  /** 段位按所有球局的总战绩算，不只今晚这一场 —— 它反映的是整体水平 */
+  const levelsById = useMemo(() => {
+    const map = new Map<string, LevelInfo>()
+    for (const [playerId, earned] of earnedPointsByPlayer(allMatches)) {
+      map.set(playerId, levelOf(earned))
+    }
+    return map
+  }, [allMatches])
 
   /** 这个球馆的累计第一 —— 挑战者该找的人 */
   const venueKing = useMemo(() => {
@@ -383,6 +393,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
             <RankTable
               ranked={ranked}
               playersById={names}
+              levelsById={levelsById}
               minGames={RANK_MIN_GAMES}
               onPick={(playerId) => push({ name: 'profile', playerId })}
             />

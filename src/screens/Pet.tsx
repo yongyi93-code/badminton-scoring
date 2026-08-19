@@ -233,6 +233,7 @@ export function Pet({ playerId }: { playerId: string }) {
                   <RankMedal
                     level={{ ...level, index: i, tier: t, star: null }}
                     className={cx('mx-auto size-7', i > level.index && 'opacity-35')}
+                    compact
                   />
                   <p
                     className="mt-0.5 truncate text-[10px]"
