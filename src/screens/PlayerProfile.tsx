@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { playerMap, useApp } from '@/store/useApp'
+import { petOf, playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Body,
@@ -24,6 +24,8 @@ import {
 } from '@/lib/ranking'
 import { formatDate, percent, signed, streakLabel } from '@/lib/format'
 import { scoreLine } from '@/lib/scoring'
+import { PetView } from '@/components/Pet'
+import { balanceOf, earnedPoints, levelOf, WIN_POINTS } from '@/lib/pet'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -36,9 +38,13 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 export function PlayerProfile({ playerId }: { playerId: string }) {
-  const { players, sessions, matches } = useApp()
+  const { players, sessions, matches, pets } = useApp()
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
+
+  const pet = petOf(pets, playerId)
+  const earned = useMemo(() => earnedPoints(playerId, matches), [playerId, matches])
+  const level = levelOf(earned)
 
   const names = useMemo(() => playerMap(players), [players])
   const player = names.get(playerId)
@@ -92,6 +98,47 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                 </div>
               )}
             </div>
+          </div>
+        </Card>
+
+        {/* 宠物入口：养成的东西要一眼看得见，才有人想去赢球赚分 */}
+        <Card onClick={() => push({ name: 'pet', playerId })}>
+          <div className="flex items-center gap-4">
+            <span className="size-16 shrink-0 overflow-hidden rounded-2xl bg-ink-800">
+              {pet ? (
+                <PetView
+                  kind={pet.kind}
+                  equipped={pet.equipped}
+                  className="h-full w-full"
+                  title={pet.name}
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-2xl">
+                  🥚
+                </span>
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              {pet ? (
+                <>
+                  <p className="truncate text-lg font-semibold">{pet.name}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <Pill tone="lime">{level.tier.name}</Pill>
+                    <span className="tnum text-sm text-ink-400">
+                      余额 {balanceOf(pet, earned)} 分
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-semibold">还没有宠物</p>
+                  <p className="text-sm text-ink-400">
+                    挑一只养起来，赢一场得 {WIN_POINTS} 分换装备
+                  </p>
+                </>
+              )}
+            </div>
+            <span className="shrink-0 text-ink-400">›</span>
           </div>
         </Card>
 

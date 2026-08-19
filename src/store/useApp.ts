@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
+  buyBlocker,
+  itemById,
+  newPet,
+  type PetKind,
+  type PetProfile,
+  type PetSlot,
+} from '@/lib/pet'
+import {
   DEFAULT_RULES,
   type EndCondition,
   type Gender,
@@ -33,20 +41,25 @@ export type SessionDraft = {
   rotationPerPlayer?: number
 }
 
-/** 导出/导入的备份文件结构 */
+/**
+ * 导出/导入的备份文件结构。
+ * version 2 起多了 pets；读的时候 pets 缺失按空处理，v1 的备份照样能导入。
+ */
 export type Backup = {
   app: 'badminton-scoring'
-  version: 1
+  version: 1 | 2
   exportedAt: string
   players: Player[]
   sessions: Session[]
   matches: Match[]
+  pets?: PetProfile[]
 }
 
 type AppState = {
   players: Player[]
   sessions: Session[]
   matches: Match[]
+  pets: PetProfile[]
 
   addPlayer: (name: string, level: Level, gender: Gender) => Player
   updatePlayer: (id: string, patch: Partial<Omit<Player, 'id'>>) => void
@@ -64,6 +77,14 @@ type AppState = {
   replaceMatch: (match: Match) => void
   deleteMatch: (id: string) => void
 
+  /** 领养或换一只宠物；已有装备保留，换种类不用重新买 */
+  adoptPet: (playerId: string, kind: PetKind) => void
+  renamePet: (playerId: string, name: string) => void
+  /** 买下道具并扣分。买不起 / 等级不够 / 已拥有都返回 false，不改动任何东西 */
+  buyItem: (playerId: string, itemId: string, earned: number) => boolean
+  /** 戴上或脱下某个槽位的装备，itemId 传 null 表示脱下 */
+  equipItem: (playerId: string, slot: PetSlot, itemId: string | null) => void
+
   exportBackup: () => Backup
   importBackup: (backup: Backup) => void
   resetAll: () => void
@@ -75,6 +96,7 @@ export const useApp = create<AppState>()(
       players: [],
       sessions: [],
       matches: [],
+      pets: [],
 
       addPlayer(name, level, gender) {
         const player: Player = {
@@ -200,15 +222,74 @@ export const useApp = create<AppState>()(
         set((s) => ({ matches: s.matches.filter((m) => m.id !== id) }))
       },
 
+      adoptPet(playerId, kind) {
+        set((s) => {
+          const exist = s.pets.find((p) => p.playerId === playerId)
+          if (!exist) return { pets: [...s.pets, newPet(playerId, kind)] }
+          // 换种类保留已买的装备和花掉的分，换宠物不该等于清零重来
+          return {
+            pets: s.pets.map((p) =>
+              p.playerId === playerId ? { ...p, kind } : p,
+            ),
+          }
+        })
+      },
+
+      renamePet(playerId, name) {
+        set((s) => ({
+          pets: s.pets.map((p) =>
+            p.playerId === playerId ? { ...p, name: name.trim() } : p,
+          ),
+        }))
+      },
+
+      buyItem(playerId, itemId, earned) {
+        const item = itemById(itemId)
+        if (!item) return false
+        const pet = get().pets.find((p) => p.playerId === playerId)
+        if (!pet) return false
+        if (buyBlocker(item, pet, earned) !== null) return false
+
+        set((s) => ({
+          pets: s.pets.map((p) =>
+            p.playerId === playerId
+              ? {
+                  ...p,
+                  owned: [...p.owned, item.id],
+                  spent: p.spent + item.price,
+                  // 买完直接戴上，省一步操作
+                  equipped: { ...p.equipped, [item.slot]: item.id },
+                }
+              : p,
+          ),
+        }))
+        return true
+      },
+
+      equipItem(playerId, slot, itemId) {
+        set((s) => ({
+          pets: s.pets.map((p) => {
+            if (p.playerId !== playerId) return p
+            // 没买过的东西不让戴，避免改数据绕过商店
+            if (itemId !== null && !p.owned.includes(itemId)) return p
+            const equipped = { ...p.equipped }
+            if (itemId === null) delete equipped[slot]
+            else equipped[slot] = itemId
+            return { ...p, equipped }
+          }),
+        }))
+      },
+
       exportBackup() {
-        const { players, sessions, matches } = get()
+        const { players, sessions, matches, pets } = get()
         return {
           app: 'badminton-scoring',
-          version: 1,
+          version: 2,
           exportedAt: new Date().toISOString(),
           players,
           sessions,
           matches,
+          pets,
         }
       },
 
@@ -220,11 +301,13 @@ export const useApp = create<AppState>()(
           players: backup.players ?? [],
           sessions: backup.sessions ?? [],
           matches: backup.matches ?? [],
+          // v1 的备份没有 pets，按没养过宠物处理
+          pets: backup.pets ?? [],
         })
       },
 
       resetAll() {
-        set({ players: [], sessions: [], matches: [] })
+        set({ players: [], sessions: [], matches: [], pets: [] })
       },
     }),
     {
@@ -233,6 +316,7 @@ export const useApp = create<AppState>()(
         players: s.players,
         sessions: s.sessions,
         matches: s.matches,
+        pets: s.pets,
       }),
     },
   ),
@@ -247,3 +331,6 @@ export const sessionMatches = (matches: Match[], sessionId: string) =>
 
 export const playerMap = (players: Player[]) =>
   new Map(players.map((p) => [p.id, p]))
+
+export const petOf = (pets: PetProfile[], playerId: string) =>
+  pets.find((p) => p.playerId === playerId)
