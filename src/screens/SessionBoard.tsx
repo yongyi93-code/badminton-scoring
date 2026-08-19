@@ -25,7 +25,6 @@ import {
   sessionProgress,
   type SessionProgress,
 } from '@/lib/sessionFormat'
-import { formatDate } from '@/lib/format'
 import {
   FORMAT_LABELS,
   formatOf,
@@ -574,7 +573,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
     <Screen>
       <TopBar
         title={session.venue || '球局'}
-        subtitle={`${FORMAT_LABELS[format]} · ${session.rules.pointsToWin} 分制 · ${formatDate(session.date)} · ${attending.length} 人 · 已打 ${finished.length} 场`}
+        subtitle={`${FORMAT_LABELS[format]} · ${session.rules.pointsToWin} 分制 · ${attending.length} 人 · 已打 ${finished.length} 场`}
         onBack={() => resetTo({ name: 'home' })}
         right={
           <Button size="sm" variant="ghost" onClick={() => setEndOpen(true)}>
