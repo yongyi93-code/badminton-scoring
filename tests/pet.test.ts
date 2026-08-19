@@ -50,8 +50,8 @@ const pet = (patch: Partial<PetProfile> = {}): PetProfile => ({
   ...patch,
 })
 
-describe('段位分与金币', () => {
-  it('段位分赢加输减，金币只加不减', () => {
+describe('MMR 与金币', () => {
+  it('MMR 赢加输减，金币只加不减', () => {
     const ms = [
       match('m1', ['p1'], ['p2'], 'A'),
       match('m2', ['p1'], ['p2'], 'B'),
@@ -60,22 +60,22 @@ describe('段位分与金币', () => {
     const a = progressOf('p1', ms) // 2 胜 1 负
     expect(a.wins).toBe(2)
     expect(a.losses).toBe(1)
-    expect(a.rankPoints).toBe(2 * WIN_POINTS - 1 * LOSS_POINTS)
+    expect(a.mmr).toBe(2 * WIN_POINTS - 1 * LOSS_POINTS)
     expect(a.coins).toBe(2 * WIN_POINTS)
 
     const b = progressOf('p2', ms) // 1 胜 2 负
-    expect(b.rankPoints).toBe(1 * WIN_POINTS - 2 * LOSS_POINTS)
+    expect(b.mmr).toBe(1 * WIN_POINTS - 2 * LOSS_POINTS)
     expect(b.coins).toBe(1 * WIN_POINTS)
   })
 
-  it('输多过赢时段位分为负，金币仍然是正的', () => {
+  it('输多过赢时 MMR 为负，金币仍然是正的', () => {
     const ms = [
       match('m1', ['p1'], ['p2'], 'B'),
       match('m2', ['p1'], ['p2'], 'B'),
       match('m3', ['p1'], ['p2'], 'A'),
     ]
     const p = progressOf('p1', ms) // 1 胜 2 负
-    expect(p.rankPoints).toBe(-10)
+    expect(p.mmr).toBe(-10)
     expect(p.coins).toBe(10)
     // 负分不会把段位压到最低段以下
     expect(p.level.tier.name).toBe('Herald')
@@ -83,22 +83,22 @@ describe('段位分与金币', () => {
 
   it('双打里搭档一起算胜负', () => {
     const ms = [match('m1', ['p1', 'p2'], ['p3', 'p4'], 'A')]
-    expect(progressOf('p1', ms).rankPoints).toBe(WIN_POINTS)
-    expect(progressOf('p2', ms).rankPoints).toBe(WIN_POINTS)
-    expect(progressOf('p3', ms).rankPoints).toBe(-LOSS_POINTS)
+    expect(progressOf('p1', ms).mmr).toBe(WIN_POINTS)
+    expect(progressOf('p2', ms).mmr).toBe(WIN_POINTS)
+    expect(progressOf('p3', ms).mmr).toBe(-LOSS_POINTS)
     expect(progressOf('p4', ms).coins).toBe(0)
   })
 
   it('没打完的比赛不算分', () => {
     const queued: Match = { ...match('m1', ['p1'], ['p2'], 'A'), status: 'playing' }
-    expect(progressOf('p1', [queued]).rankPoints).toBe(0)
+    expect(progressOf('p1', [queued]).mmr).toBe(0)
     expect(progressOf('p1', [queued]).coins).toBe(0)
   })
 
   it('没上过场的人 0 分', () => {
     const ms = [match('m1', ['p1'], ['p2'], 'A')]
     const p = progressOf('p9', ms)
-    expect(p.rankPoints).toBe(0)
+    expect(p.mmr).toBe(0)
     expect(p.coins).toBe(0)
     expect(winCount('p9', ms)).toBe(0)
   })
@@ -113,7 +113,7 @@ describe('段位分与金币', () => {
     const batch = progressByPlayer(ms)
     for (const id of ['p1', 'p2', 'p3', 'p4']) {
       const one = progressOf(id, ms)
-      expect(batch.get(id)?.rankPoints).toBe(one.rankPoints)
+      expect(batch.get(id)?.mmr).toBe(one.mmr)
       expect(batch.get(id)?.coins).toBe(one.coins)
       expect(batch.get(id)?.level.display).toBe(one.level.display)
     }
@@ -128,12 +128,12 @@ describe('段位分与金币', () => {
     const before = progressOf('p1', wins)
     expect(before.coins).toBe(100)
 
-    // 再输 8 场：段位分掉到 20，金币还是 100
+    // 再输 8 场：MMR 掉到 20，金币还是 100
     const after = progressOf('p1', [
       ...wins,
       ...Array.from({ length: 8 }, (_, i) => match(`l${i + 1}`, ['p1'], ['p2'], 'B')),
     ])
-    expect(after.rankPoints).toBe(20)
+    expect(after.mmr).toBe(20)
     expect(after.coins).toBe(100)
     expect(balanceOf(pet(), after.coins)).toBe(100)
   })
@@ -173,9 +173,9 @@ describe('段位', () => {
     }
   })
 
-  it('段位只看段位分，跟金币花掉多少无关', () => {
+  it('段位只看 MMR，跟金币花掉多少无关', () => {
     const broke = pet({ spent: 250 })
-    // 金币赚了 300 花掉 250 只剩 50，段位分 300 照样是 Archon
+    // 金币赚了 300 花掉 250 只剩 50，MMR 300 照样是 Archon
     expect(balanceOf(broke, 300)).toBe(50)
     expect(levelOf(300).tier.name).toBe('Archon')
   })
@@ -238,7 +238,7 @@ describe('段位', () => {
     expect(levelOf(starThreshold(1, 3)).star).toBe(3)
   })
 
-  it('段位分为负时按 0 处理，落在最低段', () => {
+  it('MMR 为负时按 0 处理，落在最低段', () => {
     expect(levelOf(-50).tier.name).toBe('Herald')
     expect(levelOf(-50).star).toBe(1)
     expect(levelOf(-500).progress).toBeGreaterThanOrEqual(0)
@@ -258,12 +258,12 @@ describe('商店', () => {
   })
 
   /** 直接捏一个进度，不用真去造比赛 */
-  const prog = (rankPoints: number, coins: number): Progress => ({
+  const prog = (mmr: number, coins: number): Progress => ({
     wins: 0,
     losses: 0,
-    rankPoints,
+    mmr,
     coins,
-    level: levelOf(rankPoints),
+    level: levelOf(mmr),
   })
 
   it('金币不够时挡住', () => {
@@ -276,7 +276,7 @@ describe('商店', () => {
     const crown = itemById('crown')!
     expect(crown.minLevel).toBeGreaterThan(0)
     const gate = PET_LEVELS[crown.minLevel].min
-    // 金币多得是，但段位分差得远
+    // 金币多得是，但 MMR 差得远
     expect(buyBlocker(crown, pet(), prog(0, 99999))).toBe('level')
     // 段位到了、金币也够才放行
     expect(buyBlocker(crown, pet(), prog(gate, crown.price))).toBe(null)

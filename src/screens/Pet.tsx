@@ -57,7 +57,7 @@ export function Pet({ playerId }: { playerId: string }) {
   const pet = petOf(pets, playerId)
 
   const progress = useMemo(() => progressOf(playerId, matches), [playerId, matches])
-  const { wins, losses, rankPoints, coins, level } = progress
+  const { wins, losses, mmr, coins, level } = progress
   const balance = balanceOf(pet, coins)
 
   /**
@@ -200,7 +200,7 @@ export function Pet({ playerId }: { playerId: string }) {
               </p>
               <p className="text-sm text-ink-400">{level.tier.label}</p>
               <p className="tnum mt-1 text-xs text-ink-400">
-                段位分 {rankPoints}
+                MMR {mmr}
                 {level.next
                   ? ` · 还差 ${level.toNext} 分升 ${level.next.name}`
                   : ` · 还差 ${level.toNext} 分升 ${level.tier.name} ${(level.immortalRank ?? 0) + 1}`}
@@ -250,7 +250,7 @@ export function Pet({ playerId }: { playerId: string }) {
           </div>
 
           <p className="text-xs leading-relaxed text-ink-400">
-            段位分：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}。每段 5 颗星，星满升段。
+            MMR：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}。每段 5 颗星，星满升段。
             打到最高段之后还能继续往上，每 {IMMORTAL_STEP} 分加一级。
             <br />
             买装备用的是金币，金币只按赢的场次算、输球不扣 ——
@@ -441,8 +441,7 @@ function ShopPanel({
                         </p>
                         {block === 'level' && (
                           <p className="text-xs text-ink-400">
-                            段位不够，段位分到 {need.min}（{need.name}）才能买，
-                            现在 {progress.rankPoints}
+                            MMR 不够，到 {need.min}（{need.name}）才能买，现在 {progress.mmr}
                           </p>
                         )}
                         {block === 'money' && (
@@ -475,8 +474,8 @@ function ShopPanel({
 
       <p className="pb-4 text-xs leading-relaxed text-ink-400">
         价格看金币（赢一场 +{WIN_POINTS}，输球不扣），
-        门槛看段位分（赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}）。
-        现在 {progress.level.display}，段位分 {progress.rankPoints}，金币 {balance}。
+        门槛看 MMR（赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}）。
+        现在 {progress.level.display}，MMR {progress.mmr}，金币 {balance}。
         两个数都是从比赛记录实时算的 —— 改了战绩会跟着一起变。
       </p>
     </>

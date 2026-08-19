@@ -126,7 +126,8 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <RankChip level={level} />
                     <span className="tnum text-sm text-ink-400">
-                      金币 {balanceOf(pet, petProgress.coins)}
+                      MMR {petProgress.mmr} · 金币{' '}
+                      {balanceOf(pet, petProgress.coins)}
                     </span>
                   </div>
                 </>
