@@ -67,7 +67,12 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
   }, [scope, session, venue, sessions, matches, players])
 
   const champion = ranked.find((r) => r.qualified) ?? null
-  const showVenueRow = scope === 'all' && venues.length > 1
+  /**
+   * 只要有打过球的场馆就把这排显示出来。
+   * 原来限定「超过 1 个场馆」才显示，结果一直在同一个球馆打的人
+   * 整排按钮和「本馆之王」都看不到，会以为压根没有分场馆这回事。
+   */
+  const showVenueRow = scope === 'all' && venues.length > 0
   const current = venues.find((v) => v.key === venue)
 
   return (
@@ -96,22 +101,27 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
         )}
 
         {showVenueRow && (
-          <div className="-mx-4 overflow-x-auto px-4">
-            <div className="flex w-max gap-2">
-              <VenueChip
-                label="全部场馆"
-                active={venue === null}
-                onClick={() => setVenue(null)}
-              />
-              {venues.map((v) => (
+          <div className="space-y-2">
+            <p className="text-xs text-ink-400">
+              按球馆看排名（点一下切换，各馆分开算）
+            </p>
+            <div className="-mx-4 overflow-x-auto px-4">
+              <div className="flex w-max gap-2">
                 <VenueChip
-                  key={v.key || '__unnamed__'}
-                  label={v.label}
-                  meta={`${v.matchCount} 场`}
-                  active={venue === v.key}
-                  onClick={() => setVenue(v.key)}
+                  label="全部场馆"
+                  active={venue === null}
+                  onClick={() => setVenue(null)}
                 />
-              ))}
+                {venues.map((v) => (
+                  <VenueChip
+                    key={v.key || '__unnamed__'}
+                    label={v.label}
+                    meta={`${v.matchCount} 场`}
+                    active={venue === v.key}
+                    onClick={() => setVenue(v.key)}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         )}
