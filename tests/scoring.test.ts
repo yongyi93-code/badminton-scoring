@@ -12,7 +12,7 @@ import {
   nextGame,
   undoPoint,
 } from '@/lib/scoring'
-import { DEFAULT_RULES, type Match, type Rules, type TeamSide } from '@/types'
+import { capFor, DEFAULT_RULES, type Match, type Rules, type TeamSide } from '@/types'
 
 const rules: Rules = DEFAULT_RULES
 const noWinBy2: Rules = { ...DEFAULT_RULES, winBy2: false }
@@ -74,6 +74,32 @@ describe('一局的胜负判定', () => {
     expect(isGamePoint(20, 20, rules)).toBe(null) // 20 平谁都还差 2 分
     expect(isGamePoint(21, 20, rules)).toBe('A')
     expect(isGamePoint(29, 29, rules)).toBe('A') // 封顶分下双方都是局点
+  })
+
+  it('15 分制：14 平后打净胜 2 分，21 分封顶', () => {
+    const r: Rules = { pointsToWin: 15, winBy2: true, cap: capFor(15), bestOf: 1 }
+    expect(isGameOver(15, 13, r)).toBe(true)
+    expect(isGameOver(15, 14, r)).toBe(false)
+    expect(isGameOver(16, 14, r)).toBe(true)
+    expect(isGameOver(20, 20, r)).toBe(false)
+    expect(gameWinner(21, 20, r)).toBe('A')
+  })
+
+  it('11 分制：10 平后打净胜 2 分，15 分封顶', () => {
+    const r: Rules = { pointsToWin: 11, winBy2: true, cap: capFor(11), bestOf: 1 }
+    expect(isGameOver(11, 9, r)).toBe(true)
+    expect(isGameOver(11, 10, r)).toBe(false)
+    expect(isGameOver(12, 10, r)).toBe(true)
+    expect(isGameOver(14, 14, r)).toBe(false)
+    expect(gameWinner(15, 14, r)).toBe('A')
+  })
+
+  it('封顶分跟着每局分数走，不会让 11 分制拖到 30 分', () => {
+    expect(capFor(21)).toBe(30)
+    expect(capFor(15)).toBe(21)
+    expect(capFor(11)).toBe(15)
+    // 表里没有的分制走兜底公式，仍然大于目标分
+    expect(capFor(7)).toBeGreaterThan(7)
   })
 
   it('封顶分低于目标分时不会卡死', () => {

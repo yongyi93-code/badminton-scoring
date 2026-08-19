@@ -37,6 +37,17 @@ export const DEFAULT_RULES: Rules = {
   bestOf: 1,
 }
 
+/** 可选的每局分数 */
+export const POINTS_OPTIONS = [11, 15, 21] as const
+
+/**
+ * 各分制对应的封顶分：21 分制封顶 30（现行 BWF 规则），
+ * 15 分制封顶 21，11 分制封顶 15。表里没有的分制按「目标分 + 9」兜底。
+ * 封顶分必须跟着目标分走，否则 11 分制的一个平分能拖到 30 分才结束。
+ */
+export const capFor = (pointsToWin: number): number =>
+  ({ 11: 15, 15: 21, 21: 30 })[pointsToWin] ?? pointsToWin + 9
+
 export type Fee = {
   /** 场地费总额 */
   courtFee: number
