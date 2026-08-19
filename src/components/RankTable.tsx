@@ -3,7 +3,7 @@ import { Avatar } from './PlayerBits'
 import { Pill, cx } from './ui'
 import { percent, signed, streakLabel } from '@/lib/format'
 import { RankMedal } from './RankMedal'
-import type { LevelInfo } from '@/lib/pet'
+import type { LevelInfo, Progress } from '@/lib/pet'
 
 const medal = (rank: number) =>
   rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null
@@ -13,6 +13,7 @@ export function RankRow({
   stats,
   player,
   level,
+  mmr,
   onClick,
   highlight,
 }: {
@@ -21,6 +22,8 @@ export function RankRow({
   player: Player | undefined
   /** 段位。缺省就不显示这一列，今晚排名之类的地方可以不传 */
   level?: LevelInfo
+  /** MMR 数值，跟在段位名后面 —— 打 Dota 的人比的就是这个数 */
+  mmr?: number
   onClick?: () => void
   highlight?: boolean
 }) {
@@ -54,12 +57,14 @@ export function RankRow({
           )}
         </span>
         {level && (
-          <span
-            className="block text-xs font-semibold"
-            style={{ color: level.tier.color }}
-          >
-            {level.display}
-            {level.star !== null && ` ${level.star}★`}
+          <span className="flex items-baseline gap-1.5 text-xs">
+            <span className="font-semibold" style={{ color: level.tier.color }}>
+              {level.display}
+              {level.star !== null && ` ${level.star}★`}
+            </span>
+            {mmr !== undefined && (
+              <span className="tnum text-ink-400">MMR {mmr}</span>
+            )}
           </span>
         )}
         <span className="tnum mt-0.5 block text-xs text-ink-400">
@@ -78,14 +83,14 @@ export function RankRow({
 export function RankTable({
   ranked,
   playersById,
-  levelsById,
+  progressById,
   onPick,
   minGames,
 }: {
   ranked: PlayerStats[]
   playersById: Map<string, Player>
-  /** 每个球员的段位，不传就不显示段位列 */
-  levelsById?: Map<string, LevelInfo>
+  /** 每个球员的段位与 MMR，不传就不显示段位列 */
+  progressById?: Map<string, Progress>
   onPick?: (playerId: string) => void
   minGames: number
 }) {
@@ -100,7 +105,8 @@ export function RankTable({
           rank={i + 1}
           stats={s}
           player={playersById.get(s.playerId)}
-          level={levelsById?.get(s.playerId)}
+          level={progressById?.get(s.playerId)?.level}
+          mmr={progressById?.get(s.playerId)?.mmr}
           onClick={onPick ? () => onPick(s.playerId) : undefined}
           highlight={i === 0}
         />
@@ -117,7 +123,8 @@ export function RankTable({
               rank={0}
               stats={s}
               player={playersById.get(s.playerId)}
-          level={levelsById?.get(s.playerId)}
+          level={progressById?.get(s.playerId)?.level}
+          mmr={progressById?.get(s.playerId)?.mmr}
               onClick={onPick ? () => onPick(s.playerId) : undefined}
             />
           ))}

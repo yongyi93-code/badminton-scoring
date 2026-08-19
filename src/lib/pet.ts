@@ -12,10 +12,10 @@ import type { Match } from '@/types'
  * 落库的只有「花掉了多少」和「买了什么」—— 这两个没法从比赛推导。
  * ------------------------------------------------------------------ */
 
-/** 赢一场加多少段位分 */
+/** 赢一场加多少 MMR（同时也是拿到多少金币） */
 export const WIN_POINTS = 10
 
-/** 输一场扣多少段位分（正数，算的时候是减掉） */
+/** 输一场扣多少 MMR（正数，算的时候是减掉）。金币不受影响 */
 export const LOSS_POINTS = 10
 
 export type PetKind = 'dog' | 'cat' | 'fish'
@@ -104,9 +104,9 @@ export const STARS_PER_TIER = 5
 export const IMMORTAL_STEP = 100
 
 /**
- * 段位照搬 Dota 那一套八段。
+ * 段位照搬 Dota 那一套八段，一段不少。
  *
- * 门槛看的是「段位分」= 赢的场数 × 10 − 输的场数 × 10，赢加输减、可以为负。
+ * 门槛看 MMR = 赢的场数 × 10 − 输的场数 × 10，赢加输减、可以为负。
  * 换算成净胜场：卫士 +10、中军 +20、统帅 +30、传奇 +50、
  * 万古 +70、超凡 +85、冠绝 +100。
  *
@@ -148,13 +148,13 @@ export type LevelInfo = {
 }
 
 /**
- * 由段位分算出段位。
+ * 由 MMR 算出段位。
  *
- * 段位分可以是负的（输多过赢），负分一律按 0 处理落在最低段 ——
+ * MMR 可以是负的（输多过赢），负分一律按 0 处理落在最低段 ——
  * 打得再差也就是先锋，不设「负段位」，不然新手会被劝退。
  */
-export function levelOf(rankPoints: number): LevelInfo {
-  const pts = Math.max(0, rankPoints)
+export function levelOf(mmr: number): LevelInfo {
+  const pts = Math.max(0, mmr)
   let index = 0
   for (let i = 0; i < PET_LEVELS.length; i++) {
     if (pts >= PET_LEVELS[i].min) index = i
@@ -194,7 +194,7 @@ export function levelOf(rankPoints: number): LevelInfo {
   }
 }
 
-/** 某段位第 n 颗星对应多少段位分，用来告诉人「再赢几场亮下一颗星」 */
+/** 某段位第 n 颗星对应多少 MMR，用来告诉人「再赢几场亮下一颗星」 */
 export function starThreshold(tierIndex: number, star: number): number {
   const tier = PET_LEVELS[tierIndex]
   const next = PET_LEVELS[tierIndex + 1]
@@ -227,16 +227,16 @@ export const winCount = (playerId: string, matches: Match[]): number =>
   recordOf(playerId, matches).wins
 
 /**
- * 段位分：赢一场加，输一场减，可以为负。
- * 这是「现在什么水平」，打得差会掉下来。
+ * MMR：赢一场加，输一场减，可以为负。
+ * 这是「现在什么水平」，打得差会掉下来，段位就是按它划的。
  */
-export const rankPointsFrom = (r: PlayerRecord): number =>
+export const mmrFrom = (r: PlayerRecord): number =>
   r.wins * WIN_POINTS - r.losses * LOSS_POINTS
 
 /**
  * 金币：只按赢的场次算，输球不扣。
  *
- * 特意和段位分分开。要是买装备的钱也跟着输球缩水，
+ * 特意和 MMR 分开。要是买装备的钱也跟着输球缩水，
  * 会出现「昨天买得起、今天输两场就买不起」，甚至已经攒着准备买的钱凭空蒸发 ——
  * 那样大家会不敢打，正好和这套东西的目的相反。
  * 段位掉可以，攒下的家当不能被没收。
@@ -246,20 +246,20 @@ export const coinsFrom = (r: PlayerRecord): number => r.wins * WIN_POINTS
 export type Progress = {
   wins: number
   losses: number
-  /** 段位分，可为负 */
-  rankPoints: number
+  /** MMR，可为负 */
+  mmr: number
   /** 累计赚到的金币（还没扣花掉的） */
   coins: number
   level: LevelInfo
 }
 
 const progressFrom = (r: PlayerRecord): Progress => {
-  const rankPoints = rankPointsFrom(r)
+  const mmr = mmrFrom(r)
   return {
     ...r,
-    rankPoints,
+    mmr,
     coins: coinsFrom(r),
-    level: levelOf(rankPoints),
+    level: levelOf(mmr),
   }
 }
 
@@ -267,8 +267,8 @@ export const progressOf = (playerId: string, matches: Match[]): Progress =>
   progressFrom(recordOf(playerId, matches))
 
 /**
- * 一次扫完算出所有人的战绩与段位。
- * 排行榜每一行都要段位，逐个调 progressOf 会把比赛表扫 N 遍。
+ * 一次扫完算出所有人的战绩、MMR 与段位。
+ * 排行榜每一行都要，逐个调 progressOf 会把比赛表扫 N 遍。
  */
 export function progressByPlayer(matches: Match[]): Map<string, Progress> {
   const records = new Map<string, PlayerRecord>()
@@ -330,7 +330,7 @@ export type BuyBlock = 'owned' | 'level' | 'money' | null
  * 能不能买。返回挡住的原因，界面直接拿来显示，
  * 免得每处自己拼「段位不够」还是「金币不够」。
  *
- * 两道关分别看两个数：段位门槛看段位分（会掉），价格看金币（不会掉）。
+ * 两道关分别看两个数：段位门槛看 MMR（会掉），价格看金币（不会掉）。
  * 所以输球可能让你暂时买不了某件高段位的货，但不会没收已经买下的东西。
  */
 export function buyBlocker(
