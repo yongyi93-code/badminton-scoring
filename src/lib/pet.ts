@@ -49,29 +49,32 @@ export type ShopItem = {
 /**
  * 商店目录。
  * 价格按「赢几场能买到」来定：赢一场 10 分，所以 50 分 = 赢 5 场。
- * 高级货挂等级门槛，避免攒够钱就能一步到位，留点长期目标。
+ *
+ * 段位门槛摊开到八段，每升一段都至少解锁一件新东西 ——
+ * 升段本身要有看得见的奖励，不然中间几段爬起来没盼头。
+ * 越靠后的段位配越贵的货，价格和段位一起卡，不会攒够钱就一步到位。
  */
 export const SHOP_ITEMS: ShopItem[] = [
   // 头顶
   { id: 'headband', name: '运动头带', slot: 'hat', price: 30, minLevel: 0 },
   { id: 'cap', name: '鸭舌帽', slot: 'hat', price: 60, minLevel: 0 },
-  { id: 'laurel', name: '桂冠', slot: 'hat', price: 180, minLevel: 2 },
-  { id: 'crown', name: '王冠', slot: 'hat', price: 260, minLevel: 3 },
+  { id: 'laurel', name: '桂冠', slot: 'hat', price: 400, minLevel: 4 },
+  { id: 'crown', name: '王冠', slot: 'hat', price: 900, minLevel: 7 },
   // 眼部
   { id: 'goggles', name: '护目镜', slot: 'face', price: 50, minLevel: 0 },
-  { id: 'shades', name: '墨镜', slot: 'face', price: 80, minLevel: 1 },
+  { id: 'shades', name: '墨镜', slot: 'face', price: 180, minLevel: 2 },
   // 脖子
   { id: 'bowtie', name: '领结', slot: 'neck', price: 40, minLevel: 0 },
-  { id: 'scarf', name: '围巾', slot: 'neck', price: 70, minLevel: 1 },
-  { id: 'medal', name: '金牌', slot: 'neck', price: 150, minLevel: 2 },
+  { id: 'scarf', name: '围巾', slot: 'neck', price: 120, minLevel: 1 },
+  { id: 'medal', name: '金牌', slot: 'neck', price: 300, minLevel: 3 },
   // 手持
   { id: 'shuttle', name: '羽毛球', slot: 'item', price: 25, minLevel: 0 },
   { id: 'racket', name: '球拍', slot: 'item', price: 50, minLevel: 0 },
-  { id: 'trophy', name: '奖杯', slot: 'item', price: 220, minLevel: 3 },
+  { id: 'trophy', name: '奖杯', slot: 'item', price: 600, minLevel: 6 },
   // 背景
-  { id: 'court', name: '球场', slot: 'background', price: 90, minLevel: 1 },
-  { id: 'podium', name: '领奖台', slot: 'background', price: 200, minLevel: 2 },
-  { id: 'galaxy', name: '星空', slot: 'background', price: 320, minLevel: 4 },
+  { id: 'court', name: '球场', slot: 'background', price: 150, minLevel: 1 },
+  { id: 'podium', name: '领奖台', slot: 'background', price: 500, minLevel: 5 },
+  { id: 'galaxy', name: '星空', slot: 'background', price: 1200, minLevel: 7 },
 ]
 
 export const itemById = (id: string): ShopItem | undefined =>
@@ -82,35 +85,53 @@ export const itemById = (id: string): ShopItem | undefined =>
  * ------------------------------------------------------------------ */
 
 export type LevelTier = {
+  /** 英文段位名，和 Dota 一致 */
   name: string
-  /** 达到这个等级所需的累计积分 */
+  /** 中文叫法，界面上跟在英文后面 */
+  label: string
+  /** 达到这个段位所需的累计积分 */
   min: number
   color: string
 }
 
+/** 每个段位内部分几颗星。最高段位不分星，和 Dota 一样直接看分数 */
+export const STARS_PER_TIER = 5
+
 /**
+ * 段位照搬 Dota 那一套八段。
  * 等级看「累计赚到的分」，不看余额 —— 买东西花钱不该掉段。
- * 门槛换算成场数：白银 10 胜、黄金 30 胜、铂金 60 胜、大师 100 胜、传奇 180 胜。
+ *
+ * 门槛按 1-500 / 501-1000 / 1001-2500 / 2501-3000 定，
+ * 之后每段 500 分。换算成场数（赢一场 10 分）：
+ * 卫士 50 胜、中军 100 胜、统帅 250 胜、传奇 300 胜、
+ * 万古 350 胜、超凡 400 胜、冠绝 450 胜。
  */
 export const PET_LEVELS: LevelTier[] = [
-  { name: '青铜', min: 0, color: '#b08d57' },
-  { name: '白银', min: 100, color: '#c9d1d9' },
-  { name: '黄金', min: 300, color: '#f2c14e' },
-  { name: '铂金', min: 600, color: '#7fd4c1' },
-  { name: '大师', min: 1000, color: '#a78bfa' },
-  { name: '传奇', min: 1800, color: '#fb7185' },
+  { name: 'Herald', label: '先锋', min: 0, color: '#8fa07d' },
+  { name: 'Guardian', label: '卫士', min: 501, color: '#9fb0bf' },
+  { name: 'Crusader', label: '中军', min: 1001, color: '#5fb8a8' },
+  { name: 'Archon', label: '统帅', min: 2501, color: '#7fc47f' },
+  { name: 'Legend', label: '传奇', min: 3001, color: '#e3b344' },
+  { name: 'Ancient', label: '万古', min: 3501, color: '#b98cd8' },
+  { name: 'Divine', label: '超凡', min: 4001, color: '#7fb3ff' },
+  { name: 'Immortal', label: '冠绝', min: 4501, color: '#ff8a3d' },
 ]
 
 export type LevelInfo = {
-  /** 等级下标，和 ShopItem.minLevel 对应 */
+  /** 段位下标，和 ShopItem.minLevel 对应 */
   index: number
   tier: LevelTier
-  /** 下一级，已满级为 null */
+  /** 下一段，已到顶为 null */
   next: LevelTier | null
-  /** 距离下一级还差多少分，已满级为 0 */
+  /** 距离下一段还差多少分，已到顶为 0 */
   toNext: number
-  /** 当前等级内的进度 0~1，已满级为 1 */
+  /** 当前段位内的进度 0~1，已到顶为 1 */
   progress: number
+  /**
+   * 段位内的第几颗星（1~5）。
+   * 最高段位不分星，返回 null —— Dota 那里也是直接看分数排名。
+   */
+  star: number | null
 }
 
 export function levelOf(earned: number): LevelInfo {
@@ -121,16 +142,30 @@ export function levelOf(earned: number): LevelInfo {
   }
   const tier = PET_LEVELS[index]
   const next = PET_LEVELS[index + 1] ?? null
-  if (!next) return { index, tier, next: null, toNext: 0, progress: 1 }
+  if (!next) {
+    return { index, tier, next: null, toNext: 0, progress: 1, star: null }
+  }
 
   const span = next.min - tier.min
+  const progress = span > 0 ? (pts - tier.min) / span : 1
   return {
     index,
     tier,
     next,
     toNext: next.min - pts,
-    progress: span > 0 ? (pts - tier.min) / span : 1,
+    progress,
+    // 刚进这一段就是 1 星，差一分升段还是 5 星
+    star: Math.min(STARS_PER_TIER, Math.floor(progress * STARS_PER_TIER) + 1),
   }
+}
+
+/** 某段位第 n 颗星对应多少累计分，用来告诉人「再赢几场亮下一颗星」 */
+export function starThreshold(tierIndex: number, star: number): number {
+  const tier = PET_LEVELS[tierIndex]
+  const next = PET_LEVELS[tierIndex + 1]
+  if (!tier || !next) return tier?.min ?? 0
+  const span = next.min - tier.min
+  return tier.min + Math.ceil((span * (star - 1)) / STARS_PER_TIER)
 }
 
 /* ------------------------------------------------------------------ *

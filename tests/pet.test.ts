@@ -9,6 +9,8 @@ import {
   outfitValue,
   PET_LEVELS,
   SHOP_ITEMS,
+  STARS_PER_TIER,
+  starThreshold,
   WIN_POINTS,
   winCount,
   type PetProfile,
@@ -82,42 +84,82 @@ describe('积分', () => {
   })
 })
 
-describe('等级', () => {
-  it('按累计积分分档', () => {
-    expect(levelOf(0).tier.name).toBe('青铜')
-    expect(levelOf(99).tier.name).toBe('青铜')
-    expect(levelOf(100).tier.name).toBe('白银')
-    expect(levelOf(300).tier.name).toBe('黄金')
-    expect(levelOf(9999).tier.name).toBe(PET_LEVELS[PET_LEVELS.length - 1].name)
+describe('段位', () => {
+  it('照着给定门槛分段', () => {
+    expect(levelOf(1).tier.name).toBe('Herald')
+    expect(levelOf(500).tier.name).toBe('Herald')
+    expect(levelOf(501).tier.name).toBe('Guardian')
+    expect(levelOf(1000).tier.name).toBe('Guardian')
+    expect(levelOf(1001).tier.name).toBe('Crusader')
+    expect(levelOf(2500).tier.name).toBe('Crusader')
+    expect(levelOf(2501).tier.name).toBe('Archon')
+    expect(levelOf(3000).tier.name).toBe('Archon')
+    expect(levelOf(3001).tier.name).toBe('Legend')
+    expect(levelOf(3501).tier.name).toBe('Ancient')
+    expect(levelOf(4001).tier.name).toBe('Divine')
+    expect(levelOf(4501).tier.name).toBe('Immortal')
   })
 
-  it('等级看累计赚到的分，花掉多少都不掉段', () => {
-    const rich = pet({ spent: 0 })
-    const broke = pet({ spent: 290 })
-    // 两人都累计赚了 300，只是一个把钱花光了
-    expect(levelOf(300).index).toBe(levelOf(300).index)
-    expect(balanceOf(rich, 300)).toBe(300)
-    expect(balanceOf(broke, 300)).toBe(10)
-    expect(levelOf(300).tier.name).toBe('黄金') // 花光了也还是黄金
+  it('八段，段位表按门槛严格递增', () => {
+    expect(PET_LEVELS).toHaveLength(8)
+    for (let i = 1; i < PET_LEVELS.length; i++) {
+      expect(PET_LEVELS[i].min).toBeGreaterThan(PET_LEVELS[i - 1].min)
+    }
   })
 
-  it('进度和距离下一级', () => {
-    const half = levelOf(200) // 白银 100 → 黄金 300，正好一半
-    expect(half.tier.name).toBe('白银')
-    expect(half.next?.name).toBe('黄金')
-    expect(half.toNext).toBe(100)
+  it('段位看累计赚到的分，花掉多少都不掉段', () => {
+    const broke = pet({ spent: 1000 })
+    // 累计赚了 1200 花掉 1000，余额只剩 200，但段位仍按 1200 算
+    expect(balanceOf(broke, 1200)).toBe(200)
+    expect(levelOf(1200).tier.name).toBe('Crusader')
+  })
+
+  it('进度和距离下一段', () => {
+    // Guardian 501 → Crusader 1001，跨度 500，正好走一半
+    const half = levelOf(751)
+    expect(half.tier.name).toBe('Guardian')
+    expect(half.next?.name).toBe('Crusader')
+    expect(half.toNext).toBe(250)
     expect(half.progress).toBeCloseTo(0.5)
   })
 
-  it('满级后没有下一级，进度拉满', () => {
+  it('每段 5 颗星，刚进是 1 星，快升段是 5 星', () => {
+    expect(levelOf(0).star).toBe(1)
+    expect(levelOf(500).star).toBe(5)
+    expect(levelOf(501).star).toBe(1) // 升段后星归位
+    expect(levelOf(1000).star).toBe(5)
+    // Guardian 跨度 500，每 100 分一颗星
+    expect(levelOf(501 + 100).star).toBe(2)
+    expect(levelOf(501 + 300).star).toBe(4)
+  })
+
+  it('星数永远落在 1~5', () => {
+    for (let pts = 0; pts <= 4600; pts += 37) {
+      const star = levelOf(pts).star
+      if (star === null) continue
+      expect(star).toBeGreaterThanOrEqual(1)
+      expect(star).toBeLessThanOrEqual(STARS_PER_TIER)
+    }
+  })
+
+  it('最高段不分星，也没有下一段', () => {
     const top = levelOf(99999)
+    expect(top.tier.name).toBe('Immortal')
     expect(top.next).toBe(null)
     expect(top.toNext).toBe(0)
     expect(top.progress).toBe(1)
+    expect(top.star).toBe(null)
+  })
+
+  it('星的门槛能反推回分数', () => {
+    // Guardian 第 3 颗星 = 501 + 500*2/5 = 701
+    expect(starThreshold(1, 1)).toBe(501)
+    expect(starThreshold(1, 3)).toBe(701)
+    expect(levelOf(starThreshold(1, 3)).star).toBe(3)
   })
 
   it('负分当 0 处理', () => {
-    expect(levelOf(-50).tier.name).toBe('青铜')
+    expect(levelOf(-50).tier.name).toBe('Herald')
     expect(levelOf(-50).progress).toBeGreaterThanOrEqual(0)
   })
 })

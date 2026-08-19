@@ -25,6 +25,7 @@ import {
 import { formatDate, percent, signed, streakLabel } from '@/lib/format'
 import { scoreLine } from '@/lib/scoring'
 import { PetView } from '@/components/Pet'
+import { RankChip } from '@/components/RankMedal'
 import { balanceOf, earnedPoints, levelOf, WIN_POINTS } from '@/lib/pet'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -123,7 +124,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                 <>
                   <p className="truncate text-lg font-semibold">{pet.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <Pill tone="lime">{level.tier.name}</Pill>
+                    <RankChip level={level} />
                     <span className="tnum text-sm text-ink-400">
                       余额 {balanceOf(pet, earned)} 分
                     </span>

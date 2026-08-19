@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { petOf, playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
@@ -15,6 +15,7 @@ import {
   inputClass,
 } from '@/components/ui'
 import { GearIcon, PetView } from '@/components/Pet'
+import { RankMedal } from '@/components/RankMedal'
 import {
   balanceOf,
   buyBlocker,
@@ -49,6 +50,7 @@ export function Pet({ playerId }: { playerId: string }) {
   const [naming, setNaming] = useState(false)
   const [draftName, setDraftName] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  const currentTierRef = useRef<HTMLDivElement | null>(null)
 
   const player = useMemo(() => playerMap(players).get(playerId), [players, playerId])
   const pet = petOf(pets, playerId)
@@ -57,6 +59,20 @@ export function Pet({ playerId }: { playerId: string }) {
   const earned = useMemo(() => earnedPoints(playerId, matches), [playerId, matches])
   const level = levelOf(earned)
   const balance = balanceOf(pet, earned)
+
+  /**
+   * 段位横条一屏放不下八段，高段位的人一进来自己那格在屏幕外。
+   * 只横向滚这一条，不用 scrollIntoView —— 那个会把整页也一起滚动。
+   */
+  useEffect(() => {
+    const el = currentTierRef.current
+    const row = el?.parentElement?.parentElement
+    if (!el || !row) return
+    row.scrollLeft = Math.max(
+      0,
+      el.offsetLeft - row.clientWidth / 2 + el.clientWidth / 2,
+    )
+  }, [level.index])
 
   if (!player) {
     return (
@@ -121,7 +137,7 @@ export function Pet({ playerId }: { playerId: string }) {
     <Screen>
       <TopBar
         title={`${player.name} 的宠物`}
-        subtitle={`${level.tier.name} · 余额 ${balance} 分`}
+        subtitle={`${level.tier.name}${level.star !== null ? ` ${level.star}★` : ''} · 余额 ${balance} 分`}
         onBack={back}
       />
       <Body>
@@ -164,23 +180,32 @@ export function Pet({ playerId }: { playerId: string }) {
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <Pill tone="lime">{level.tier.name}</Pill>
             <Pill>赢 {wins} 场</Pill>
             <Pill>身上行头 {outfitValue(pet)} 分</Pill>
           </div>
         </Card>
 
-        {/* 等级进度 */}
-        <Card className="space-y-2">
-          <div className="flex items-baseline justify-between text-sm">
-            <span className="font-semibold" style={{ color: level.tier.color }}>
-              {level.tier.name}
-            </span>
-            <span className="tnum text-xs text-ink-400">
-              累计 {earned} 分
-              {level.next && ` · 还差 ${level.toNext} 分升 ${level.next.name}`}
-            </span>
+        {/* 段位 */}
+        <Card className="space-y-3">
+          <div className="flex items-center gap-4">
+            <RankMedal level={level} className="size-20 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xl font-bold" style={{ color: level.tier.color }}>
+                {level.tier.name}
+                {level.star !== null && (
+                  <span className="ml-1.5 text-base">{level.star}★</span>
+                )}
+              </p>
+              <p className="text-sm text-ink-400">{level.tier.label}</p>
+              <p className="tnum mt-1 text-xs text-ink-400">
+                累计 {earned} 分
+                {level.next
+                  ? ` · 还差 ${level.toNext} 分升 ${level.next.name}`
+                  : ' · 已经到顶'}
+              </p>
+            </div>
           </div>
+
           <div className="h-2 overflow-hidden rounded-full bg-ink-800">
             <div
               className="h-full rounded-full transition-[width]"
@@ -190,8 +215,40 @@ export function Pet({ playerId }: { playerId: string }) {
               }}
             />
           </div>
+
+          {/* 八段全景，看得见自己在哪、后面还有什么 */}
+          <div className="-mx-4 overflow-x-auto px-4">
+            <div className="flex w-max items-end gap-1.5">
+              {PET_LEVELS.map((t, i) => (
+                <div
+                  key={t.name}
+                  ref={i === level.index ? currentTierRef : undefined}
+                  className={cx(
+                    'w-16 shrink-0 rounded-lg border px-1 py-1.5 text-center',
+                    i === level.index
+                      ? 'border-lime-glow bg-lime-glow/10'
+                      : 'border-ink-700/70 bg-ink-850',
+                  )}
+                >
+                  <RankMedal
+                    level={{ ...level, index: i, tier: t, star: null }}
+                    className={cx('mx-auto size-7', i > level.index && 'opacity-35')}
+                  />
+                  <p
+                    className="mt-0.5 truncate text-[10px]"
+                    style={{ color: i <= level.index ? t.color : undefined }}
+                  >
+                    {t.name}
+                  </p>
+                  <p className="tnum text-[9px] text-ink-500">{t.min}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <p className="text-xs text-ink-400">
-            等级看累计赚到的分，买东西花掉的不算 —— 不会因为剁手掉段。
+            段位看累计赚到的分，买东西花掉的不算 —— 不会因为剁手掉段。
+            每段 5 颗星，星满就升段。
           </p>
         </Card>
 
