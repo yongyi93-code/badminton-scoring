@@ -2,14 +2,14 @@ import { decidedMatches, matchWinnerBySets, sideOf } from './ranking'
 import type { Match } from '@/types'
 
 /* ------------------------------------------------------------------ *
- * 宠物养成
+ * 角色养成
  *
- * 目的很单纯：让人多一个想赢的理由。赢球拿积分，积分换装备打扮宠物。
+ * 目的很单纯：让人多一个想赢的理由。赢球拿金币，金币换装备把自己打扮帅。
  *
- * 设计上最要紧的一条：积分「赚了多少」不落库，永远从比赛记录实时算出来。
- * 和排行榜同一个口径，删掉一场比赛积分立刻跟着变，不会出现
- * 「战绩改了但积分没改」这种对不上的账。
- * 落库的只有「花掉了多少」和「买了什么」—— 这两个没法从比赛推导。
+ * 设计上最要紧的一条：金币和 MMR「赚了多少」不落库，
+ * 永远从比赛记录实时算出来 —— 和排行榜同一个口径，
+ * 删掉一场比赛立刻跟着变，不会出现「战绩改了但积分没改」这种对不上的账。
+ * 落库的只有「花掉了多少」和「买了什么」，这两个没法从比赛推导。
  * ------------------------------------------------------------------ */
 
 /** 赢一场加多少 MMR（同时也是拿到多少金币） */
@@ -18,67 +18,87 @@ export const WIN_POINTS = 10
 /** 输一场扣多少 MMR（正数，算的时候是减掉）。金币不受影响 */
 export const LOSS_POINTS = 10
 
-export type PetKind = 'dog' | 'cat' | 'fish'
+/** 角色性别，只此两种 */
+export type AvatarSex = 'm' | 'f'
 
-export const PET_KINDS: { kind: PetKind; label: string }[] = [
-  { kind: 'dog', label: '狗' },
-  { kind: 'cat', label: '猫' },
-  { kind: 'fish', label: '鱼' },
+export const AVATAR_SEXES: { sex: AvatarSex; label: string }[] = [
+  { sex: 'm', label: '男' },
+  { sex: 'f', label: '女' },
 ]
 
-/** 装备槽位，一个槽位同时只能戴一件 */
-export type PetSlot = 'hat' | 'face' | 'neck' | 'item' | 'background'
+/** 肤色档位，免费换，不进商店 */
+export const SKIN_TONES = ['#f6dcc0', '#e8bb96', '#c68a63', '#8d5a3b'] as const
 
-export const SLOT_LABELS: Record<PetSlot, string> = {
-  hat: '头顶',
-  face: '眼部',
-  neck: '脖子',
-  item: '手持',
+/** 装备槽位，一个槽位同时只能穿一件 */
+export type AvatarSlot = 'hair' | 'outfit' | 'weapon' | 'background'
+
+export const SLOT_LABELS: Record<AvatarSlot, string> = {
+  hair: '发型',
+  outfit: '战服',
+  weapon: '武器',
   background: '背景',
 }
 
 /** 槽位展示顺序 */
-export const SLOT_ORDER: PetSlot[] = ['hat', 'face', 'neck', 'item', 'background']
+export const SLOT_ORDER: AvatarSlot[] = ['hair', 'outfit', 'weapon', 'background']
 
 export type ShopItem = {
   id: string
   name: string
-  slot: PetSlot
+  slot: AvatarSlot
   price: number
-  /** 需要达到的等级下标，0 = 无门槛 */
+  /** 需要达到的段位下标，0 = 无门槛 */
   minLevel: number
+  /** 只有某个性别能用；不填就是两边通用 */
+  sex?: AvatarSex
 }
 
 /**
  * 商店目录。
- * 价格按「赢几场能买到」来定：赢一场 10 分，所以 50 分 = 赢 5 场。
+ * 价格按「赢几场能买到」来定：赢一场 10 金币，所以 50 金币 = 赢 5 场。
  *
  * 段位门槛摊开到八段，每升一段都至少解锁一件新东西 ——
  * 升段本身要有看得见的奖励，不然中间几段爬起来没盼头。
  * 越靠后的段位配越贵的货，价格和段位一起卡，不会攒够钱就一步到位。
+ *
+ * 发型分男女：同一个名字在男女身上是两种画法，所以标了 sex；
+ * 战服和武器男女通用，省一半工作量也省一半商店条目。
  */
 export const SHOP_ITEMS: ShopItem[] = [
-  // 头顶
-  { id: 'headband', name: '运动头带', slot: 'hat', price: 30, minLevel: 0 },
-  { id: 'cap', name: '鸭舌帽', slot: 'hat', price: 60, minLevel: 0 },
-  { id: 'laurel', name: '桂冠', slot: 'hat', price: 400, minLevel: 4 },
-  { id: 'crown', name: '王冠', slot: 'hat', price: 900, minLevel: 7 },
-  // 眼部
-  { id: 'goggles', name: '护目镜', slot: 'face', price: 50, minLevel: 0 },
-  { id: 'shades', name: '墨镜', slot: 'face', price: 180, minLevel: 2 },
-  // 脖子
-  { id: 'bowtie', name: '领结', slot: 'neck', price: 40, minLevel: 0 },
-  { id: 'scarf', name: '围巾', slot: 'neck', price: 120, minLevel: 1 },
-  { id: 'medal', name: '金牌', slot: 'neck', price: 300, minLevel: 3 },
-  // 手持
-  { id: 'shuttle', name: '羽毛球', slot: 'item', price: 25, minLevel: 0 },
-  { id: 'racket', name: '球拍', slot: 'item', price: 50, minLevel: 0 },
-  { id: 'trophy', name: '奖杯', slot: 'item', price: 600, minLevel: 6 },
+  // 发型 —— 男
+  { id: 'm-short', name: '利落短发', slot: 'hair', price: 0, minLevel: 0, sex: 'm' },
+  { id: 'm-spiky', name: '刺猬头', slot: 'hair', price: 80, minLevel: 0, sex: 'm' },
+  { id: 'm-wolf', name: '狼尾', slot: 'hair', price: 200, minLevel: 2, sex: 'm' },
+  { id: 'm-silver', name: '银发', slot: 'hair', price: 700, minLevel: 6, sex: 'm' },
+  // 发型 —— 女
+  { id: 'f-bob', name: '齐耳短发', slot: 'hair', price: 0, minLevel: 0, sex: 'f' },
+  { id: 'f-twin', name: '双马尾', slot: 'hair', price: 80, minLevel: 0, sex: 'f' },
+  { id: 'f-long', name: '黑长直', slot: 'hair', price: 200, minLevel: 2, sex: 'f' },
+  { id: 'f-wavy', name: '金色大波浪', slot: 'hair', price: 700, minLevel: 6, sex: 'f' },
+  // 战服
+  { id: 'tee', name: '训练服', slot: 'outfit', price: 0, minLevel: 0 },
+  { id: 'jersey', name: '球队队服', slot: 'outfit', price: 60, minLevel: 0 },
+  { id: 'leather', name: '轻甲', slot: 'outfit', price: 150, minLevel: 1 },
+  { id: 'knight', name: '骑士铠', slot: 'outfit', price: 400, minLevel: 4 },
+  { id: 'shadow', name: '暗影战衣', slot: 'outfit', price: 900, minLevel: 7 },
+  // 武器
+  { id: 'racket', name: '羽毛球拍', slot: 'weapon', price: 0, minLevel: 0 },
+  { id: 'dagger', name: '短刃', slot: 'weapon', price: 70, minLevel: 0 },
+  { id: 'sword', name: '长剑', slot: 'weapon', price: 250, minLevel: 3 },
+  { id: 'staff', name: '法杖', slot: 'weapon', price: 500, minLevel: 5 },
+  { id: 'greatsword', name: '巨剑', slot: 'weapon', price: 1200, minLevel: 7 },
   // 背景
   { id: 'court', name: '球场', slot: 'background', price: 150, minLevel: 1 },
   { id: 'podium', name: '领奖台', slot: 'background', price: 500, minLevel: 5 },
   { id: 'galaxy', name: '星空', slot: 'background', price: 1200, minLevel: 7 },
 ]
+
+/** 某个性别能买到的东西：通用的 + 专属的 */
+export const shopFor = (sex: AvatarSex): ShopItem[] =>
+  SHOP_ITEMS.filter((i) => !i.sex || i.sex === sex)
+
+/** 开局白送的那几件，价格为 0 —— 新号一进来就有得穿，不至于光着 */
+export const STARTER_IDS = SHOP_ITEMS.filter((i) => i.price === 0).map((i) => i.id)
 
 export const itemById = (id: string): ShopItem | undefined =>
   SHOP_ITEMS.find((i) => i.id === id)
@@ -290,39 +310,43 @@ export function progressByPlayer(matches: Match[]): Map<string, Progress> {
 }
 
 /* ------------------------------------------------------------------ *
- * 宠物档案
+ * 角色档案
  * ------------------------------------------------------------------ */
 
-export type PetProfile = {
+export type AvatarProfile = {
   playerId: string
-  kind: PetKind
-  /** 宠物名字，空着就用默认叫法 */
-  name: string
-  /** 已买下的道具 id */
+  sex: AvatarSex
+  /** 肤色档位下标，免费换 */
+  skin: number
+  /** 已买下的装备 id */
   owned: string[]
-  /** 当前每个槽位戴着什么 */
-  equipped: Partial<Record<PetSlot, string>>
-  /** 累计花掉的积分。只有这个和 owned 需要落库 */
+  /** 当前每个槽位穿着什么 */
+  equipped: Partial<Record<AvatarSlot, string>>
+  /** 累计花掉的金币。只有这个和 owned 需要落库 */
   spent: number
   createdAt: number
 }
 
-export const defaultPetName = (kind: PetKind): string =>
-  ({ dog: '旺仔', cat: '喵喵', fish: '泡泡' })[kind]
+/** 换性别时把发型换成对应性别的免费款，否则会顶着异性发型 */
+export const defaultHair = (sex: AvatarSex): string =>
+  sex === 'm' ? 'm-short' : 'f-bob'
 
-export const newPet = (playerId: string, kind: PetKind): PetProfile => ({
+export const newAvatar = (playerId: string, sex: AvatarSex): AvatarProfile => ({
   playerId,
-  kind,
-  name: defaultPetName(kind),
-  owned: [],
-  equipped: {},
+  sex,
+  skin: 0,
+  // 免费那几件直接送，新号一进来就穿戴整齐
+  owned: [...STARTER_IDS],
+  equipped: { hair: defaultHair(sex), outfit: 'tee', weapon: 'racket' },
   spent: 0,
   createdAt: Date.now(),
 })
 
 /** 还剩多少金币能花。金币只增不减，所以正常不会为负，夹一下防御 */
-export const balanceOf = (pet: PetProfile | undefined, coins: number): number =>
-  Math.max(0, coins - (pet?.spent ?? 0))
+export const balanceOf = (
+  avatar: AvatarProfile | undefined,
+  coins: number,
+): number => Math.max(0, coins - (avatar?.spent ?? 0))
 
 export type BuyBlock = 'owned' | 'level' | 'money' | null
 
@@ -335,20 +359,20 @@ export type BuyBlock = 'owned' | 'level' | 'money' | null
  */
 export function buyBlocker(
   item: ShopItem,
-  pet: PetProfile | undefined,
+  avatar: AvatarProfile | undefined,
   progress: Progress,
 ): BuyBlock {
-  if (pet?.owned.includes(item.id)) return 'owned'
+  if (avatar?.owned.includes(item.id)) return 'owned'
   if (progress.level.index < item.minLevel) return 'level'
-  if (balanceOf(pet, progress.coins) < item.price) return 'money'
+  if (balanceOf(avatar, progress.coins) < item.price) return 'money'
   return null
 }
 
-/** 已装备道具的总价值，用来显示「这身行头值多少」 */
-export function outfitValue(pet: PetProfile | undefined): number {
-  if (!pet) return 0
+/** 身上装备的总价值，用来显示「这身行头值多少」 */
+export function outfitValue(avatar: AvatarProfile | undefined): number {
+  if (!avatar) return 0
   return SLOT_ORDER.reduce((sum, slot) => {
-    const id = pet.equipped[slot]
+    const id = avatar.equipped[slot]
     return sum + (id ? (itemById(id)?.price ?? 0) : 0)
   }, 0)
 }

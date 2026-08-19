@@ -21,7 +21,7 @@ import {
   venueSummaries,
 } from '@/lib/venues'
 import { formatDate, percent, signed } from '@/lib/format'
-import { LOSS_POINTS, progressByPlayer, WIN_POINTS } from '@/lib/pet'
+import { LOSS_POINTS, progressByPlayer, WIN_POINTS } from '@/lib/avatar'
 import { RANK_MIN_GAMES } from '@/types'
 
 type Scope = 'session' | 'all'

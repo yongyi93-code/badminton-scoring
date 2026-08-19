@@ -9,7 +9,9 @@ import {
   progressOf,
   type Progress,
   levelOf,
-  newPet,
+  newAvatar,
+  shopFor,
+  STARTER_IDS,
   outfitValue,
   PET_LEVELS,
   SHOP_ITEMS,
@@ -17,8 +19,8 @@ import {
   starThreshold,
   WIN_POINTS,
   winCount,
-  type PetProfile,
-} from '@/lib/pet'
+  type AvatarProfile,
+} from '@/lib/avatar'
 import type { Match } from '@/types'
 
 /** 造一场打完的比赛，winner 指定哪边赢 */
@@ -45,8 +47,11 @@ function match(
   }
 }
 
-const pet = (patch: Partial<PetProfile> = {}): PetProfile => ({
-  ...newPet('p1', 'dog'),
+const pet = (patch: Partial<AvatarProfile> = {}): AvatarProfile => ({
+  ...newAvatar('p1', 'm'),
+  // 新号自带免费装备，测购买逻辑时先清空，否则「已拥有」会挡在前面
+  owned: [],
+  equipped: {},
   ...patch,
 })
 
@@ -267,65 +272,96 @@ describe('商店', () => {
   })
 
   it('金币不够时挡住', () => {
-    const cap = itemById('cap')!
-    expect(buyBlocker(cap, pet(), prog(0, 10))).toBe('money')
-    expect(buyBlocker(cap, pet(), prog(0, cap.price))).toBe(null)
+    const jersey = itemById('jersey')!
+    expect(buyBlocker(jersey, pet(), prog(0, 10))).toBe('money')
+    expect(buyBlocker(jersey, pet(), prog(0, jersey.price))).toBe(null)
   })
 
   it('段位不够时挡住，哪怕金币够', () => {
-    const crown = itemById('crown')!
-    expect(crown.minLevel).toBeGreaterThan(0)
-    const gate = PET_LEVELS[crown.minLevel].min
+    const great = itemById('greatsword')!
+    expect(great.minLevel).toBeGreaterThan(0)
+    const gate = PET_LEVELS[great.minLevel].min
     // 金币多得是，但 MMR 差得远
-    expect(buyBlocker(crown, pet(), prog(0, 99999))).toBe('level')
+    expect(buyBlocker(great, pet(), prog(0, 99999))).toBe('level')
     // 段位到了、金币也够才放行
-    expect(buyBlocker(crown, pet(), prog(gate, crown.price))).toBe(null)
+    expect(buyBlocker(great, pet(), prog(gate, great.price))).toBe(null)
   })
 
   it('段位掉下去会重新锁住高段位的货，但不没收已买的', () => {
-    const crown = itemById('crown')!
-    const gate = PET_LEVELS[crown.minLevel].min
+    const great = itemById('greatsword')!
+    const gate = PET_LEVELS[great.minLevel].min
     // 买的时候段位够
-    expect(buyBlocker(crown, pet(), prog(gate, 99999))).toBe(null)
+    expect(buyBlocker(great, pet(), prog(gate, 99999))).toBe(null)
     // 输球掉段之后再看：没买的被锁住
-    expect(buyBlocker(crown, pet(), prog(0, 99999))).toBe('level')
+    expect(buyBlocker(great, pet(), prog(0, 99999))).toBe('level')
     // 已经买下的还是自己的，不会变回可买/被没收
-    expect(buyBlocker(crown, pet({ owned: [crown.id] }), prog(0, 0))).toBe('owned')
+    expect(buyBlocker(great, pet({ owned: [great.id] }), prog(0, 0))).toBe('owned')
   })
 
   it('已拥有的不再卖', () => {
-    const cap = itemById('cap')!
-    expect(buyBlocker(cap, pet({ owned: ['cap'] }), prog(99999, 99999))).toBe('owned')
+    const jersey = itemById('jersey')!
+    expect(buyBlocker(jersey, pet({ owned: ['jersey'] }), prog(99999, 99999))).toBe(
+      'owned',
+    )
   })
 
   it('花掉的金币会让后面买不起', () => {
-    const cap = itemById('cap')! // 60
-    const racket = itemById('racket')! // 50
-    const after = pet({ owned: [cap.id], spent: cap.price })
-    // 赚了 100，买过 60，剩 40 不够买 50 的球拍
+    const jersey = itemById('jersey')! // 60
+    const dagger = itemById('dagger')! // 70
+    const after = pet({ owned: [jersey.id], spent: jersey.price })
+    // 赚了 100，买过 60，剩 40 不够买 70 的短刃
     expect(balanceOf(after, 100)).toBe(40)
-    expect(buyBlocker(racket, after, prog(100, 100))).toBe('money')
+    expect(buyBlocker(dagger, after, prog(100, 100))).toBe('money')
+  })
+
+  it('发型分男女，商店只给看自己性别那份', () => {
+    const male = shopFor('m').map((i) => i.id)
+    const female = shopFor('f').map((i) => i.id)
+    expect(male).toContain('m-short')
+    expect(male).not.toContain('f-bob')
+    expect(female).toContain('f-bob')
+    expect(female).not.toContain('m-short')
+    // 战服和武器男女通用，两边都要有
+    expect(male).toContain('jersey')
+    expect(female).toContain('jersey')
+    expect(male).toContain('sword')
+    expect(female).toContain('sword')
+  })
+
+  it('新建角色白送免费那几件，而且身上就穿着', () => {
+    const fresh = newAvatar('p1', 'f')
+    for (const id of STARTER_IDS) {
+      const item = itemById(id)!
+      expect(item.price).toBe(0)
+      expect(fresh.owned).toContain(id)
+    }
+    // 免费款里属于异性的那件虽然拥有，但穿的是自己这边的
+    expect(fresh.equipped.hair).toBe('f-bob')
+    expect(fresh.equipped.outfit).toBe('tee')
+    expect(fresh.equipped.weapon).toBe('racket')
   })
 })
 
 describe('身上行头估值', () => {
-  it('只算戴着的，没戴的不算', () => {
+  it('只算穿着的，没穿的不算', () => {
     const p = pet({
-      owned: ['cap', 'racket'],
-      equipped: { hat: 'cap' },
+      owned: ['jersey', 'dagger'],
+      equipped: { outfit: 'jersey' },
     })
-    expect(outfitValue(p)).toBe(itemById('cap')!.price)
+    expect(outfitValue(p)).toBe(itemById('jersey')!.price)
   })
 
   it('多个槽位相加', () => {
     const p = pet({
-      owned: ['cap', 'racket'],
-      equipped: { hat: 'cap', item: 'racket' },
+      owned: ['jersey', 'dagger'],
+      equipped: { outfit: 'jersey', weapon: 'dagger' },
     })
-    expect(outfitValue(p)).toBe(itemById('cap')!.price + itemById('racket')!.price)
+    expect(outfitValue(p)).toBe(
+      itemById('jersey')!.price + itemById('dagger')!.price,
+    )
   })
 
-  it('没宠物或没穿戴时是 0', () => {
+  it('没角色或什么都没穿时是 0', () => {
     expect(outfitValue(undefined)).toBe(0)
     expect(outfitValue(pet())).toBe(0)
   })

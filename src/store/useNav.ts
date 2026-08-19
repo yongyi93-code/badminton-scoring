@@ -9,7 +9,7 @@ export type Route =
   | { name: 'leaderboard'; sessionId?: string }
   | { name: 'summary'; sessionId: string }
   | { name: 'profile'; playerId: string }
-  | { name: 'pet'; playerId: string }
+  | { name: 'avatar'; playerId: string }
 
 type NavState = {
   stack: Route[]

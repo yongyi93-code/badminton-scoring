@@ -3,7 +3,7 @@ import { Avatar } from './PlayerBits'
 import { Pill, cx } from './ui'
 import { percent, signed, streakLabel } from '@/lib/format'
 import { RankMedal } from './RankMedal'
-import type { LevelInfo, Progress } from '@/lib/pet'
+import type { LevelInfo, Progress } from '@/lib/avatar'
 
 const medal = (rank: number) =>
   rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null

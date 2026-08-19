@@ -21,7 +21,7 @@ import { computeStats, mvpOf, rankPlayers } from '@/lib/ranking'
 import { money, splitFee } from '@/lib/fee'
 import { matchesAtVenue, playerIdsAtVenue, venueLabel } from '@/lib/venues'
 import { shareNodeAsImage } from '@/lib/shareImage'
-import { progressByPlayer } from '@/lib/pet'
+import { progressByPlayer } from '@/lib/avatar'
 import { duration, formatDateFull, percent, signed } from '@/lib/format'
 import {
   FORMAT_LABELS,

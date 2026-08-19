@@ -1,4 +1,4 @@
-import { PET_LEVELS, STARS_PER_TIER, type LevelInfo } from '@/lib/pet'
+import { PET_LEVELS, STARS_PER_TIER, type LevelInfo } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *
  * 段位徽章

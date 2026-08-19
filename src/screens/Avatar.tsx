@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { petOf, playerMap, useApp } from '@/store/useApp'
+import { avatarOf, playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Body,
@@ -12,53 +12,52 @@ import {
   Segmented,
   TopBar,
   cx,
-  inputClass,
 } from '@/components/ui'
-import { GearIcon, PetView } from '@/components/Pet'
+import { AvatarView, GearIcon } from '@/components/Avatar'
 import { RankMedal } from '@/components/RankMedal'
 import {
+  AVATAR_SEXES,
   balanceOf,
   buyBlocker,
   IMMORTAL_STEP,
   LOSS_POINTS,
-  progressOf,
-  type Progress,
   outfitValue,
-  PET_KINDS,
   PET_LEVELS,
-  SHOP_ITEMS,
+  progressOf,
+  shopFor,
+  SKIN_TONES,
   SLOT_LABELS,
   SLOT_ORDER,
   WIN_POINTS,
-  type PetKind,
-  type PetSlot,
+  type AvatarProfile,
+  type AvatarSex,
+  type AvatarSlot,
+  type Progress,
   type ShopItem,
-} from '@/lib/pet'
+} from '@/lib/avatar'
 
 type Tab = 'dress' | 'shop'
 
-export function Pet({ playerId }: { playerId: string }) {
+export function Avatar({ playerId }: { playerId: string }) {
   const players = useApp((s) => s.players)
   const matches = useApp((s) => s.matches)
-  const pets = useApp((s) => s.pets)
-  const adoptPet = useApp((s) => s.adoptPet)
-  const renamePet = useApp((s) => s.renamePet)
+  const avatars = useApp((s) => s.avatars)
+  const setAvatarSex = useApp((s) => s.setAvatarSex)
+  const setAvatarSkin = useApp((s) => s.setAvatarSkin)
   const buyItem = useApp((s) => s.buyItem)
   const equipItem = useApp((s) => s.equipItem)
   const back = useNav((s) => s.back)
 
   const [tab, setTab] = useState<Tab>('dress')
-  const [naming, setNaming] = useState(false)
-  const [draftName, setDraftName] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const currentTierRef = useRef<HTMLDivElement | null>(null)
 
   const player = useMemo(() => playerMap(players).get(playerId), [players, playerId])
-  const pet = petOf(pets, playerId)
+  const avatar = avatarOf(avatars, playerId)
 
   const progress = useMemo(() => progressOf(playerId, matches), [playerId, matches])
   const { wins, losses, mmr, coins, level } = progress
-  const balance = balanceOf(pet, coins)
+  const balance = balanceOf(avatar, coins)
 
   /**
    * 段位横条一屏放不下八段，高段位的人一进来自己那格在屏幕外。
@@ -85,105 +84,82 @@ export function Pet({ playerId }: { playerId: string }) {
     )
   }
 
-  /* 还没领养：先挑一只 */
-  if (!pet) {
+  /* 还没建角色：先选男女 */
+  if (!avatar) {
     return (
       <Screen>
-        <TopBar title={`${player.name} 的宠物`} onBack={back} />
+        <TopBar title={`${player.name} 的角色`} onBack={back} />
         <Body>
           <Card className="text-center">
-            <p className="text-lg font-bold">挑一只宠物开始养</p>
+            <p className="text-lg font-bold">先选个角色</p>
             <p className="mt-1 text-sm text-ink-400">
-              每赢一场比赛得 {WIN_POINTS} 金币，用金币给它买装备打扮
+              每赢一场比赛得 {WIN_POINTS} 金币，用金币买发型、战服和武器
             </p>
           </Card>
 
-          <div className="grid grid-cols-3 gap-2">
-            {PET_KINDS.map((k) => (
+          <div className="grid grid-cols-2 gap-3">
+            {AVATAR_SEXES.map((s) => (
               <button
-                key={k.kind}
-                onClick={() => adoptPet(playerId, k.kind)}
+                key={s.sex}
+                onClick={() => setAvatarSex(playerId, s.sex)}
                 className="rounded-2xl border border-ink-700 bg-ink-850 p-2 active:bg-ink-800"
               >
-                <PetView kind={k.kind} className="h-24 w-full" title={k.label} />
-                <p className="mt-1 text-sm font-semibold">{k.label}</p>
+                <AvatarView
+                  sex={s.sex}
+                  equipped={{
+                    hair: s.sex === 'm' ? 'm-short' : 'f-bob',
+                    outfit: 'tee',
+                  }}
+                  className="h-40 w-full"
+                  title={s.label}
+                />
+                <p className="mt-1 text-base font-semibold">{s.label}</p>
               </button>
             ))}
           </div>
 
           <p className="text-xs text-ink-400">
-            选错了也没关系，之后随时能换种类，买过的装备不会没收。
+            选错也没关系，之后随时能换，买过的装备不会没收。
           </p>
         </Body>
       </Screen>
     )
   }
 
-  const owned = SHOP_ITEMS.filter((i) => pet.owned.includes(i.id))
+  const catalog = shopFor(avatar.sex)
+  const owned = catalog.filter((i) => avatar.owned.includes(i.id))
 
   const tryBuy = (item: ShopItem) => {
     const ok = buyItem(playerId, item.id, progress)
-    setToast(ok ? `买到了「${item.name}」，已经戴上` : '买不了，看看下面的提示')
+    setToast(ok ? `买到了「${item.name}」，已经换上` : '买不了，看看下面的提示')
     window.setTimeout(() => setToast(null), 2200)
-  }
-
-  const saveName = () => {
-    const next = draftName.trim()
-    if (next) renamePet(playerId, next)
-    setNaming(false)
   }
 
   return (
     <Screen>
       <TopBar
-        title={`${player.name} 的宠物`}
+        title={`${player.name} 的角色`}
         subtitle={`${level.display}${level.star !== null ? ` ${level.star}★` : ''} · 金币 ${balance}`}
         onBack={back}
       />
       <Body>
-        {/* 宠物本体 */}
+        {/* 角色本体 */}
         <Card className="space-y-3">
           <div className="overflow-hidden rounded-2xl bg-ink-800">
-            <PetView
-              kind={pet.kind}
-              equipped={pet.equipped}
-              className="mx-auto h-56 w-full max-w-64"
-              title={pet.name}
+            <AvatarView
+              sex={avatar.sex}
+              skin={avatar.skin}
+              equipped={avatar.equipped}
+              className="mx-auto h-64 w-full max-w-64"
+              title={player.name}
             />
-          </div>
-
-          <div className="flex items-center justify-center gap-2">
-            {naming ? (
-              <>
-                <input
-                  value={draftName}
-                  onChange={(e) => setDraftName(e.target.value)}
-                  maxLength={12}
-                  autoFocus
-                  className={cx(inputClass, 'max-w-40 text-center')}
-                />
-                <Button size="sm" variant="primary" onClick={saveName}>
-                  好了
-                </Button>
-              </>
-            ) : (
-              <button
-                onClick={() => {
-                  setDraftName(pet.name)
-                  setNaming(true)
-                }}
-                className="text-lg font-bold"
-              >
-                {pet.name} <span className="text-sm text-ink-400">✎</span>
-              </button>
-            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Pill>
               {wins} 胜 {losses} 负
             </Pill>
-            <Pill>身上行头 {outfitValue(pet)} 金币</Pill>
+            <Pill>身上行头 {outfitValue(avatar)} 金币</Pill>
           </div>
         </Card>
 
@@ -262,7 +238,7 @@ export function Pet({ playerId }: { playerId: string }) {
           value={tab}
           onChange={setTab}
           options={[
-            { value: 'dress', label: `装扮${owned.length ? ` (${owned.length})` : ''}` },
+            { value: 'dress', label: `衣柜 (${owned.length})` },
             { value: 'shop', label: '商店' },
           ]}
         />
@@ -275,16 +251,16 @@ export function Pet({ playerId }: { playerId: string }) {
 
         {tab === 'dress' ? (
           <DressPanel
-            slots={SLOT_ORDER}
-            ownedIds={pet.owned}
-            equipped={pet.equipped}
+            avatar={avatar}
+            catalog={catalog}
             onToggle={(slot, itemId) => equipItem(playerId, slot, itemId)}
-            kind={pet.kind}
-            onSwitchKind={(kind) => adoptPet(playerId, kind)}
+            onSwitchSex={(sex) => setAvatarSex(playerId, sex)}
+            onSkin={(i) => setAvatarSkin(playerId, i)}
           />
         ) : (
           <ShopPanel
-            pet={pet}
+            avatar={avatar}
+            catalog={catalog}
             progress={progress}
             balance={balance}
             onBuy={tryBuy}
@@ -296,97 +272,112 @@ export function Pet({ playerId }: { playerId: string }) {
 }
 
 /* ------------------------------------------------------------------ *
- * 装扮
+ * 衣柜
  * ------------------------------------------------------------------ */
 
 function DressPanel({
-  slots,
-  ownedIds,
-  equipped,
+  avatar,
+  catalog,
   onToggle,
-  kind,
-  onSwitchKind,
+  onSwitchSex,
+  onSkin,
 }: {
-  slots: PetSlot[]
-  ownedIds: string[]
-  equipped: Partial<Record<PetSlot, string>>
-  onToggle: (slot: PetSlot, itemId: string | null) => void
-  kind: PetKind
-  onSwitchKind: (kind: PetKind) => void
+  avatar: AvatarProfile
+  catalog: ShopItem[]
+  onToggle: (slot: AvatarSlot, itemId: string | null) => void
+  onSwitchSex: (sex: AvatarSex) => void
+  onSkin: (index: number) => void
 }) {
-  const hasAnything = ownedIds.length > 0
-
   return (
     <>
-      {!hasAnything && (
-        <EmptyState
-          icon="🎽"
-          title="还没有任何装备"
-          hint="去商店逛逛，赢球攒的分就是拿来花的"
-        />
-      )}
-
-      {hasAnything &&
-        slots.map((slot) => {
-          const mine = SHOP_ITEMS.filter(
-            (i) => i.slot === slot && ownedIds.includes(i.id),
-          )
-          if (mine.length === 0) return null
-          return (
-            <div key={slot}>
-              <SectionTitle>{SLOT_LABELS[slot]}</SectionTitle>
-              <div className="grid grid-cols-4 gap-2">
-                {mine.map((item) => {
-                  const on = equipped[slot] === item.id
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => onToggle(slot, on ? null : item.id)}
+      {SLOT_ORDER.map((slot) => {
+        const mine = catalog.filter(
+          (i) => i.slot === slot && avatar.owned.includes(i.id),
+        )
+        if (mine.length === 0) return null
+        return (
+          <div key={slot}>
+            <SectionTitle>{SLOT_LABELS[slot]}</SectionTitle>
+            <div className="grid grid-cols-4 gap-2">
+              {mine.map((item) => {
+                const on = avatar.equipped[slot] === item.id
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onToggle(slot, on ? null : item.id)}
+                    className={cx(
+                      'rounded-xl border p-1.5 transition-colors',
+                      on
+                        ? 'border-lime-glow bg-lime-glow/15'
+                        : 'border-ink-700 bg-ink-850 active:bg-ink-800',
+                    )}
+                  >
+                    <span className="block overflow-hidden rounded-lg bg-ink-800">
+                      <GearIcon itemId={item.id} className="h-14 w-full" />
+                    </span>
+                    <p
                       className={cx(
-                        'rounded-xl border p-1.5 transition-colors',
-                        on
-                          ? 'border-lime-glow bg-lime-glow/15'
-                          : 'border-ink-700 bg-ink-850 active:bg-ink-800',
+                        'mt-1 truncate text-xs',
+                        on ? 'text-lime-glow' : 'text-ink-300',
                       )}
                     >
-                      <span className="block overflow-hidden rounded-lg bg-ink-800">
-                        <GearIcon itemId={item.id} className="h-14 w-full" />
-                      </span>
-                      <p
-                        className={cx(
-                          'mt-1 truncate text-xs',
-                          on ? 'text-lime-glow' : 'text-ink-300',
-                        )}
-                      >
-                        {item.name}
-                      </p>
-                    </button>
-                  )
-                })}
-              </div>
+                      {item.name}
+                    </p>
+                  </button>
+                )
+              })}
             </div>
-          )
-        })}
+          </div>
+        )
+      })}
 
-      <SectionTitle>换个宠物</SectionTitle>
-      <div className="grid grid-cols-3 gap-2">
-        {PET_KINDS.map((k) => (
+      <SectionTitle>肤色</SectionTitle>
+      <div className="flex gap-2">
+        {SKIN_TONES.map((tone, i) => (
           <button
-            key={k.kind}
-            onClick={() => onSwitchKind(k.kind)}
+            key={tone}
+            onClick={() => onSkin(i)}
+            aria-label={`肤色 ${i + 1}`}
+            className={cx(
+              'size-11 rounded-full border-2',
+              avatar.skin === i ? 'border-lime-glow' : 'border-ink-700',
+            )}
+            style={{ backgroundColor: tone }}
+          />
+        ))}
+      </div>
+
+      <SectionTitle>换个角色</SectionTitle>
+      <div className="grid grid-cols-2 gap-2">
+        {AVATAR_SEXES.map((s) => (
+          <button
+            key={s.sex}
+            onClick={() => onSwitchSex(s.sex)}
             className={cx(
               'rounded-xl border p-1.5',
-              k.kind === kind
+              s.sex === avatar.sex
                 ? 'border-lime-glow bg-lime-glow/15'
                 : 'border-ink-700 bg-ink-850 active:bg-ink-800',
             )}
           >
-            <PetView kind={k.kind} className="h-16 w-full" title={k.label} />
-            <p className="mt-0.5 text-xs">{k.label}</p>
+            <AvatarView
+              sex={s.sex}
+              skin={avatar.skin}
+              equipped={{
+                hair: s.sex === 'm' ? 'm-short' : 'f-bob',
+                outfit: avatar.equipped.outfit,
+              }}
+              className="h-20 w-full"
+              title={s.label}
+            />
+            <p className="mt-0.5 text-sm">{s.label}</p>
           </button>
         ))}
       </div>
-      <p className="pb-2 text-xs text-ink-400">换种类不花分，买过的装备也都还在。</p>
+      <p className="pb-2 text-xs text-ink-400">
+        换性别不花钱，买过的战服和武器都还在；发型会换成对应性别的免费款，
+        因为异性发型你并没有买过。
+      </p>
     </>
   )
 }
@@ -396,12 +387,14 @@ function DressPanel({
  * ------------------------------------------------------------------ */
 
 function ShopPanel({
-  pet,
+  avatar,
+  catalog,
   progress,
   balance,
   onBuy,
 }: {
-  pet: Parameters<typeof outfitValue>[0]
+  avatar: AvatarProfile
+  catalog: ShopItem[]
   progress: Progress
   balance: number
   onBuy: (item: ShopItem) => void
@@ -419,18 +412,19 @@ function ShopPanel({
       </Card>
 
       {SLOT_ORDER.map((slot) => {
-        const items = SHOP_ITEMS.filter((i) => i.slot === slot)
+        const items = catalog.filter((i) => i.slot === slot && i.price > 0)
+        if (items.length === 0) return null
         return (
           <div key={slot}>
             <SectionTitle>{SLOT_LABELS[slot]}</SectionTitle>
             <div className="space-y-2">
               {items.map((item) => {
-                const block = buyBlocker(item, pet, progress)
+                const block = buyBlocker(item, avatar, progress)
                 const need = PET_LEVELS[item.minLevel]
                 return (
                   <Card key={item.id}>
                     <div className="flex items-center gap-3">
-                      <span className="size-14 shrink-0 overflow-hidden rounded-xl bg-ink-800">
+                      <span className="size-16 shrink-0 overflow-hidden rounded-xl bg-ink-800">
                         <GearIcon itemId={item.id} className="h-full w-full" />
                       </span>
                       <div className="min-w-0 flex-1">
@@ -441,7 +435,8 @@ function ShopPanel({
                         </p>
                         {block === 'level' && (
                           <p className="text-xs text-ink-400">
-                            MMR 不够，到 {need.min}（{need.name}）才能买，现在 {progress.mmr}
+                            MMR 不够，到 {need.min}（{need.name}）才能买，现在{' '}
+                            {progress.mmr}
                           </p>
                         )}
                         {block === 'money' && (

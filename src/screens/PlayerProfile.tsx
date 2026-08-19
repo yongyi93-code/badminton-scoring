@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { petOf, playerMap, useApp } from '@/store/useApp'
+import { avatarOf, playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Body,
@@ -24,9 +24,9 @@ import {
 } from '@/lib/ranking'
 import { formatDate, percent, signed, streakLabel } from '@/lib/format'
 import { scoreLine } from '@/lib/scoring'
-import { PetView } from '@/components/Pet'
+import { AvatarView } from '@/components/Avatar'
 import { RankChip } from '@/components/RankMedal'
-import { balanceOf, progressOf, WIN_POINTS } from '@/lib/pet'
+import { balanceOf, progressOf, WIN_POINTS } from '@/lib/avatar'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -39,13 +39,16 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 export function PlayerProfile({ playerId }: { playerId: string }) {
-  const { players, sessions, matches, pets } = useApp()
+  const { players, sessions, matches, avatars } = useApp()
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
 
-  const pet = petOf(pets, playerId)
-  const petProgress = useMemo(() => progressOf(playerId, matches), [playerId, matches])
-  const level = petProgress.level
+  const avatar = avatarOf(avatars, playerId)
+  const avatarProgress = useMemo(
+    () => progressOf(playerId, matches),
+    [playerId, matches],
+  )
+  const level = avatarProgress.level
 
   const names = useMemo(() => playerMap(players), [players])
   const player = names.get(playerId)
@@ -102,40 +105,38 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
           </div>
         </Card>
 
-        {/* 宠物入口：养成的东西要一眼看得见，才有人想去赢球赚分 */}
-        <Card onClick={() => push({ name: 'pet', playerId })}>
+        {/* 角色入口：养成的东西要一眼看得见，才有人想去赢球赚金币 */}
+        <Card onClick={() => push({ name: 'avatar', playerId })}>
           <div className="flex items-center gap-4">
             <span className="size-16 shrink-0 overflow-hidden rounded-2xl bg-ink-800">
-              {pet ? (
-                <PetView
-                  kind={pet.kind}
-                  equipped={pet.equipped}
+              {avatar ? (
+                <AvatarView
+                  sex={avatar.sex}
+                  skin={avatar.skin}
+                  equipped={avatar.equipped}
                   className="h-full w-full"
-                  title={pet.name}
+                  title={player.name}
                 />
               ) : (
                 <span className="flex h-full w-full items-center justify-center text-2xl">
-                  🥚
+                  👤
                 </span>
               )}
             </span>
             <div className="min-w-0 flex-1">
-              {pet ? (
-                <>
-                  <p className="truncate text-lg font-semibold">{pet.name}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <RankChip level={level} />
-                    <span className="tnum text-sm text-ink-400">
-                      MMR {petProgress.mmr} · 金币{' '}
-                      {balanceOf(pet, petProgress.coins)}
-                    </span>
-                  </div>
-                </>
+              {avatar ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <RankChip level={level} />
+                  <span className="tnum text-sm text-ink-400">
+                    MMR {avatarProgress.mmr} · 金币{' '}
+                    {balanceOf(avatar, avatarProgress.coins)}
+                  </span>
+                </div>
               ) : (
                 <>
-                  <p className="text-lg font-semibold">还没有宠物</p>
+                  <p className="text-lg font-semibold">还没有角色</p>
                   <p className="text-sm text-ink-400">
-                    挑一只养起来，赢一场得 {WIN_POINTS} 金币换装备
+                    选个角色，赢一场得 {WIN_POINTS} 金币买装备
                   </p>
                 </>
               )}

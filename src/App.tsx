@@ -8,7 +8,7 @@ import { ScoreBoard } from '@/screens/ScoreBoard'
 import { Leaderboard } from '@/screens/Leaderboard'
 import { SessionSummary } from '@/screens/SessionSummary'
 import { PlayerProfile } from '@/screens/PlayerProfile'
-import { Pet } from '@/screens/Pet'
+import { Avatar } from '@/screens/Avatar'
 
 export default function App() {
   const route = useRoute()
@@ -38,7 +38,7 @@ export default function App() {
       return <SessionSummary sessionId={route.sessionId} />
     case 'profile':
       return <PlayerProfile playerId={route.playerId} />
-    case 'pet':
-      return <Pet playerId={route.playerId} />
+    case 'avatar':
+      return <Avatar playerId={route.playerId} />
   }
 }

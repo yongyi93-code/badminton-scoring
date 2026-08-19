@@ -2,13 +2,15 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
   buyBlocker,
+  defaultHair,
   itemById,
-  newPet,
-  type PetKind,
-  type PetProfile,
-  type PetSlot,
+  newAvatar,
+  STARTER_IDS,
+  type AvatarProfile,
+  type AvatarSex,
+  type AvatarSlot,
   type Progress,
-} from '@/lib/pet'
+} from '@/lib/avatar'
 import {
   DEFAULT_RULES,
   type EndCondition,
@@ -44,23 +46,24 @@ export type SessionDraft = {
 
 /**
  * 导出/导入的备份文件结构。
- * version 2 起多了 pets；读的时候 pets 缺失按空处理，v1 的备份照样能导入。
+ * version 3 起是 avatars（v2 的 pets 会被丢弃，那套宠物已经换掉了）。
+ * 老字段缺失一律按空处理，v1/v2 的备份照样能导入。
  */
 export type Backup = {
   app: 'badminton-scoring'
-  version: 1 | 2
+  version: 1 | 2 | 3
   exportedAt: string
   players: Player[]
   sessions: Session[]
   matches: Match[]
-  pets?: PetProfile[]
+  avatars?: AvatarProfile[]
 }
 
 type AppState = {
   players: Player[]
   sessions: Session[]
   matches: Match[]
-  pets: PetProfile[]
+  avatars: AvatarProfile[]
 
   addPlayer: (name: string, level: Level, gender: Gender) => Player
   updatePlayer: (id: string, patch: Partial<Omit<Player, 'id'>>) => void
@@ -78,13 +81,14 @@ type AppState = {
   replaceMatch: (match: Match) => void
   deleteMatch: (id: string) => void
 
-  /** 领养或换一只宠物；已有装备保留，换种类不用重新买 */
-  adoptPet: (playerId: string, kind: PetKind) => void
-  renamePet: (playerId: string, name: string) => void
+  /** 创建角色，或换性别（换了会把发型换成对应性别的免费款） */
+  setAvatarSex: (playerId: string, sex: AvatarSex) => void
+  /** 换肤色，免费 */
+  setAvatarSkin: (playerId: string, skin: number) => void
   /** 买下道具并扣金币。买不起 / 段位不够 / 已拥有都返回 false，不改动任何东西 */
   buyItem: (playerId: string, itemId: string, progress: Progress) => boolean
   /** 戴上或脱下某个槽位的装备，itemId 传 null 表示脱下 */
-  equipItem: (playerId: string, slot: PetSlot, itemId: string | null) => void
+  equipItem: (playerId: string, slot: AvatarSlot, itemId: string | null) => void
 
   exportBackup: () => Backup
   importBackup: (backup: Backup) => void
@@ -97,7 +101,7 @@ export const useApp = create<AppState>()(
       players: [],
       sessions: [],
       matches: [],
-      pets: [],
+      avatars: [],
 
       addPlayer(name, level, gender) {
         const player: Player = {
@@ -223,23 +227,32 @@ export const useApp = create<AppState>()(
         set((s) => ({ matches: s.matches.filter((m) => m.id !== id) }))
       },
 
-      adoptPet(playerId, kind) {
+      setAvatarSex(playerId, sex) {
         set((s) => {
-          const exist = s.pets.find((p) => p.playerId === playerId)
-          if (!exist) return { pets: [...s.pets, newPet(playerId, kind)] }
-          // 换种类保留已买的装备和花掉的分，换宠物不该等于清零重来
+          const exist = s.avatars.find((p) => p.playerId === playerId)
+          if (!exist) return { avatars: [...s.avatars, newAvatar(playerId, sex)] }
+          if (exist.sex === sex) return s
+          // 换性别保留已买的东西和花掉的钱，但发型要换成对应性别的，
+          // 否则男号会顶着女发型 —— 那款他也没买过
           return {
-            pets: s.pets.map((p) =>
-              p.playerId === playerId ? { ...p, kind } : p,
+            avatars: s.avatars.map((p) =>
+              p.playerId === playerId
+                ? {
+                    ...p,
+                    sex,
+                    owned: [...new Set([...p.owned, ...STARTER_IDS])],
+                    equipped: { ...p.equipped, hair: defaultHair(sex) },
+                  }
+                : p,
             ),
           }
         })
       },
 
-      renamePet(playerId, name) {
+      setAvatarSkin(playerId, skin) {
         set((s) => ({
-          pets: s.pets.map((p) =>
-            p.playerId === playerId ? { ...p, name: name.trim() } : p,
+          avatars: s.avatars.map((p) =>
+            p.playerId === playerId ? { ...p, skin } : p,
           ),
         }))
       },
@@ -247,12 +260,12 @@ export const useApp = create<AppState>()(
       buyItem(playerId, itemId, progress) {
         const item = itemById(itemId)
         if (!item) return false
-        const pet = get().pets.find((p) => p.playerId === playerId)
-        if (!pet) return false
-        if (buyBlocker(item, pet, progress) !== null) return false
+        const avatar = get().avatars.find((p) => p.playerId === playerId)
+        if (!avatar) return false
+        if (buyBlocker(item, avatar, progress) !== null) return false
 
         set((s) => ({
-          pets: s.pets.map((p) =>
+          avatars: s.avatars.map((p) =>
             p.playerId === playerId
               ? {
                   ...p,
@@ -269,7 +282,7 @@ export const useApp = create<AppState>()(
 
       equipItem(playerId, slot, itemId) {
         set((s) => ({
-          pets: s.pets.map((p) => {
+          avatars: s.avatars.map((p) => {
             if (p.playerId !== playerId) return p
             // 没买过的东西不让戴，避免改数据绕过商店
             if (itemId !== null && !p.owned.includes(itemId)) return p
@@ -282,15 +295,15 @@ export const useApp = create<AppState>()(
       },
 
       exportBackup() {
-        const { players, sessions, matches, pets } = get()
+        const { players, sessions, matches, avatars } = get()
         return {
           app: 'badminton-scoring',
-          version: 2,
+          version: 3,
           exportedAt: new Date().toISOString(),
           players,
           sessions,
           matches,
-          pets,
+          avatars,
         }
       },
 
@@ -302,22 +315,33 @@ export const useApp = create<AppState>()(
           players: backup.players ?? [],
           sessions: backup.sessions ?? [],
           matches: backup.matches ?? [],
-          // v1 的备份没有 pets，按没养过宠物处理
-          pets: backup.pets ?? [],
+          // v1/v2 的备份没有 avatars，按还没建角色处理
+          avatars: backup.avatars ?? [],
         })
       },
 
       resetAll() {
-        set({ players: [], sessions: [], matches: [], pets: [] })
+        set({ players: [], sessions: [], matches: [], avatars: [] })
       },
     }),
     {
       name: STORAGE_KEY,
+      /**
+       * 1 = 宠物那一版（pets）。角色系统把整个商店换掉了，旧的道具 id
+       * 一件都不存在，所以直接丢掉 pets 从头开始 —— 花掉的金币等于全额退回，
+       * 大家重新挑角色买装备。比赛记录一点都不动，段位和金币照样是算出来的。
+       */
+      version: 2,
+      migrate: (state, from) => {
+        const s = state as Partial<AppState> & { pets?: unknown }
+        if (from < 2) delete s.pets
+        return { ...s, avatars: s.avatars ?? [] } as AppState
+      },
       partialize: (s) => ({
         players: s.players,
         sessions: s.sessions,
         matches: s.matches,
-        pets: s.pets,
+        avatars: s.avatars,
       }),
     },
   ),
@@ -333,5 +357,5 @@ export const sessionMatches = (matches: Match[], sessionId: string) =>
 export const playerMap = (players: Player[]) =>
   new Map(players.map((p) => [p.id, p]))
 
-export const petOf = (pets: PetProfile[], playerId: string) =>
-  pets.find((p) => p.playerId === playerId)
+export const avatarOf = (avatars: AvatarProfile[], playerId: string) =>
+  avatars.find((p) => p.playerId === playerId)
