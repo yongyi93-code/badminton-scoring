@@ -351,7 +351,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           title={`${(match.courtIndex ?? 0) + 1} 号场`}
           subtitle={
             rules.bestOf === 3
-              ? `第 ${gi + 1} 局 · 大比分 ${sets.A}:${sets.B}`
+              ? `${rules.pointsToWin} 分制 · 第 ${gi + 1} 局 · 大比分 ${sets.A}:${sets.B}`
               : `${rules.pointsToWin} 分制${rules.winBy2 ? ' · 净胜 2 分' : ''}`
           }
           onBack={back}

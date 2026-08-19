@@ -20,9 +20,11 @@ import { todayISO } from '@/lib/format'
 import { buildSchedule, matchInput } from '@/lib/sessionFormat'
 import { recentVenues, venueKey } from '@/lib/venues'
 import {
+  capFor,
   DEFAULT_ROTATION_PER_PLAYER,
   DEFAULT_RULES,
   DEFAULT_STREAK_CAP,
+  POINTS_OPTIONS,
   type EndCondition,
   type MatchType,
   type SessionFormat,
@@ -122,7 +124,7 @@ export function SessionSetup() {
       courtCount,
       playerIds: selected,
       defaultType,
-      rules: { pointsToWin, winBy2, bestOf, cap: Math.max(30, pointsToWin + 9) },
+      rules: { pointsToWin, winBy2, bestOf, cap: capFor(pointsToWin) },
       format,
       endCondition: Object.keys(endCondition).length ? endCondition : undefined,
       kingStreakCap: format === 'king' ? streakCap : undefined,
@@ -207,26 +209,33 @@ export function SessionSetup() {
             />
           </Field>
 
+          <Field
+            label="每局分数"
+            hint={
+              winBy2
+                ? `${pointsToWin - 1} 平后要净胜 2 分，${capFor(pointsToWin)} 分封顶`
+                : `先到 ${pointsToWin} 分即胜`
+            }
+          >
+            <Segmented
+              value={String(pointsToWin)}
+              onChange={(v) => setPointsToWin(Number(v))}
+              options={POINTS_OPTIONS.map((p) => ({
+                value: String(p),
+                label: `${p} 分`,
+              }))}
+            />
+          </Field>
+
           <button
             onClick={() => setShowRules((v) => !v)}
             className="text-sm text-ink-400 underline decoration-ink-700 underline-offset-4"
           >
-            {showRules ? '收起计分规则' : `计分规则：${pointsToWin} 分${winBy2 ? '·净胜2' : ''}${bestOf === 3 ? '·三局两胜' : ''}`}
+            {showRules ? '收起更多规则' : `更多规则：${winBy2 ? '净胜2' : '不用净胜2'}${bestOf === 3 ? '·三局两胜' : '·一局定胜负'}`}
           </button>
 
           {showRules && (
             <div className="space-y-4 rounded-xl border border-ink-700 bg-ink-800/50 p-3">
-              <Field label="每局分数">
-                <Segmented
-                  value={String(pointsToWin)}
-                  onChange={(v) => setPointsToWin(Number(v))}
-                  options={[
-                    { value: '11', label: '11 分' },
-                    { value: '15', label: '15 分' },
-                    { value: '21', label: '21 分' },
-                  ]}
-                />
-              </Field>
               <Toggle
                 checked={winBy2}
                 onChange={setWinBy2}
