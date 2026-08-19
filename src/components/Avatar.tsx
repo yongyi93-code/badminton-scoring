@@ -44,44 +44,59 @@ const shade = (hex: string, amount: number) => {
  * 五官
  * ------------------------------------------------------------------ */
 
+/**
+ * 眼睛是这张脸唯一的重点，值得堆细节。
+ * 关键三层：虹膜上深下浅做出通透感、粗黑上眼睑压出神、
+ * 左上一块大高光 + 右下一点小高光让眼球显得是圆的。
+ */
 function Eye({
   x,
   y,
   iris,
   wide,
+  /** 眼尾往哪边挑，左右眼要相反 */
+  dir,
 }: {
   x: number
   y: number
   iris: string
-  /** 女生的眼睛画大一点，男生窄一点，靠这一个开关区分 */
   wide: boolean
+  dir: 1 | -1
 }) {
-  const rx = wide ? 7 : 6.2
-  const ry = wide ? 8.6 : 7.4
+  const rx = wide ? 8.2 : 7.2
+  const ry = wide ? 10.4 : 9
+  const deep = shade(iris, -0.55)
+  const glow = shade(iris, 0.42)
   return (
     <g>
-      <ellipse cx={x} cy={y} rx={rx} ry={ry} fill="#fdfbff" />
-      <ellipse cx={x} cy={y + 0.6} rx={rx * 0.78} ry={ry * 0.82} fill={iris} />
+      <ellipse cx={x} cy={y} rx={rx} ry={ry} fill="#fbf8f6" />
+      {/* 虹膜三层：顶上最深，往下越来越亮 */}
+      <ellipse cx={x} cy={y + 0.6} rx={rx * 0.84} ry={ry * 0.86} fill={deep} />
+      <ellipse cx={x} cy={y + 2.2} rx={rx * 0.8} ry={ry * 0.68} fill={iris} />
+      <ellipse cx={x} cy={y + 4} rx={rx * 0.62} ry={ry * 0.4} fill={glow} />
+      <ellipse cx={x} cy={y + 1.2} rx={rx * 0.3} ry={ry * 0.42} fill="#191420" />
+      {/* 高光 */}
       <ellipse
-        cx={x}
-        cy={y + 2.2}
-        rx={rx * 0.78}
-        ry={ry * 0.5}
-        fill={shade(iris, -0.35)}
-      />
-      <ellipse cx={x} cy={y + 0.8} rx={rx * 0.36} ry={ry * 0.46} fill={INK} />
-      <circle cx={x - rx * 0.32} cy={y - ry * 0.38} r={rx * 0.3} fill="#fff" />
-      <circle
-        cx={x + rx * 0.34}
-        cy={y + ry * 0.42}
-        r={rx * 0.16}
+        cx={x - rx * 0.34}
+        cy={y - ry * 0.44}
+        rx={rx * 0.32}
+        ry={ry * 0.24}
         fill="#fff"
-        opacity="0.75"
+        transform={`rotate(-20 ${x} ${y})`}
       />
-      {/* 上眼睑：Q 版里这条粗线比眼球本身还重要 */}
+      <circle cx={x + rx * 0.4} cy={y + ry * 0.36} r={rx * 0.15} fill="#fff" opacity="0.8" />
+      {/* 上眼睑，眼尾挑出一小笔 */}
       <path
-        d={`M${x - rx - 1} ${y - ry * 0.5} Q${x} ${y - ry - 2.4} ${x + rx + 1} ${y - ry * 0.5}`}
-        {...stroke(INK, wide ? 3.4 : 3)}
+        d={`M${x - rx - 1.4} ${y - ry * 0.3}
+            Q${x} ${y - ry - 3.4} ${x + rx + 1} ${y - ry * 0.5}
+            L${x + rx * dir + 2.4 * dir} ${y - ry * 0.9}`}
+        {...stroke(INK, wide ? 4 : 3.6)}
+      />
+      {/* 下眼睑：只轻轻带一笔，压太重会显得凶 */}
+      <path
+        d={`M${x - rx * 0.75} ${y + ry * 0.92} Q${x} ${y + ry + 1.2} ${x + rx * 0.75} ${y + ry * 0.82}`}
+        {...stroke(INK, 1.3)}
+        opacity="0.55"
       />
     </g>
   )
@@ -89,41 +104,41 @@ function Eye({
 
 function Face({ sex, skin, iris }: { sex: AvatarSex; skin: string; iris: string }) {
   const female = sex === 'f'
-  const eyeY = 48
+  const eyeY = 52
   return (
     <g>
       {/* 眉毛：男生粗平，女生细弯，是男女差别最明显的一笔 */}
       {female ? (
         <>
-          <path d="M32 37 Q39 33.5 45.5 36.5" {...stroke(LINE, 2.2)} />
-          <path d="M68 37 Q61 33.5 54.5 36.5" {...stroke(LINE, 2.2)} />
+          <path d="M31 40 Q38 36 45 39.5" {...stroke(LINE, 2.2)} />
+          <path d="M69 40 Q62 36 55 39.5" {...stroke(LINE, 2.2)} />
         </>
       ) : (
         <>
-          <path d="M31 36.5 L45.5 38.5" {...stroke(LINE, 3.4)} />
-          <path d="M69 36.5 L54.5 38.5" {...stroke(LINE, 3.4)} />
+          {/* 眉头细、眉峰粗，两段拼出粗细变化，比一根等粗线自然得多 */}
+          <path d="M31 39 Q37 36.5 42 38.6" {...stroke(LINE, 3.2)} />
+          <path d="M42 38.6 L45.5 41.2" {...stroke(LINE, 2.2)} />
+          <path d="M69 39 Q63 36.5 58 38.6" {...stroke(LINE, 3.2)} />
+          <path d="M58 38.6 L54.5 41.2" {...stroke(LINE, 2.2)} />
         </>
       )}
 
-      <Eye x={38.5} y={eyeY} iris={iris} wide={female} />
-      <Eye x={61.5} y={eyeY} iris={iris} wide={female} />
+      <Eye x={37.5} y={eyeY} iris={iris} wide={female} dir={-1} />
+      <Eye x={62.5} y={eyeY} iris={iris} wide={female} dir={1} />
 
       {/* 鼻子只用一小道阴影带过，画实了会破坏 Q 版比例 */}
-      <path d="M50 56.5 q1.8 1.4 0 2.4" {...stroke(shade(skin, -0.32), 1.6)} />
+      <path d="M50 61 q1.6 1.3 -0.2 2.2" {...stroke(shade(skin, -0.3), 1.5)} />
 
       {/* 嘴 */}
       {female ? (
-        <path d="M46.5 63.5 q3.5 3.2 7 0" {...stroke(INK, 1.8)} />
+        <path d="M46.8 67.5 q3.2 3 6.4 0" {...stroke(INK, 1.7)} />
       ) : (
-        <path d="M46 63.5 q4 2.6 8 0" {...stroke(INK, 1.8)} />
+        <path d="M46.2 67.5 q3.8 2.6 7.6 0" {...stroke(INK, 1.7)} />
       )}
 
-      {female && (
-        <>
-          <ellipse cx="31" cy="55" rx="4.5" ry="2.6" fill="#f2909f" opacity="0.35" />
-          <ellipse cx="69" cy="55" rx="4.5" ry="2.6" fill="#f2909f" opacity="0.35" />
-        </>
-      )}
+      {/* 腮红：女生明显、男生淡一点，都有会显得气色好 */}
+      <ellipse cx="28.5" cy="60" rx="5" ry="2.8" fill="#f2909f" opacity={female ? 0.38 : 0.18} />
+      <ellipse cx="71.5" cy="60" rx="5" ry="2.8" fill="#f2909f" opacity={female ? 0.38 : 0.18} />
     </g>
   )
 }
@@ -132,27 +147,37 @@ function Face({ sex, skin, iris }: { sex: AvatarSex; skin: string; iris: string 
  * 头与身体
  * ------------------------------------------------------------------ */
 
+/** 头的轮廓：颧骨宽、下巴收尖，Q 版的可爱全靠这个比例 */
+const HEAD_D = `M50 9
+  C70 9 80 23 80 44
+  C80 59 73 70 63 75
+  Q50 81 37 75
+  C27 70 20 59 20 44
+  C20 23 30 9 50 9 Z`
+
 function Head({ skin }: { skin: string }) {
-  const dark = shade(skin, -0.14)
+  const line = shade(skin, -0.45)
   return (
     <g>
       {/* 耳朵 */}
-      <ellipse cx="23.5" cy="49" rx="4" ry="6" fill={skin} />
-      <ellipse cx="76.5" cy="49" rx="4" ry="6" fill={skin} />
-      <path d="M23.5 46.5 q1.6 2.6 0 5" {...stroke(dark, 1.2)} />
-      <path d="M76.5 46.5 q-1.6 2.6 0 5" {...stroke(dark, 1.2)} />
-      {/* 头：上宽下窄，收一个小尖下巴 */}
+      <ellipse cx="20.5" cy="53" rx="4.4" ry="6.4" fill={skin} stroke={line} strokeWidth="1.3" />
+      <ellipse cx="79.5" cy="53" rx="4.4" ry="6.4" fill={skin} stroke={line} strokeWidth="1.3" />
+      {/* 脖子先画，让下巴压在上面 */}
       <path
-        d="M50 15
-           C68 15 77 27 77 44
-           C77 57 70 68 60 72
-           Q50 76 40 72
-           C30 68 23 57 23 44
-           C23 27 32 15 50 15 Z"
-        fill={skin}
+        d="M41 70 h18 v10 q-9 4 -18 0 Z"
+        fill={shade(skin, -0.16)}
+        stroke={line}
+        strokeWidth="1.3"
       />
-      {/* 脖子 */}
-      <path d="M42 68 h16 v9 q-8 4 -16 0 Z" fill={shade(skin, -0.1)} />
+      <path d={HEAD_D} fill={skin} stroke={line} strokeWidth="1.5" strokeLinejoin="round" />
+      {/*
+        额头投影：刘海压下来的那块阴影。
+        原来一片纯肤色，脸是平的；加了这层头发才像有厚度地盖在头上。
+        画在头之后、五官之前，前发会把它的上半截盖掉，只留一道柔边。
+      */}
+      <ellipse cx="50" cy="28" rx="29" ry="15" fill={shade(skin, -0.2)} opacity="0.42" />
+      {/* 下巴一点反光，脸不至于死板 */}
+      <path d="M43 73 q7 3.4 14 0" {...stroke(shade(skin, -0.16), 1.2)} opacity="0.5" />
     </g>
   )
 }
@@ -165,8 +190,8 @@ function Head({ skin }: { skin: string }) {
 
 const bodyPath = (sex: AvatarSex) =>
   sex === 'm'
-    ? 'M50 74 C63 74 74 80 79 88 L83 100 L17 100 L21 88 C26 80 37 74 50 74 Z'
-    : 'M50 75 C61 75 71 81 76 89 L80 100 L20 100 L24 89 C29 81 39 75 50 75 Z'
+    ? 'M50 79 C64 79 76 85 81 92 L85 100 L15 100 L19 92 C24 85 36 79 50 79 Z'
+    : 'M50 80 C62 80 73 86 78 93 L82 100 L18 100 L22 93 C27 86 38 80 50 80 Z'
 
 function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }) {
   const body = bodyPath(sex)
@@ -174,13 +199,13 @@ function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }) {
   if (id === 'jersey') {
     return (
       <g>
-        <path d={body} fill="#1f6feb" />
-        <path d="M50 74 L44 82 L50 88 L56 82 Z" fill="#fdfbff" />
-        <path d="M21 88 L17 100 L27 100 L30 88 Z" fill="#c7e0ff" />
-        <path d="M79 88 L83 100 L73 100 L70 88 Z" fill="#c7e0ff" />
+        <path d={body} fill="#1f6feb" stroke={shade("#1f6feb", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M50 79 L43 87 L50 94 L57 87 Z" fill="#fdfbff" />
+        <path d="M19 92 L15 100 L26 100 L29 92 Z" fill="#c7e0ff" />
+        <path d="M81 92 L85 100 L74 100 L71 92 Z" fill="#c7e0ff" />
         <text
           x="50"
-          y="98"
+          y="99"
           textAnchor="middle"
           fontSize="11"
           fontWeight="700"
@@ -195,12 +220,12 @@ function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }) {
   if (id === 'leather') {
     return (
       <g>
-        <path d={body} fill="#7a4b2a" />
-        <path d="M50 74 L40 84 L50 92 L60 84 Z" fill="#5c3720" />
-        <path d="M24 90 h52" {...stroke('#3f2616', 3)} />
-        <ellipse cx="28" cy="88" rx="7" ry="6" fill="#8f5c36" />
-        <ellipse cx="72" cy="88" rx="7" ry="6" fill="#8f5c36" />
-        <circle cx="50" cy="88" r="3" fill="#d8a25e" />
+        <path d={body} fill="#7a4b2a" stroke={shade("#7a4b2a", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M50 79 L40 89 L50 97 L60 89 Z" fill="#5c3720" />
+        <path d="M22 94 h56" {...stroke('#3f2616', 3)} />
+        <ellipse cx="26" cy="92" rx="7.5" ry="6.5" fill="#8f5c36" />
+        <ellipse cx="74" cy="92" rx="7.5" ry="6.5" fill="#8f5c36" />
+        <circle cx="50" cy="92" r="3.2" fill="#d8a25e" />
       </g>
     )
   }
@@ -208,16 +233,16 @@ function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }) {
   if (id === 'knight') {
     return (
       <g>
-        <path d={body} fill="#b9c2cf" />
-        <path d="M50 74 L41 83 L50 92 L59 83 Z" fill="#8f99a8" />
+        <path d={body} fill="#b9c2cf" stroke={shade("#b9c2cf", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M50 79 L41 88 L50 97 L59 88 Z" fill="#8f99a8" />
         {/* 肩甲 */}
-        <path d="M21 88 C22 80 30 78 34 82 L32 100 L17 100 Z" fill="#d5dce6" />
-        <path d="M79 88 C78 80 70 78 66 82 L68 100 L83 100 Z" fill="#d5dce6" />
-        <path d="M21 88 C22 80 30 78 34 82" {...stroke('#8f99a8', 1.6)} />
-        <path d="M79 88 C78 80 70 78 66 82" {...stroke('#8f99a8', 1.6)} />
+        <path d="M19 92 C20 83 29 81 34 86 L32 100 L15 100 Z" fill="#d5dce6" />
+        <path d="M81 92 C80 83 71 81 66 86 L68 100 L85 100 Z" fill="#d5dce6" />
+        <path d="M19 92 C20 83 29 81 34 86" {...stroke('#8f99a8', 1.6)} />
+        <path d="M81 92 C80 83 71 81 66 86" {...stroke('#8f99a8', 1.6)} />
         {/* 胸前那颗金星 */}
         <path
-          d="M50 84 l2.6 5.4 l6 0.8 l-4.3 4.2 l1 5.9 l-5.3 -2.8 l-5.3 2.8 l1 -5.9 l-4.3 -4.2 l6 -0.8 Z"
+          d="M50 88 l2.4 5 l5.5 0.7 l-4 3.9 l0.9 5.4 l-4.8 -2.6 l-4.8 2.6 l0.9 -5.4 l-4 -3.9 l5.5 -0.7 Z"
           fill="#f2c14e"
         />
       </g>
@@ -227,13 +252,13 @@ function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }) {
   if (id === 'shadow') {
     return (
       <g>
-        <path d={body} fill="#241f2e" />
-        <path d="M50 74 L40 85 L50 94 L60 85 Z" fill="#15121c" />
-        <path d="M24 89 C34 96 66 96 76 89" {...stroke('#c0392b', 2.4)} />
-        <path d="M21 88 C23 81 30 79 34 83 L33 100 L18 100 Z" fill="#312a3d" />
-        <path d="M79 88 C77 81 70 79 66 83 L67 100 L82 100 Z" fill="#312a3d" />
-        <circle cx="50" cy="86" r="3.4" fill="#c0392b" />
-        <circle cx="50" cy="86" r="1.4" fill="#ffb4a8" />
+        <path d={body} fill="#241f2e" stroke={shade("#241f2e", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M50 79 L40 90 L50 99 L60 90 Z" fill="#15121c" />
+        <path d="M22 93 C34 100 66 100 78 93" {...stroke('#c0392b', 2.4)} />
+        <path d="M19 92 C21 84 29 82 34 87 L33 100 L16 100 Z" fill="#312a3d" />
+        <path d="M81 92 C79 84 71 82 66 87 L67 100 L84 100 Z" fill="#312a3d" />
+        <circle cx="50" cy="90" r="3.6" fill="#c0392b" />
+        <circle cx="50" cy="90" r="1.5" fill="#ffb4a8" />
       </g>
     )
   }
@@ -241,9 +266,9 @@ function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }) {
   // 训练服：免费款
   return (
     <g>
-      <path d={body} fill="#3f4757" />
-      <path d="M50 74 L44 81 L50 87 L56 81 Z" fill="#e9edf3" />
-      <path d="M24 92 h52" {...stroke('#2c3340', 2.4)} />
+      <path d={body} fill="#3f4757" stroke={shade("#3f4757", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M50 79 L44 86 L50 92 L56 86 Z" fill="#e9edf3" />
+      <path d="M22 96 h56" {...stroke('#2c3340', 2.4)} />
     </g>
   )
 }
@@ -256,157 +281,185 @@ function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }) {
 
 type Hair = { back?: ReactNode; front: ReactNode }
 
+/**
+ * 一撮头发 = 填色 + 描边。
+ * 描边是这版和上一版最大的差别：纯色块拼出来的头发是平的，
+ * 沿轮廓压一条深色线之后才有「一片压着一片」的厚度。
+ */
+const strand = (d: string, c: string, w = 1.5) => (
+  <path d={d} fill={c} stroke={shade(c, -0.45)} strokeWidth={w} strokeLinejoin="round" />
+)
+
+/** 高光：顺着头顶弧度扫一条，别画满，留白才像反光 */
+const gloss = (d: string, c: string, w = 3.2) => (
+  <path d={d} {...stroke(shade(c, 0.34), w)} opacity="0.55" />
+)
+
 const hairOf = (id: string | undefined, sex: AvatarSex): Hair => {
   switch (id) {
     case 'm-spiky': {
-      const c = '#241f2b'
+      const c = '#2a2431'
       return {
         front: (
           <g>
-            <path
-              d="M23 44 C21 26 33 12 50 12 C67 12 79 26 77 44
-                 L72 33 L68 41 L62 28 L56 38 L50 26 L44 38 L38 28 L32 41 L28 33 Z"
-              fill={c}
-            />
-            <path d="M31 30 L36 20 L40 29" fill={shade(c, 0.16)} />
-            <path d="M60 29 L64 20 L69 30" fill={shade(c, 0.16)} />
+            {strand(
+              `M19 48 C17 26 30 4 50 4 C70 4 83 26 81 48
+               L74 30 Q72 37 70 42 L63 25 Q60 33 57 39 L50 22 Q46 32 43 39 L37 25 Q33 37 30 42 L26 30 Z`,
+              c,
+            )}
+            {strand('M30 42 L37 25 L43 39 Z', shade(c, 0.14), 0)}
+            {strand('M57 39 L63 25 L70 42 Z', shade(c, 0.14), 0)}
+            {gloss('M34 24 C40 17 48 15 55 18', c, 2.6)}
           </g>
         ),
       }
     }
+
     case 'm-wolf': {
-      const c = '#5a3a24'
+      const c = '#5d3b23'
       return {
-        back: (
-          <path d="M22 42 C20 60 24 74 30 84 L70 84 C76 74 80 60 78 42 Z" fill={shade(c, -0.2)} />
+        back: strand(
+          'M20 44 C17 62 20 78 26 88 L74 88 C80 78 83 62 80 44 Z',
+          shade(c, -0.24),
         ),
         front: (
           <g>
-            <path
-              d="M23 46 C21 26 33 13 50 13 C67 13 79 26 77 46
-                 C74 36 70 31 64 29 C58 40 46 42 38 36 C32 39 27 40 23 46 Z"
-              fill={c}
-            />
-            <path d="M36 21 C41 18 46 17 50 18" {...stroke(shade(c, 0.2), 1.4)} opacity="0.6" />
+            {strand(
+              `M19 50 C17 24 31 6 50 6 C69 6 83 24 81 50
+               C78 38 73 31 66 29 L60 40 L54 28 C46 40 34 41 28 35
+               C23 39 21 44 19 50 Z`,
+              c,
+            )}
+            {strand('M54 28 L60 40 L66 29 Z', shade(c, 0.16), 0)}
+            {gloss('M32 24 C39 17 49 15 57 19', c)}
           </g>
         ),
       }
     }
+
     case 'm-silver': {
-      const c = '#b9c0d0'
+      const c = '#aeb6c6'
       return {
-        back: <path d="M23 42 C21 58 25 70 30 78 L70 78 C75 70 79 58 77 42 Z" fill={shade(c, -0.22)} />,
+        back: strand('M20 42 C18 58 22 72 28 80 L72 80 C78 72 82 58 80 42 Z', shade(c, -0.26)),
         front: (
           <g>
-            <path
-              d="M23 46 C21 25 34 12 50 12 C66 12 79 25 77 46
-                 C73 34 66 28 58 27 C52 36 40 39 33 33 C28 36 25 40 23 46 Z"
-              fill={c}
-            />
-            <path d="M38 20 C43 17 50 17 55 19" {...stroke("#fff", 1.4)} opacity="0.5" />
-            <path d="M27 42 C29 33 34 28 39 26" {...stroke(shade(c, -0.3), 2.4)} />
-            <path d="M25 44 C30 34 40 31 50 32 C60 31 70 34 75 44" {...stroke(shade(c, -0.28), 1.6)} opacity="0.8" />
+            {strand(
+              `M19 50 C17 22 32 5 50 5 C68 5 83 22 81 50
+               C77 36 69 28 60 27 C53 38 38 42 30 35 C24 39 21 44 19 50 Z`,
+              c,
+            )}
+            {/* 斜向的一大绺，银发要靠这个才不糊成一坨 */}
+            {strand('M30 35 C38 41 52 38 60 27 C52 34 40 36 30 35 Z', shade(c, -0.2), 0)}
+            {gloss('M33 22 C41 14 52 13 60 18', c, 3.6)}
           </g>
         ),
       }
     }
+
     case 'f-twin': {
-      const c = '#6b4632'
+      const c = '#6f4830'
       return {
         back: (
           <g>
-            <path d="M26 40 C18 44 12 58 15 74 C19 84 27 84 29 76 C27 62 28 50 32 44 Z" fill={c} />
-            <path d="M74 40 C82 44 88 58 85 74 C81 84 73 84 71 76 C73 62 72 50 68 44 Z" fill={c} />
-            <ellipse cx="24" cy="38" rx="7" ry="6" fill={shade(c, 0.12)} />
-            <ellipse cx="76" cy="38" rx="7" ry="6" fill={shade(c, 0.12)} />
+            {strand('M27 42 C16 46 9 60 12 76 C16 90 27 90 30 79 C27 64 29 50 34 45 Z', c)}
+            {strand('M73 42 C84 46 91 60 88 76 C84 90 73 90 70 79 C73 64 71 50 66 45 Z', c)}
+            {strand('M24 40 a7 6 0 1 0 0.1 0 Z', shade(c, 0.12))}
+            {strand('M76 40 a7 6 0 1 0 0.1 0 Z', shade(c, 0.12))}
           </g>
         ),
         front: (
           <g>
-            <path
-              d="M22 48 C20 25 34 11 50 11 C66 11 80 25 78 48
-                 C76 38 72 32 66 30 L62 38 L56 30 L50 37 L44 30 L38 38 L34 30 C28 32 24 38 22 48 Z"
-              fill={c}
-            />
-            <path d="M39 20 C44 17 51 17 56 19" {...stroke(shade(c, 0.2), 1.4)} opacity="0.6" />
+            {strand(
+              `M19 52 C17 22 32 4 50 4 C68 4 83 22 81 52
+               C79 40 75 32 68 29 Q60 37 57 30 Q53 36 50 40 Q46 35 43 30 Q40 37 37 41 Q34 34 32 29
+               C25 32 21 40 19 52 Z`,
+              c,
+            )}
+            {strand('M32 29 L37 41 L43 30 Z', shade(c, 0.14), 0)}
+            {gloss('M36 20 C43 15 53 15 60 19', c)}
           </g>
         ),
       }
     }
+
     case 'f-long': {
-      const c = '#1f1b26'
+      const c = '#241d29'
       return {
-        back: (
-          <path d="M21 40 C17 60 18 82 22 100 L78 100 C82 82 83 60 79 40 Z" fill={c} />
-        ),
+        back: strand('M18 42 C14 62 15 84 19 100 L81 100 C85 84 86 62 82 42 Z', c),
         front: (
           <g>
-            <path
-              d="M22 48 C20 24 34 11 50 11 C66 11 80 24 78 48
-                 C77 36 73 30 68 28 C63 36 52 39 44 34 C33 36 25 40 22 48 Z"
-              fill={c}
-            />
-            <path d="M22 48 C22 62 24 72 27 80 L33 80 C29 68 28 56 30 44 Z" fill={shade(c, 0.1)} />
-            <path d="M78 48 C78 62 76 72 73 80 L67 80 C71 68 72 56 70 44 Z" fill={shade(c, 0.1)} />
-            <path d="M39 19 C45 16 52 16 57 18" {...stroke(shade(c, 0.3), 1.4)} opacity="0.55" />
+            {/* 两鬓垂到肩，是黑长直最像样的地方 */}
+            {strand('M19 48 C19 64 22 76 26 86 L34 86 C29 72 27 58 29 44 Z', shade(c, 0.1))}
+            {strand('M81 48 C81 64 78 76 74 86 L66 86 C71 72 73 58 71 44 Z', shade(c, 0.1))}
+            {strand(
+              `M19 52 C17 22 32 4 50 4 C68 4 83 22 81 52
+               C80 38 76 30 70 27 C64 37 52 41 43 35 C31 37 22 42 19 52 Z`,
+              c,
+            )}
+            {gloss('M37 18 C44 13 54 13 61 18', c, 2.8)}
           </g>
         ),
       }
     }
+
     case 'f-wavy': {
-      const c = '#d9b26a'
+      const c = '#d9ab5f'
       return {
-        back: (
-          <path
-            d="M21 40 C15 56 20 66 15 78 C22 84 26 78 28 88 C34 84 38 92 44 88
-               L56 88 C62 92 66 84 72 88 C74 78 78 84 85 78 C80 66 85 56 79 40 Z"
-            fill={c}
-          />
+        back: strand(
+          `M18 42 C11 58 18 68 12 82 C20 90 25 82 27 93
+           C34 88 39 97 45 92 L55 92 C61 97 66 88 73 93
+           C75 82 80 90 88 82 C82 68 89 58 82 42 Z`,
+          c,
         ),
         front: (
           <g>
-            <path
-              d="M22 48 C20 24 34 11 50 11 C66 11 80 24 78 48
-                 C76 36 71 30 65 29 C60 38 46 41 38 35 C30 37 24 41 22 48 Z"
-              fill={c}
-            />
-            <path d="M24 46 C20 56 26 62 22 70" {...stroke(shade(c, -0.22), 2.6)} />
-            <path d="M76 46 C80 56 74 62 78 70" {...stroke(shade(c, -0.22), 2.6)} />
-            <path d="M39 19 C45 16 52 16 57 19" {...stroke("#f6e3b8", 1.4)} opacity="0.6" />
+            {strand('M20 48 C15 60 22 68 17 78 L26 82 C29 70 27 56 29 44 Z', shade(c, -0.16))}
+            {strand('M80 48 C85 60 78 68 83 78 L74 82 C71 70 73 56 71 44 Z', shade(c, -0.16))}
+            {strand(
+              `M19 52 C17 22 32 4 50 4 C68 4 83 22 81 52
+               C78 38 72 30 65 28 C58 38 44 42 36 35 C27 37 21 44 19 52 Z`,
+              c,
+            )}
+            {gloss('M35 19 C43 12 55 13 62 19', c, 3.6)}
           </g>
         ),
       }
     }
+
     case 'f-bob': {
-      const c = '#6b4632'
+      const c = '#6f4830'
       return {
-        back: <path d="M22 42 C20 56 23 66 27 72 L73 72 C77 66 80 56 78 42 Z" fill={shade(c, -0.15)} />,
+        back: strand('M19 42 C17 58 21 70 26 76 L74 76 C79 70 83 58 81 42 Z', shade(c, -0.2)),
         front: (
           <g>
-            <path
-              d="M22 50 C20 25 34 11 50 11 C66 11 80 25 78 50
-                 C77 42 75 36 71 32 L66 40 L60 31 L54 39 L48 30 L42 39 L36 31 L30 39
-                 C26 40 23 44 22 50 Z"
-              fill={c}
-            />
-            <path d="M22 50 C22 60 24 66 26 70 L32 70 C29 62 28 56 29 46 Z" fill={shade(c, 0.1)} />
-            <path d="M78 50 C78 60 76 66 74 70 L68 70 C71 62 72 56 71 46 Z" fill={shade(c, 0.1)} />
+            {strand('M19 48 C19 60 21 70 25 76 L33 76 C29 66 28 56 29 44 Z', shade(c, 0.1))}
+            {strand('M81 48 C81 60 79 70 75 76 L67 76 C71 66 72 56 71 44 Z', shade(c, 0.1))}
+            {strand(
+              `M19 54 C17 22 32 4 50 4 C68 4 83 22 81 54
+               C80 44 77 36 73 31 Q64 38 60 30 Q56 36 53 41 Q49 34 46 29 Q42 36 39 41 Q35 34 32 30
+               C27 34 21 44 19 54 Z`,
+              c,
+            )}
+            {gloss('M37 18 C44 13 54 13 61 18', c)}
           </g>
         ),
       }
     }
+
     default: {
       // 利落短发：男生的免费款，也是所有缺省情况的兜底
-      const c = sex === 'f' ? '#6b4632' : '#4a3526'
+      const c = sex === 'f' ? '#6f4830' : '#4d3626'
       return {
         front: (
           <g>
-            <path
-              d="M23 47 C21 26 34 12 50 12 C66 12 79 26 77 47
-                 C74 37 70 31 64 29 C57 38 44 40 36 34 C29 36 25 40 23 47 Z"
-              fill={c}
-            />
-            <path d="M38 20 C43 17 50 17 55 19" {...stroke(shade(c, 0.22), 1.4)} opacity="0.6" />
+            {strand(
+              `M19 50 C17 24 31 5 50 5 C69 5 83 24 81 50
+               C79 38 74 30 67 27 Q58 34 55 27 Q51 33 48 37 Q45 31 42 26 Q39 32 36 36 Q33 30 30 27
+               C25 31 21 40 19 50 Z`,
+              c,
+            )}
+            {strand('M30 27 L36 36 L42 26 Z', shade(c, 0.15), 0)}
+            {gloss('M34 21 C41 15 51 14 58 19', c)}
           </g>
         ),
       }
@@ -479,7 +532,7 @@ const WEAPONS: Record<string, ReactNode> = {
  * 武器摆位：往右让开脸，握把落在肩膀高度，刀尖朝右上。
  * 头最宽到 x=77，所以握把放 x=87 才不压脸。
  */
-const WEAPON_AT = 'translate(87 74) rotate(14) scale(0.82)'
+const WEAPON_AT = 'translate(88 78) rotate(14) scale(0.8)'
 
 /* ------------------------------------------------------------------ *
  * 背景
@@ -610,7 +663,7 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
   const hair = item.slot === 'hair' ? item.id : sex === 'm' ? 'm-short' : 'f-bob'
   const outfit = item.slot === 'outfit' ? item.id : 'tee'
   // 发型看头，战服看肩
-  const crop = item.slot === 'hair' ? '14 4 72 72' : '14 62 72 40'
+  const crop = item.slot === 'hair' ? '12 0 76 76' : '12 66 76 34'
 
   return (
     <svg viewBox={crop} className={className} aria-hidden>
