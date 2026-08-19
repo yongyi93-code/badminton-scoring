@@ -4,9 +4,27 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath } from 'node:url'
+import { execSync } from 'node:child_process'
+
+/**
+ * 构建版本号。CI 上直接用 GITHUB_SHA，本地退回读 git，
+ * 都拿不到就标 dev —— 印在首页，用来确认手机上跑的是不是最新版。
+ */
+const buildId = (() => {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7)
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return 'dev'
+  }
+})()
 
 export default defineConfig({
   base: './',
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

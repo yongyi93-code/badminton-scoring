@@ -4,6 +4,7 @@ import { useNav } from '@/store/useNav'
 import { Body, Button, Card, EmptyState, Pill, Screen, SectionTitle, Sheet } from '@/components/ui'
 import { formatDate } from '@/lib/format'
 import { decidedMatches } from '@/lib/ranking'
+import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 
 export function Home() {
   const { players, sessions, matches } = useApp()
@@ -11,6 +12,7 @@ export function Home() {
   const importBackup = useApp((s) => s.importBackup)
   const push = useNav((s) => s.push)
   const [backupOpen, setBackupOpen] = useState(false)
+  const [updating, setUpdating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -150,10 +152,30 @@ export function Home() {
 
         <button
           onClick={() => setBackupOpen(true)}
-          className="w-full pt-2 pb-4 text-center text-sm text-ink-400 underline decoration-ink-700 underline-offset-4"
+          className="w-full pt-2 text-center text-sm text-ink-400 underline decoration-ink-700 underline-offset-4"
         >
           数据备份与恢复
         </button>
+
+        {/*
+          装成 PWA 之后旧缓存会一直顶着，界面看不出更没更新。
+          把版本印出来，再给个一键清缓存的按钮，省得靠反复划掉 App 碰运气。
+        */}
+        <div className="flex items-center justify-center gap-3 pb-4 text-xs text-ink-500">
+          <span className="tnum">
+            版本 {BUILD_ID} · {buildStamp()}
+          </span>
+          <button
+            onClick={() => {
+              setUpdating(true)
+              void forceUpdate()
+            }}
+            disabled={updating}
+            className="underline decoration-ink-700 underline-offset-4 disabled:opacity-60"
+          >
+            {updating ? '更新中…' : '检查更新'}
+          </button>
+        </div>
       </Body>
 
       <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title="数据备份">
