@@ -19,8 +19,10 @@ import { RankMedal } from '@/components/RankMedal'
 import {
   balanceOf,
   buyBlocker,
-  earnedPoints,
-  levelOf,
+  IMMORTAL_STEP,
+  LOSS_POINTS,
+  progressOf,
+  type Progress,
   outfitValue,
   PET_KINDS,
   PET_LEVELS,
@@ -28,7 +30,6 @@ import {
   SLOT_LABELS,
   SLOT_ORDER,
   WIN_POINTS,
-  winCount,
   type PetKind,
   type PetSlot,
   type ShopItem,
@@ -55,10 +56,9 @@ export function Pet({ playerId }: { playerId: string }) {
   const player = useMemo(() => playerMap(players).get(playerId), [players, playerId])
   const pet = petOf(pets, playerId)
 
-  const wins = useMemo(() => winCount(playerId, matches), [playerId, matches])
-  const earned = useMemo(() => earnedPoints(playerId, matches), [playerId, matches])
-  const level = levelOf(earned)
-  const balance = balanceOf(pet, earned)
+  const progress = useMemo(() => progressOf(playerId, matches), [playerId, matches])
+  const { wins, losses, rankPoints, coins, level } = progress
+  const balance = balanceOf(pet, coins)
 
   /**
    * 段位横条一屏放不下八段，高段位的人一进来自己那格在屏幕外。
@@ -94,7 +94,7 @@ export function Pet({ playerId }: { playerId: string }) {
           <Card className="text-center">
             <p className="text-lg font-bold">挑一只宠物开始养</p>
             <p className="mt-1 text-sm text-ink-400">
-              每赢一场比赛得 {WIN_POINTS} 分，用分给它买装备打扮
+              每赢一场比赛得 {WIN_POINTS} 金币，用金币给它买装备打扮
             </p>
           </Card>
 
@@ -122,7 +122,7 @@ export function Pet({ playerId }: { playerId: string }) {
   const owned = SHOP_ITEMS.filter((i) => pet.owned.includes(i.id))
 
   const tryBuy = (item: ShopItem) => {
-    const ok = buyItem(playerId, item.id, earned)
+    const ok = buyItem(playerId, item.id, progress)
     setToast(ok ? `买到了「${item.name}」，已经戴上` : '买不了，看看下面的提示')
     window.setTimeout(() => setToast(null), 2200)
   }
@@ -137,7 +137,7 @@ export function Pet({ playerId }: { playerId: string }) {
     <Screen>
       <TopBar
         title={`${player.name} 的宠物`}
-        subtitle={`${level.tier.name}${level.star !== null ? ` ${level.star}★` : ''} · 余额 ${balance} 分`}
+        subtitle={`${level.display}${level.star !== null ? ` ${level.star}★` : ''} · 金币 ${balance}`}
         onBack={back}
       />
       <Body>
@@ -180,8 +180,10 @@ export function Pet({ playerId }: { playerId: string }) {
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <Pill>赢 {wins} 场</Pill>
-            <Pill>身上行头 {outfitValue(pet)} 分</Pill>
+            <Pill>
+              {wins} 胜 {losses} 负
+            </Pill>
+            <Pill>身上行头 {outfitValue(pet)} 金币</Pill>
           </div>
         </Card>
 
@@ -191,17 +193,17 @@ export function Pet({ playerId }: { playerId: string }) {
             <RankMedal level={level} className="size-20 shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-xl font-bold" style={{ color: level.tier.color }}>
-                {level.tier.name}
+                {level.display}
                 {level.star !== null && (
                   <span className="ml-1.5 text-base">{level.star}★</span>
                 )}
               </p>
               <p className="text-sm text-ink-400">{level.tier.label}</p>
               <p className="tnum mt-1 text-xs text-ink-400">
-                累计 {earned} 分
+                段位分 {rankPoints}
                 {level.next
                   ? ` · 还差 ${level.toNext} 分升 ${level.next.name}`
-                  : ' · 已经到顶'}
+                  : ` · 还差 ${level.toNext} 分升 ${level.tier.name} ${(level.immortalRank ?? 0) + 1}`}
               </p>
             </div>
           </div>
@@ -247,9 +249,12 @@ export function Pet({ playerId }: { playerId: string }) {
             </div>
           </div>
 
-          <p className="text-xs text-ink-400">
-            段位看累计赚到的分，买东西花掉的不算 —— 不会因为剁手掉段。
-            每段 5 颗星，星满就升段。
+          <p className="text-xs leading-relaxed text-ink-400">
+            段位分：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}。每段 5 颗星，星满升段。
+            打到最高段之后还能继续往上，每 {IMMORTAL_STEP} 分加一级。
+            <br />
+            买装备用的是金币，金币只按赢的场次算、输球不扣 ——
+            段位会掉，但攒下的家当不会被没收。
           </p>
         </Card>
 
@@ -280,9 +285,8 @@ export function Pet({ playerId }: { playerId: string }) {
         ) : (
           <ShopPanel
             pet={pet}
-            earned={earned}
+            progress={progress}
             balance={balance}
-            levelIndex={level.index}
             onBuy={tryBuy}
           />
         )}
@@ -393,22 +397,25 @@ function DressPanel({
 
 function ShopPanel({
   pet,
-  earned,
+  progress,
   balance,
-  levelIndex,
   onBuy,
 }: {
   pet: Parameters<typeof outfitValue>[0]
-  earned: number
+  progress: Progress
   balance: number
-  levelIndex: number
   onBuy: (item: ShopItem) => void
 }) {
   return (
     <>
       <Card className="flex items-center justify-between">
-        <span className="text-sm text-ink-400">可用余额</span>
-        <span className="tnum text-2xl font-bold text-lime-glow">{balance} 分</span>
+        <span className="text-sm text-ink-400">
+          可用金币
+          <span className="mt-0.5 block text-xs text-ink-500">
+            只按赢的场次算，输球不扣
+          </span>
+        </span>
+        <span className="tnum text-2xl font-bold text-lime-glow">{balance}</span>
       </Card>
 
       {SLOT_ORDER.map((slot) => {
@@ -418,7 +425,7 @@ function ShopPanel({
             <SectionTitle>{SLOT_LABELS[slot]}</SectionTitle>
             <div className="space-y-2">
               {items.map((item) => {
-                const block = buyBlocker(item, pet, earned)
+                const block = buyBlocker(item, pet, progress)
                 const need = PET_LEVELS[item.minLevel]
                 return (
                   <Card key={item.id}>
@@ -429,17 +436,18 @@ function ShopPanel({
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold">{item.name}</p>
                         <p className="tnum text-sm text-ink-400">
-                          {item.price} 分
+                          {item.price} 金币
                           {item.minLevel > 0 && ` · 需 ${need.name}`}
                         </p>
                         {block === 'level' && (
                           <p className="text-xs text-ink-400">
-                            等级不够，到 {need.name}（累计 {need.min} 分）才能买
+                            段位不够，段位分到 {need.min}（{need.name}）才能买，
+                            现在 {progress.rankPoints}
                           </p>
                         )}
                         {block === 'money' && (
                           <p className="text-xs text-ink-400">
-                            还差 {item.price - balance} 分，再赢{' '}
+                            还差 {item.price - balance} 金币，再赢{' '}
                             {Math.ceil((item.price - balance) / WIN_POINTS)} 场
                           </p>
                         )}
@@ -466,9 +474,10 @@ function ShopPanel({
       })}
 
       <p className="pb-4 text-xs leading-relaxed text-ink-400">
-        赢一场比赛 {WIN_POINTS} 分，输了不扣分也不加分。
-        当前等级 {PET_LEVELS[levelIndex].name}，累计赚到 {earned} 分。
-        积分是从比赛记录实时算的 —— 改了战绩，积分会跟着一起变。
+        价格看金币（赢一场 +{WIN_POINTS}，输球不扣），
+        门槛看段位分（赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}）。
+        现在 {progress.level.display}，段位分 {progress.rankPoints}，金币 {balance}。
+        两个数都是从比赛记录实时算的 —— 改了战绩会跟着一起变。
       </p>
     </>
   )

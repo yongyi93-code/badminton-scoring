@@ -152,7 +152,7 @@ export function RankChip({ level }: { level: LevelInfo }) {
       }}
     >
       <RankMedal level={level} className="size-4" compact />
-      {level.tier.name}
+      {level.display}
       {level.star !== null && <span className="opacity-70">{level.star}★</span>}
     </span>
   )

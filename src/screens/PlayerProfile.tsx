@@ -26,7 +26,7 @@ import { formatDate, percent, signed, streakLabel } from '@/lib/format'
 import { scoreLine } from '@/lib/scoring'
 import { PetView } from '@/components/Pet'
 import { RankChip } from '@/components/RankMedal'
-import { balanceOf, earnedPoints, levelOf, WIN_POINTS } from '@/lib/pet'
+import { balanceOf, progressOf, WIN_POINTS } from '@/lib/pet'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -44,8 +44,8 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
   const push = useNav((s) => s.push)
 
   const pet = petOf(pets, playerId)
-  const earned = useMemo(() => earnedPoints(playerId, matches), [playerId, matches])
-  const level = levelOf(earned)
+  const petProgress = useMemo(() => progressOf(playerId, matches), [playerId, matches])
+  const level = petProgress.level
 
   const names = useMemo(() => playerMap(players), [players])
   const player = names.get(playerId)
@@ -126,7 +126,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <RankChip level={level} />
                     <span className="tnum text-sm text-ink-400">
-                      余额 {balanceOf(pet, earned)} 分
+                      金币 {balanceOf(pet, petProgress.coins)}
                     </span>
                   </div>
                 </>
@@ -134,7 +134,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                 <>
                   <p className="text-lg font-semibold">还没有宠物</p>
                   <p className="text-sm text-ink-400">
-                    挑一只养起来，赢一场得 {WIN_POINTS} 分换装备
+                    挑一只养起来，赢一场得 {WIN_POINTS} 金币换装备
                   </p>
                 </>
               )}

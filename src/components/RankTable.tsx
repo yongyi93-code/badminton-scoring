@@ -58,7 +58,7 @@ export function RankRow({
             className="block text-xs font-semibold"
             style={{ color: level.tier.color }}
           >
-            {level.tier.name}
+            {level.display}
             {level.star !== null && ` ${level.star}★`}
           </span>
         )}
