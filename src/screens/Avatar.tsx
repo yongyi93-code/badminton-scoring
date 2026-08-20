@@ -14,6 +14,14 @@ import {
   cx,
 } from '@/components/ui'
 import { AvatarView, GearIcon } from '@/components/Avatar'
+import {
+  hasArt,
+  nextStage,
+  slotIsDressable,
+  stageOf,
+  STAGES,
+} from '@/lib/avatarArt'
+import { useProgress } from '@/store/progress'
 import { RankMedal } from '@/components/RankMedal'
 import {
   AVATAR_SEXES,
@@ -59,6 +67,8 @@ export function Avatar({ playerId }: { playerId: string }) {
   const progress = useMemo(() => progressOf(playerId, matches), [playerId, matches])
   const { wins, losses, mmr, coins, level } = progress
   const balance = balanceOf(avatar, coins)
+  const stage = stageOf(level)
+  const upcoming = nextStage(level)
 
   /**
    * 段位横条一屏放不下八段，高段位的人一进来自己那格在屏幕外。
@@ -94,7 +104,9 @@ export function Avatar({ playerId }: { playerId: string }) {
           <Card className="text-center">
             <p className="text-lg font-bold">先选个角色</p>
             <p className="mt-1 text-sm text-ink-400">
-              每赢一场比赛得 {WIN_POINTS} 金币，用金币买发型、战服和武器
+              {hasArt
+                ? `赢球涨 MMR，段位一升角色形象就跟着换，一共 ${STAGES.length} 个阶段`
+                : `每赢一场比赛得 ${WIN_POINTS} 金币，用金币买发型、战服和武器`}
             </p>
           </Card>
 
@@ -111,6 +123,7 @@ export function Avatar({ playerId }: { playerId: string }) {
                     hair: s.sex === 'm' ? 'm-short' : 'f-bob',
                     outfit: 'tee',
                   }}
+                  stage={STAGES[0]}
                   className="h-40 w-full"
                   title={s.label}
                 />
@@ -151,10 +164,26 @@ export function Avatar({ playerId }: { playerId: string }) {
               sex={avatar.sex}
               skin={avatar.skin}
               equipped={avatar.equipped}
+              stage={stage}
               className="mx-auto h-64 w-full max-w-64"
               title={player.name}
             />
           </div>
+
+          {/* 成长阶段：只有放了立绘图片才提，不然说了也看不到变化 */}
+          {hasArt && (
+            <div className="text-center">
+              <p className="text-lg font-bold" style={{ color: stage.glow }}>
+                Lv.{stage.lv} {stage.label}{' '}
+                <span className="text-sm font-semibold opacity-80">{stage.en}</span>
+              </p>
+              <p className="mt-0.5 text-xs text-ink-400">
+                {upcoming
+                  ? `还差 ${PET_LEVELS[upcoming.minTier].min - mmr} 分升 ${upcoming.label} ${upcoming.en}`
+                  : '已经是最高形象，无可匹敌的王者'}
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Pill>
@@ -290,9 +319,10 @@ function DressPanel({
   onSwitchSex: (sex: AvatarSex) => void
   onSkin: (index: number) => void
 }) {
+  const stage = stageOf(useProgress(avatar.playerId).level)
   return (
     <>
-      {SLOT_ORDER.map((slot) => {
+      {SLOT_ORDER.filter(slotIsDressable).map((slot) => {
         const mine = catalog.filter(
           (i) => i.slot === slot && avatar.owned.includes(i.id),
         )
@@ -369,6 +399,7 @@ function DressPanel({
                 hair: s.sex === 'm' ? 'm-short' : 'f-bob',
                 outfit: avatar.equipped.outfit,
               }}
+              stage={stage}
               className="h-20 w-full"
               title={s.label}
             />
@@ -413,7 +444,7 @@ function ShopPanel({
         <span className="tnum text-2xl font-bold text-lime-glow">{balance}</span>
       </Card>
 
-      {SLOT_ORDER.map((slot) => {
+      {SLOT_ORDER.filter(slotIsDressable).map((slot) => {
         const items = catalog.filter((i) => i.slot === slot && i.price > 0)
         if (items.length === 0) return null
         return (

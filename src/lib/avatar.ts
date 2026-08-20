@@ -276,7 +276,7 @@ export type Progress = {
   level: LevelInfo
 }
 
-const emptyProgress = (): Progress => ({
+export const emptyProgress = (): Progress => ({
   wins: 0,
   losses: 0,
   mmr: 0,

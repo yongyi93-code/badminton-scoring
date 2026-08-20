@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import type { Gender, Level, Player } from '@/types'
 import type { AvatarProfile, LevelInfo } from '@/lib/avatar'
 import { AvatarFace } from './Avatar'
+import { stageOf } from '@/lib/avatarArt'
+import { useProgress } from '@/store/progress'
 import { RankChip } from './RankMedal'
 import { cx } from './ui'
 
@@ -35,6 +37,9 @@ function hueOf(name: string) {
  *
  * 角色的取景往上偏：100×100 的立绘缩成一个小圆圈时，
  * 整个人只有几像素高，看不清是谁；裁到头和肩才认得出来。
+ *
+ * 成长阶段自己从 context 里取，不走 props —— 十来处调用只要传了 avatar
+ * 就一定拿得到正确的形象，不会有哪一处忘了传而显示成新手。
  */
 export function Avatar({
   name,
@@ -47,6 +52,8 @@ export function Avatar({
   size?: 'sm' | 'md' | 'lg'
   className?: string
 }) {
+  const progress = useProgress(avatar?.playerId)
+  const stage = stageOf(progress.level)
   const sizes = {
     sm: 'size-7 text-[11px]',
     md: 'size-10 text-sm',
@@ -66,6 +73,7 @@ export function Avatar({
           sex={avatar.sex}
           skin={avatar.skin}
           equipped={avatar.equipped}
+          stage={stage}
           className="h-full w-full"
           title={name}
         />

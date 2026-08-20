@@ -25,6 +25,7 @@ import {
 import { formatDate, percent, signed, streakLabel } from '@/lib/format'
 import { scoreLine } from '@/lib/scoring'
 import { AvatarView } from '@/components/Avatar'
+import { stageOf } from '@/lib/avatarArt'
 import { RankChip } from '@/components/RankMedal'
 import { balanceOf, progressOf, WIN_POINTS } from '@/lib/avatar'
 
@@ -116,6 +117,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                   sex={avatar.sex}
                   skin={avatar.skin}
                   equipped={avatar.equipped}
+                  stage={stageOf(level)}
                   className="h-full w-full"
                   title={player.name}
                 />

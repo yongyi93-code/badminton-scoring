@@ -6,6 +6,8 @@ import {
   type AvatarSex,
   type AvatarSlot,
 } from '@/lib/avatar'
+import { artUrl, HEAD_CROP, type Stage } from '@/lib/avatarArt'
+import { cx } from '@/components/ui'
 
 /* ------------------------------------------------------------------ *
  * 角色形象
@@ -801,19 +803,48 @@ function AvatarInner({
   )
 }
 
+/**
+ * 全身立绘。
+ *
+ * 给了 stage 而且那一格放了立绘图片，就用图片，背后衬一层这一阶段的光晕；
+ * 没图就照旧用 SVG 手绘 —— 两套画法共存，一张图都不放 App 也完整。
+ */
 export function AvatarView({
   sex,
   skin = 0,
   equipped = {},
+  stage,
   className,
   title,
 }: {
   sex: AvatarSex
   skin?: number
   equipped?: Partial<Record<AvatarSlot, string>>
+  stage?: Stage
   className?: string
   title?: string
 }) {
+  const art = stage && artUrl(sex, stage)
+  if (art) {
+    return (
+      <span className={cx('relative block overflow-hidden', className)}>
+        <span
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 top-1/4 blur-xl"
+          style={{
+            background: `radial-gradient(ellipse at 50% 60%, ${stage.glow}66, transparent 70%)`,
+          }}
+        />
+        <img
+          src={art}
+          alt={title ?? '角色'}
+          className="relative h-full w-full object-contain"
+          draggable={false}
+        />
+      </span>
+    )
+  }
+
   return (
     <svg
       viewBox="0 0 100 100"
@@ -875,15 +906,36 @@ export function AvatarFace({
   sex,
   skin = 0,
   equipped = {},
+  stage,
   className,
   title,
 }: {
   sex: AvatarSex
   skin?: number
   equipped?: Partial<Record<AvatarSlot, string>>
+  stage?: Stage
   className?: string
   title?: string
 }) {
+  const art = stage && artUrl(sex, stage)
+  if (art) {
+    // 立绘是全身的，缩进小圆圈里人只有几像素高 —— 放大后把头挪到圆心
+    return (
+      <span className={cx('block overflow-hidden', className)}>
+        <img
+          src={art}
+          alt={title ?? '头像'}
+          className="h-full w-full object-contain"
+          style={{
+            transform: `scale(${HEAD_CROP.scale})`,
+            transformOrigin: `50% ${HEAD_CROP.originY}%`,
+          }}
+          draggable={false}
+        />
+      </span>
+    )
+  }
+
   // 裁到 y=60：多带一截领口，队服的颜色也能在头像里看出来
   return (
     <svg viewBox="22 2 56 58" className={className} role="img" aria-label={title ?? '头像'}>

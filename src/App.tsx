@@ -9,6 +9,7 @@ import { Leaderboard } from '@/screens/Leaderboard'
 import { SessionSummary } from '@/screens/SessionSummary'
 import { PlayerProfile } from '@/screens/PlayerProfile'
 import { Avatar } from '@/screens/Avatar'
+import { ProgressProvider } from '@/store/progress'
 
 export default function App() {
   const route = useRoute()
@@ -21,6 +22,11 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [popFromHistory])
 
+  return <ProgressProvider>{screenFor(route)}</ProgressProvider>
+}
+
+/** 路由 → 画面。段位表由外面的 Provider 统一提供，每个画面不用自己算。 */
+function screenFor(route: ReturnType<typeof useRoute>) {
   switch (route.name) {
     case 'home':
       return <Home />
