@@ -1,4 +1,4 @@
-import { decidedMatches, matchWinnerBySets, sideOf } from './ranking'
+import { chronological, decidedMatches, matchWinnerBySets } from './ranking'
 import type { Match } from '@/types'
 
 /* ------------------------------------------------------------------ *
@@ -15,7 +15,11 @@ import type { Match } from '@/types'
 /** 赢一场加多少 MMR（同时也是拿到多少金币） */
 export const WIN_POINTS = 10
 
-/** 输一场扣多少 MMR（正数，算的时候是减掉）。金币不受影响 */
+/**
+ * 输一场扣多少 MMR（正数，算的时候是减掉）。
+ * 扣到 0 就打住，不做负分 —— 打得再差也是从 0 重新爬，不至于挖个坑劝退新人。
+ * 金币不受影响。
+ */
 export const LOSS_POINTS = 10
 
 /** 角色性别，只此两种 */
@@ -126,11 +130,11 @@ export const IMMORTAL_STEP = 100
 /**
  * 段位照搬 Dota 那一套八段，一段不少。
  *
- * 门槛看 MMR = 赢的场数 × 10 − 输的场数 × 10，赢加输减、可以为负。
- * 换算成净胜场：卫士 +10、中军 +20、统帅 +30、传奇 +50、
- * 万古 +70、超凡 +85、冠绝 +100。
+ * 门槛看 MMR：赢一场 +10（爆冷 +20），输一场 −10 但扣到 0 就打住。
+ * 顺风局大致换算成净胜场：卫士 +10、中军 +20、统帅 +30、传奇 +50、
+ * 万古 +70、超凡 +85、冠绝 +100；爆冷赢得多的话会快不少。
  *
- * 到了冠绝还能继续往上，每 100 分（净胜 10 场）加一级，显示成「Immortal 1」。
+ * 到了冠绝还能继续往上，每 100 分加一级，显示成「Immortal 1」。
  */
 export const PET_LEVELS: LevelTier[] = [
   { name: 'Herald', label: '先锋', min: 0, color: '#8fa07d' },
@@ -169,9 +173,7 @@ export type LevelInfo = {
 
 /**
  * 由 MMR 算出段位。
- *
- * MMR 可以是负的（输多过赢），负分一律按 0 处理落在最低段 ——
- * 打得再差也就是先锋，不设「负段位」，不然新手会被劝退。
+ * MMR 本身已经夹在 0 以上，这里再夹一次纯粹是防御。
  */
 export function levelOf(mmr: number): LevelInfo {
   const pts = Math.max(0, mmr)
@@ -227,87 +229,87 @@ export function starThreshold(tierIndex: number, star: number): number {
  * 积分
  * ------------------------------------------------------------------ */
 
-export type PlayerRecord = { wins: number; losses: number }
-
-/** 某人的胜负场次 —— 口径和排行榜完全一致 */
-export function recordOf(playerId: string, matches: Match[]): PlayerRecord {
-  let wins = 0
-  let losses = 0
-  for (const m of decidedMatches(matches)) {
-    const side = sideOf(m, playerId)
-    if (!side) continue
-    if (matchWinnerBySets(m) === side) wins += 1
-    else losses += 1
-  }
-  return { wins, losses }
-}
-
-/** 兼容旧叫法：只关心赢了几场的地方还在用 */
-export const winCount = (playerId: string, matches: Match[]): number =>
-  recordOf(playerId, matches).wins
-
-/**
- * MMR：赢一场加，输一场减，可以为负。
- * 这是「现在什么水平」，打得差会掉下来，段位就是按它划的。
- */
-export const mmrFrom = (r: PlayerRecord): number =>
-  r.wins * WIN_POINTS - r.losses * LOSS_POINTS
-
-/**
- * 金币：只按赢的场次算，输球不扣。
- *
- * 特意和 MMR 分开。要是买装备的钱也跟着输球缩水，
- * 会出现「昨天买得起、今天输两场就买不起」，甚至已经攒着准备买的钱凭空蒸发 ——
- * 那样大家会不敢打，正好和这套东西的目的相反。
- * 段位掉可以，攒下的家当不能被没收。
- */
-export const coinsFrom = (r: PlayerRecord): number => r.wins * WIN_POINTS
+/** 爆冷（赢了平均 MMR 比自己高的一方）时，赢的分翻几倍 */
+export const UPSET_MULTIPLIER = 2
 
 export type Progress = {
   wins: number
   losses: number
-  /** MMR，可为负 */
+  /** MMR，最低 0，不会变成负数 */
   mmr: number
   /** 累计赚到的金币（还没扣花掉的） */
   coins: number
   level: LevelInfo
 }
 
-const progressFrom = (r: PlayerRecord): Progress => {
-  const mmr = mmrFrom(r)
-  return {
-    ...r,
-    mmr,
-    coins: coinsFrom(r),
-    level: levelOf(mmr),
+const emptyProgress = (): Progress => ({
+  wins: 0,
+  losses: 0,
+  mmr: 0,
+  coins: 0,
+  level: levelOf(0),
+})
+
+/**
+ * 按时间顺序重放所有比赛，算出每个人的 MMR、金币和战绩。
+ *
+ * 为什么必须一场一场推，不能用「胜场×10 − 负场×10」这个公式：
+ *
+ * 1. MMR 到 0 就不再往下扣。先输 3 场再赢 2 场，逐场算是 0→0→0→10→20，
+ *    公式算是 2×10 − 3×10 = −10。两个结果不一样，逐场推的才是我们要的。
+ * 2. 爆冷加倍要看「打这场的当下双方 MMR 谁高」，那是个随时间变的量，
+ *    只有重放才知道。
+ *
+ * 代价是 O(比赛数 × 每场人数)，几千场也就几万次运算，无所谓。
+ */
+export function progressByPlayer(matches: Match[]): Map<string, Progress> {
+  const out = new Map<string, Progress>()
+  const get = (id: string) => {
+    let p = out.get(id)
+    if (!p) {
+      p = emptyProgress()
+      out.set(id, p)
+    }
+    return p
   }
+  const avgMmr = (team: string[]) =>
+    team.length ? team.reduce((s, id) => s + get(id).mmr, 0) / team.length : 0
+
+  for (const m of chronological(decidedMatches(matches))) {
+    const winnerSide = matchWinnerBySets(m)
+    if (!winnerSide) continue
+    const winners = winnerSide === 'A' ? m.teamA : m.teamB
+    const losers = winnerSide === 'A' ? m.teamB : m.teamA
+
+    // 爆冷：赢的这队打这场之前平均 MMR 更低
+    const upset = avgMmr(winners) < avgMmr(losers)
+    const gain = upset ? WIN_POINTS * UPSET_MULTIPLIER : WIN_POINTS
+
+    for (const id of winners) {
+      const p = get(id)
+      p.wins += 1
+      p.mmr += gain
+      // 金币不跟着爆冷翻倍：那是买装备的钱，只按「赢了几场」算，规则越简单越好
+      p.coins += WIN_POINTS
+    }
+    for (const id of losers) {
+      const p = get(id)
+      p.losses += 1
+      // 输球扣分，但扣到 0 就打住，不做负分
+      p.mmr = Math.max(0, p.mmr - LOSS_POINTS)
+    }
+  }
+
+  for (const p of out.values()) p.level = levelOf(p.mmr)
+  return out
 }
 
 export const progressOf = (playerId: string, matches: Match[]): Progress =>
-  progressFrom(recordOf(playerId, matches))
+  progressByPlayer(matches).get(playerId) ?? emptyProgress()
 
-/**
- * 一次扫完算出所有人的战绩、MMR 与段位。
- * 排行榜每一行都要，逐个调 progressOf 会把比赛表扫 N 遍。
- */
-export function progressByPlayer(matches: Match[]): Map<string, Progress> {
-  const records = new Map<string, PlayerRecord>()
-  const bump = (id: string, won: boolean) => {
-    const cur = records.get(id) ?? { wins: 0, losses: 0 }
-    if (won) cur.wins += 1
-    else cur.losses += 1
-    records.set(id, cur)
-  }
-
-  for (const m of decidedMatches(matches)) {
-    const winner = matchWinnerBySets(m)
-    if (!winner) continue
-    for (const id of m.teamA) bump(id, winner === 'A')
-    for (const id of m.teamB) bump(id, winner === 'B')
-  }
-
-  return new Map([...records].map(([id, r]) => [id, progressFrom(r)]))
-}
+/** 只关心赢了几场的地方用这个 */
+export const winCount = (playerId: string, matches: Match[]): number =>
+  progressOf(playerId, matches).wins
 
 /* ------------------------------------------------------------------ *
  * 角色档案

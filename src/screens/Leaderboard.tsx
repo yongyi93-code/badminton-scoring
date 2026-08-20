@@ -21,7 +21,12 @@ import {
   venueSummaries,
 } from '@/lib/venues'
 import { formatDate, percent, signed } from '@/lib/format'
-import { LOSS_POINTS, progressByPlayer, WIN_POINTS } from '@/lib/avatar'
+import {
+  LOSS_POINTS,
+  progressByPlayer,
+  UPSET_MULTIPLIER,
+  WIN_POINTS,
+} from '@/lib/avatar'
 import { RANK_MIN_GAMES } from '@/types'
 
 type Scope = 'session' | 'all'
@@ -186,7 +191,8 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
               净分差 = 本人所在队伍的总得分 − 总失分，
               双打里搭档的表现也会算进你的净分差。
               <br />
-              段位看 MMR：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}，输多过赢会掉段。
+              段位看 MMR：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}，但扣到 0 就打住，不会变负。
+              赢了 MMR 比自己高的一队算爆冷，那一场拿 {WIN_POINTS * UPSET_MULTIPLIER} 分。
               算的是跨场馆的整体水平，不会因为切换场馆而变。
               {scope === 'all' && venue !== null && (
                 <>

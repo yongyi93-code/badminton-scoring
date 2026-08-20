@@ -190,30 +190,35 @@ describe('轮转赛：生成固定赛程', () => {
   })
 
   it('水平参差时优先保证两队实力接近，搭档多样性稍作让步', () => {
-    const players = makePlayers(8, { levels: [5, 5, 4, 4, 2, 2, 1, 1] })
-    const levelOf = new Map(players.map((p) => [p.id, p.level as number]))
+    const players = makePlayers(8)
+    // 两档 MMR：4 个 400 分 + 4 个 0 分
+    const mmrById = new Map(
+      players.map((p, i) => [p.id, i < 4 ? 400 : 0] as const),
+    )
     const s = buildSchedule({
       attending: players,
       courtCount: 2,
       type: 'doubles',
       perPlayer: 6,
+      mmrById,
       random: seeded(31),
     })
 
-    // 实力平衡是主要目标：两队水平和的平均差距要小
-    const sum = (t: string[]) => t.reduce((a, id) => a + levelOf.get(id)!, 0)
-    const gaps = s.pairings.map((p) => Math.abs(sum(p.teamA) - sum(p.teamB)))
-    expect(gaps.reduce((a, b) => a + b, 0) / gaps.length).toBeLessThan(1.5)
+    // 实力平衡是主要目标：两队平均 MMR 的差距要小
+    const avg = (t: string[]) =>
+      t.reduce((a, id) => a + mmrById.get(id)!, 0) / t.length
+    const gaps = s.pairings.map((p) => Math.abs(avg(p.teamA) - avg(p.teamB)))
+    expect(gaps.reduce((a, b) => a + b, 0) / gaps.length).toBeLessThan(50)
 
-    // 强弱分成两档时，要保证队伍平衡就只能强配弱，
-    // 可能的搭档组合本来就只有 4×4 = 16 种 —— 算法把 16 种全用上了，
-    // 这已经是这个配置下的上限，不是退化
+    // 强弱分成两档时，要保证队伍平衡基本只能强配弱，
+    // 「一强一弱」的组合共 4×4 = 16 种。算法会把这 16 种铺开，
+    // 偶尔为了场数均等塞进一两组同档搭配，所以给一点余地
     const partners = new Set<string>()
     for (const p of s.pairings) {
       partners.add(pairKey(p.teamA[0], p.teamA[1]))
       partners.add(pairKey(p.teamB[0], p.teamB[1]))
     }
-    expect(partners.size).toBe(16)
+    expect(partners.size).toBeGreaterThanOrEqual(16)
 
     // 场数均等这条硬约束任何时候都不让步
     expect(s.perPlayerMax - s.perPlayerMin).toBe(0)

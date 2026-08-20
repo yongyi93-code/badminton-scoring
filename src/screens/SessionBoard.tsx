@@ -17,6 +17,7 @@ import {
 import { Avatar } from '@/components/PlayerBits'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
 import { pickNextMatch, playerLoads } from '@/lib/rotation'
+import { progressByPlayer } from '@/lib/avatar'
 import {
   buildSchedule,
   courtHolder,
@@ -246,6 +247,16 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const resetTo = useNav((s) => s.resetTo)
   const replace = useNav((s) => s.replace)
 
+  /**
+   * 配对时的实力平衡看 MMR，而且要用「所有球局」的战绩算 ——
+   * MMR 是跨球局的整体水平，只看今晚这一场配不准。
+   */
+  const mmrById = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const [id, prog] of progressByPlayer(allMatches)) map.set(id, prog.mmr)
+    return map
+  }, [allMatches])
+
   const [nextType, setNextType] = useState<MatchType | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [endOpen, setEndOpen] = useState(false)
@@ -412,6 +423,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       excludeIds: restingIds,
       mustInclude,
       type,
+      mmrById,
     })
     if (!pairing) {
       setNotice(reason ?? '排不出下一场')
@@ -435,6 +447,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       busyIds: otherBusy,
       excludeIds: restingIds,
       type: match.type,
+      mmrById,
     })
     if (!pairing) {
       setNotice(reason ?? '重排失败')
@@ -530,6 +543,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       type: session!.defaultType,
       perPlayer: left,
       history: done,
+      mmrById,
     })
     if (!schedule.pairings.length) {
       setNotice(schedule.reason ?? '排不出剩余赛程')
@@ -549,6 +563,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       perPlayer: 1,
       total: count,
       history: fresh,
+      mmrById,
     })
     if (!schedule.pairings.length) {
       setNotice(schedule.reason ?? '排不出更多场次')

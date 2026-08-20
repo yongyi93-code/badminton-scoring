@@ -89,6 +89,8 @@ export type ScheduleInput = {
    * 算法会把它当历史，避免重新生成后又撞回同样的搭档。
    */
   history?: Match[]
+  /** 每个人的 MMR，用来做两队实力平衡；口径同 pickNextMatch */
+  mmrById?: Map<string, number>
   random?: () => number
 }
 
@@ -153,6 +155,7 @@ function generateOnce(input: ScheduleInput): ScheduleResult {
     type,
     perPlayer,
     history = [],
+    mmrById,
     random = Math.random,
   } = input
 
@@ -196,6 +199,7 @@ function generateOnce(input: ScheduleInput): ScheduleResult {
         matches: timeline,
         busyIds: busy,
         type,
+        mmrById,
         random,
       })
       if (!pairing) break

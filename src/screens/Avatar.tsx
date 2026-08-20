@@ -23,6 +23,7 @@ import {
   LOSS_POINTS,
   outfitValue,
   PET_LEVELS,
+  UPSET_MULTIPLIER,
   progressOf,
   shopFor,
   SKIN_TONES,
@@ -226,8 +227,9 @@ export function Avatar({ playerId }: { playerId: string }) {
           </div>
 
           <p className="text-xs leading-relaxed text-ink-400">
-            MMR：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}。每段 5 颗星，星满升段。
-            打到最高段之后还能继续往上，每 {IMMORTAL_STEP} 分加一级。
+            MMR：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}，扣到 0 就打住、不会变负。
+            赢了 MMR 比自己高的一队算爆冷，那一场拿 {WIN_POINTS * UPSET_MULTIPLIER} 分。
+            每段 5 颗星，星满升段；打到最高段之后每 {IMMORTAL_STEP} 分加一级。
             <br />
             买装备用的是金币，金币只按赢的场次算、输球不扣 ——
             段位会掉，但攒下的家当不会被没收。

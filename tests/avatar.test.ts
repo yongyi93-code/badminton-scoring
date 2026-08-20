@@ -5,6 +5,7 @@ import {
   IMMORTAL_STEP,
   itemById,
   LOSS_POINTS,
+  UPSET_MULTIPLIER,
   progressByPlayer,
   progressOf,
   type Progress,
@@ -56,41 +57,77 @@ const pet = (patch: Partial<AvatarProfile> = {}): AvatarProfile => ({
 })
 
 describe('MMR 与金币', () => {
-  it('MMR 赢加输减，金币只加不减', () => {
-    const ms = [
-      match('m1', ['p1'], ['p2'], 'A'),
-      match('m2', ['p1'], ['p2'], 'B'),
-      match('m3', ['p1'], ['p2'], 'A'),
-    ]
-    const a = progressOf('p1', ms) // 2 胜 1 负
-    expect(a.wins).toBe(2)
-    expect(a.losses).toBe(1)
-    expect(a.mmr).toBe(2 * WIN_POINTS - 1 * LOSS_POINTS)
-    expect(a.coins).toBe(2 * WIN_POINTS)
+  /** 按给定顺序造一串打完的比赛，endedAt 递增，保证重放顺序确定 */
+  const series = (
+    rounds: { a: string[]; b: string[]; winner: 'A' | 'B' }[],
+  ): Match[] => rounds.map((r, i) => match(`m${i + 1}`, r.a, r.b, r.winner, i + 1))
 
-    const b = progressOf('p2', ms) // 1 胜 2 负
-    expect(b.mmr).toBe(1 * WIN_POINTS - 2 * LOSS_POINTS)
-    expect(b.coins).toBe(1 * WIN_POINTS)
+  const solo = (winners: ('A' | 'B')[]) =>
+    series(winners.map((w) => ({ a: ['p1'], b: ['p2'], winner: w })))
+
+  it('势均力敌时赢加输减，金币只加不减', () => {
+    // 两人同时起步、交替输赢，双方 MMR 始终不会出现「低打高」，所以不触发爆冷
+    const ms = solo(['A', 'B'])
+    const a = progressOf('p1', ms)
+    expect(a.wins).toBe(1)
+    expect(a.losses).toBe(1)
+    // 第一场平手起步赢 +10，第二场输掉扣回 0
+    expect(a.mmr).toBe(0)
+    expect(a.coins).toBe(WIN_POINTS)
   })
 
-  it('输多过赢时 MMR 为负，金币仍然是正的', () => {
-    const ms = [
-      match('m1', ['p1'], ['p2'], 'B'),
-      match('m2', ['p1'], ['p2'], 'B'),
-      match('m3', ['p1'], ['p2'], 'A'),
-    ]
-    const p = progressOf('p1', ms) // 1 胜 2 负
-    expect(p.mmr).toBe(-10)
-    expect(p.coins).toBe(10)
-    // 负分不会把段位压到最低段以下
+  it('输一场正好扣 LOSS_POINTS，扣到 0 为止', () => {
+    // 先赢 3 场攒到 30（第一场平手 +10，后两场高打低各 +10），再输 1 场
+    const p = progressOf('p1', solo(['A', 'A', 'A', 'B']))
+    expect(p.mmr).toBe(3 * WIN_POINTS - LOSS_POINTS)
+  })
+
+  it('MMR 扣到 0 就打住，不会变成负数', () => {
+    // 连输 5 场，MMR 只会停在 0
+    const ms = solo(['B', 'B', 'B', 'B', 'B'])
+    const p = progressOf('p1', ms)
+    expect(p.losses).toBe(5)
+    expect(p.mmr).toBe(0)
+    // 金币一分没赚，但也没被扣成负的
+    expect(p.coins).toBe(0)
     expect(p.level.tier.name).toBe('Herald')
   })
 
+  it('先输光再赢，赢的分从 0 起算，不用先还债', () => {
+    // 这正是「扣到 0 就打住」和「胜场×10 − 负场×10」的区别：
+    // 公式算是 2×10 − 3×10 = −10，逐场推是 0→0→0→ 赢两场
+    const ms = solo(['B', 'B', 'B', 'A', 'A'])
+    const p = progressOf('p1', ms)
+    expect(p.mmr).toBeGreaterThan(0)
+    expect(p.wins).toBe(2)
+    expect(p.losses).toBe(3)
+  })
+
+  it('低分赢高分，MMR 翻倍', () => {
+    // p1 先赢两场把分拉到 20，p2 还是 0；接着 p2 爆冷赢一场
+    const ms = solo(['A', 'A', 'B'])
+    const winner = progressOf('p2', ms)
+    // 那一场是低打高，拿双倍
+    expect(winner.mmr).toBe(WIN_POINTS * UPSET_MULTIPLIER)
+    // 但金币不翻倍，还是按「赢了一场」算
+    expect(winner.coins).toBe(WIN_POINTS)
+  })
+
+  it('高分赢低分只拿基础分，不翻倍', () => {
+    // p1 赢到 20 分后再赢一场：这次是高打低
+    const ms = solo(['A', 'A', 'A'])
+    const p = progressOf('p1', ms)
+    // 第一场平手 +10，之后两场都是高打低，各 +10
+    expect(p.mmr).toBe(3 * WIN_POINTS)
+  })
+
   it('双打里搭档一起算胜负', () => {
-    const ms = [match('m1', ['p1', 'p2'], ['p3', 'p4'], 'A')]
+    const ms = series([{ a: ['p1', 'p2'], b: ['p3', 'p4'], winner: 'A' }])
     expect(progressOf('p1', ms).mmr).toBe(WIN_POINTS)
     expect(progressOf('p2', ms).mmr).toBe(WIN_POINTS)
-    expect(progressOf('p3', ms).mmr).toBe(-LOSS_POINTS)
+    // 输的一方从 0 扣不下去，还是 0
+    expect(progressOf('p3', ms).mmr).toBe(0)
+    expect(progressOf('p3', ms).losses).toBe(1)
     expect(progressOf('p4', ms).coins).toBe(0)
   })
 
@@ -101,7 +138,7 @@ describe('MMR 与金币', () => {
   })
 
   it('没上过场的人 0 分', () => {
-    const ms = [match('m1', ['p1'], ['p2'], 'A')]
+    const ms = solo(['A'])
     const p = progressOf('p9', ms)
     expect(p.mmr).toBe(0)
     expect(p.coins).toBe(0)
@@ -109,12 +146,11 @@ describe('MMR 与金币', () => {
   })
 
   it('一次扫完的批量算法和逐个算的结果一致', () => {
-    const ms = [
-      match('m1', ['p1', 'p2'], ['p3', 'p4'], 'A'),
-      match('m2', ['p1', 'p3'], ['p2', 'p4'], 'B'),
-      match('m3', ['p1'], ['p2'], 'A'),
-      { ...match('m4', ['p1'], ['p2'], 'A'), status: 'playing' as const },
-    ]
+    const ms = series([
+      { a: ['p1', 'p2'], b: ['p3', 'p4'], winner: 'A' },
+      { a: ['p1', 'p3'], b: ['p2', 'p4'], winner: 'B' },
+      { a: ['p1'], b: ['p2'], winner: 'A' },
+    ])
     const batch = progressByPlayer(ms)
     for (const id of ['p1', 'p2', 'p3', 'p4']) {
       const one = progressOf(id, ms)
@@ -122,24 +158,21 @@ describe('MMR 与金币', () => {
       expect(batch.get(id)?.coins).toBe(one.coins)
       expect(batch.get(id)?.level.display).toBe(one.level.display)
     }
-    // 一场都没上过的人不进这张表
     expect(batch.get('p9')).toBeUndefined()
   })
 
   it('输球不会让已经买得起的东西变买不起', () => {
-    const wins = Array.from({ length: 10 }, (_, i) =>
-      match(`w${i + 1}`, ['p1'], ['p2'], 'A'),
-    )
-    const before = progressOf('p1', wins)
-    expect(before.coins).toBe(100)
-
-    // 再输 8 场：MMR 掉到 20，金币还是 100
-    const after = progressOf('p1', [
-      ...wins,
-      ...Array.from({ length: 8 }, (_, i) => match(`l${i + 1}`, ['p1'], ['p2'], 'B')),
-    ])
-    expect(after.mmr).toBe(20)
-    expect(after.coins).toBe(100)
+    const wins = Array.from({ length: 10 }, () => ({
+      a: ['p1'], b: ['p2'], winner: 'A' as const,
+    }))
+    const losses = Array.from({ length: 20 }, () => ({
+      a: ['p1'], b: ['p2'], winner: 'B' as const,
+    }))
+    const after = progressOf('p1', series([...wins, ...losses]))
+    // 输到 MMR 归零
+    expect(after.mmr).toBe(0)
+    // 金币一分没少，赢过的 10 场都还算数
+    expect(after.coins).toBe(10 * WIN_POINTS)
     expect(balanceOf(pet(), after.coins)).toBe(100)
   })
 

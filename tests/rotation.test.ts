@@ -37,6 +37,7 @@ function simulate(
   totalMatches: number,
   type: MatchType = 'doubles',
   seed = 42,
+  mmrById?: Map<string, number>,
 ) {
   const random = seeded(seed)
   const matches: Match[] = []
@@ -51,6 +52,7 @@ function simulate(
         matches,
         busyIds,
         type,
+        mmrById,
         random,
       })
       if (!pairing) break
@@ -216,17 +218,27 @@ describe('搭档与对手多样性', () => {
 })
 
 describe('实力平衡', () => {
-  it('高手和菜鸟混合时两队水平和尽量接近', () => {
-    // 4 个 5 星 + 4 个 1 星，理想分队是每队 5+1
-    const players = makePlayers(8, { levels: [5, 5, 5, 5, 1, 1, 1, 1] })
-    const levelOf = new Map(players.map((p) => [p.id, p.level]))
-    const matches = simulate(players, 1, 20)
+  it('高手和菜鸟混合时两队平均 MMR 尽量接近', () => {
+    // 4 个高分 + 4 个 0 分，理想分队是每队一高一低
+    const players = makePlayers(8)
+    const mmrById = new Map(
+      players.map((p, i) => [p.id, i < 4 ? 500 : 0] as const),
+    )
+    const matches = simulate(players, 1, 20, 'doubles', 42, mmrById)
     const gaps = matches.map((m) => {
-      const sum = (t: string[]) => t.reduce((s, id) => s + levelOf.get(id)!, 0)
-      return Math.abs(sum(m.teamA) - sum(m.teamB))
+      const avg = (t: string[]) =>
+        t.reduce((s, id) => s + mmrById.get(id)!, 0) / t.length
+      return Math.abs(avg(m.teamA) - avg(m.teamB))
     })
     const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length
-    expect(avgGap).toBeLessThan(1.5)
+    // 完美分队每队 250，差 0；这里给一点余地容忍随机抖动
+    expect(avgGap).toBeLessThan(60)
+  })
+
+  it('不传 MMR 时不做实力平衡，但照样排得出场', () => {
+    const players = makePlayers(8)
+    const matches = simulate(players, 1, 10)
+    expect(matches).toHaveLength(10)
   })
 })
 

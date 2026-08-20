@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Gender, Level, Player } from '@/types'
+import type { LevelInfo } from '@/lib/avatar'
+import { RankChip } from './RankMedal'
 import { cx } from './ui'
 
 const isCJK = (s: string) => /[㐀-鿿]/.test(s)
@@ -95,12 +97,15 @@ export function PlayerRow({
   onClick,
   selected,
   meta,
+  level,
 }: {
   player: Player
   right?: ReactNode
   onClick?: () => void
   selected?: boolean
   meta?: ReactNode
+  /** 段位，不传就只显示 meta —— 取代了原来那排水平星星 */
+  level?: LevelInfo
 }) {
   const inner = (
     <>
@@ -111,7 +116,7 @@ export function PlayerRow({
           <GenderTag gender={player.gender} />
         </span>
         <span className="mt-1 flex items-center gap-2">
-          <LevelDots level={player.level} />
+          {level && <RankChip level={level} />}
           {meta && <span className="text-xs text-ink-400">{meta}</span>}
         </span>
       </span>

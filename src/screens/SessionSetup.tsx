@@ -18,6 +18,7 @@ import { PlayerRow } from '@/components/PlayerBits'
 import { PlayerEditor } from './Players'
 import { todayISO } from '@/lib/format'
 import { buildSchedule, matchInput } from '@/lib/sessionFormat'
+import { progressByPlayer } from '@/lib/avatar'
 import { recentVenues, venueKey } from '@/lib/venues'
 import {
   capFor,
@@ -33,6 +34,7 @@ import {
 export function SessionSetup() {
   const players = useApp((s) => s.players)
   const sessions = useApp((s) => s.sessions)
+  const matches = useApp((s) => s.matches)
   const createSession = useApp((s) => s.createSession)
   const addMatches = useApp((s) => s.addMatches)
   const back = useNav((s) => s.back)
@@ -102,6 +104,13 @@ export function SessionSetup() {
     () => roster.filter((p) => selected.includes(p.id)),
     [roster, selected],
   )
+  /** 配对的实力平衡看 MMR，用所有球局的战绩算 */
+  const mmrById = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const [id, prog] of progressByPlayer(matches)) map.set(id, prog.mmr)
+    return map
+  }, [matches])
+
   const preview = useMemo(() => {
     if (format !== 'rotation') return null
     return buildSchedule({
@@ -109,8 +118,9 @@ export function SessionSetup() {
       courtCount,
       type: defaultType,
       perPlayer,
+      mmrById,
     })
-  }, [format, chosenPlayers, courtCount, defaultType, perPlayer])
+  }, [format, chosenPlayers, courtCount, defaultType, perPlayer, mmrById])
 
   function start() {
     const endCondition: EndCondition = {}
@@ -138,6 +148,7 @@ export function SessionSetup() {
         courtCount,
         type: defaultType,
         perPlayer,
+        mmrById,
       })
       if (schedule.pairings.length) {
         addMatches(

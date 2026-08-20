@@ -24,8 +24,12 @@ const W = {
   totalPartner: 6,
   /** 历史累计对阵次数（每次） */
   totalOpponent: 2,
-  /** 两队水平和每差 1 分 */
-  levelGap: 30,
+  /**
+   * 两队平均 MMR 每差 1 分。
+   * 用平均而不是求和，单打双打的尺度才一致；
+   * 0.4 这个值让「两队平均差 75 分」和以前「水平差 1 星」的代价差不多。
+   */
+  mmrGap: 0.4,
   /** 休息轮数：等得越久越该上，每轮减分 */
   restBonus: 12,
   /** 随机抖动上限，避免每晚排出一模一样的顺序 */
@@ -60,6 +64,12 @@ export type RotationInput = {
   excludeIds?: string[]
   /** 必须被排进这一场的球员 */
   mustInclude?: string[]
+  /**
+   * 每个人的 MMR，用来做两队实力平衡。
+   * 由调用方从「所有球局」算好传进来 —— MMR 是跨球局的整体水平，
+   * 只看今晚这一场的战绩配不准。缺省当 0，等于不做平衡。
+   */
+  mmrById?: Map<string, number>
   lookback?: number
   /** 注入随机源便于测试 */
   random?: () => number
@@ -205,6 +215,7 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     type,
     excludeIds = [],
     mustInclude = [],
+    mmrById,
     lookback = DEFAULT_LOOKBACK,
     random = Math.random,
   } = input
@@ -295,10 +306,10 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
           }
         }
 
-        // 实力平衡
-        const levelSum = (t: string[]) =>
-          t.reduce((s, id) => s + (byId.get(id)?.level ?? 3), 0)
-        cost += W.levelGap * Math.abs(levelSum(split.teamA) - levelSum(split.teamB))
+        // 实力平衡：看两队的平均 MMR
+        const avgMmr = (t: string[]) =>
+          t.length ? t.reduce((s, id) => s + (mmrById?.get(id) ?? 0), 0) / t.length : 0
+        cost += W.mmrGap * Math.abs(avgMmr(split.teamA) - avgMmr(split.teamB))
 
         // 等久的人优先上场
         for (const id of group) {

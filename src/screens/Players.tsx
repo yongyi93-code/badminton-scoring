@@ -13,43 +13,8 @@ import {
   TopBar,
   inputClass,
 } from '@/components/ui'
-import { LevelDots, PlayerRow } from '@/components/PlayerBits'
-import type { Gender, Level, Player } from '@/types'
-
-const LEVEL_LABELS: Record<Level, string> = {
-  1: '新手',
-  2: '入门',
-  3: '中级',
-  4: '进阶',
-  5: '高手',
-}
-
-export function LevelPicker({
-  value,
-  onChange,
-}: {
-  value: Level
-  onChange: (v: Level) => void
-}) {
-  return (
-    <div className="flex gap-1.5">
-      {([1, 2, 3, 4, 5] as Level[]).map((l) => (
-        <button
-          key={l}
-          onClick={() => onChange(l)}
-          className={`h-12 flex-1 rounded-xl border text-xs font-medium ${
-            value === l
-              ? 'border-lime-glow bg-lime-glow/15 text-lime-glow'
-              : 'border-ink-700 bg-ink-800 text-ink-300'
-          }`}
-        >
-          <span className="block text-base font-bold">{l}</span>
-          {LEVEL_LABELS[l]}
-        </button>
-      ))}
-    </div>
-  )
-}
+import { PlayerRow } from '@/components/PlayerBits'
+import type { Gender, Player } from '@/types'
 
 export function PlayerEditor({
   open,
@@ -66,14 +31,13 @@ export function PlayerEditor({
 
   // 表单靠调用方传 key 来重置（切换编辑对象时整块重新挂载）
   const [name, setName] = useState(player?.name ?? '')
-  const [level, setLevel] = useState<Level>(player?.level ?? 3)
   const [gender, setGender] = useState<Gender>(player?.gender ?? '-')
 
   function save() {
     const trimmed = name.trim()
     if (!trimmed) return
-    if (player) updatePlayer(player.id, { name: trimmed, level, gender })
-    else addPlayer(trimmed, level, gender)
+    if (player) updatePlayer(player.id, { name: trimmed, gender })
+    else addPlayer(trimmed, gender)
     onClose()
   }
 
@@ -89,10 +53,6 @@ export function PlayerEditor({
             autoFocus={!player}
             onKeyDown={(e) => e.key === 'Enter' && save()}
           />
-        </Field>
-
-        <Field label="水平" hint="配对时会尽量让两队水平和接近">
-          <LevelPicker value={level} onChange={setLevel} />
         </Field>
 
         <Field label="性别" hint="混双模式需要，才能强制每队一男一女">
@@ -191,7 +151,6 @@ export function Players() {
                   key={p.id}
                   player={p}
                   onClick={() => openEditor(p)}
-                  right={<LevelDots level={p.level} />}
                 />
               ))}
             </div>

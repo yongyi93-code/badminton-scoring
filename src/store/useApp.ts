@@ -15,7 +15,6 @@ import {
   DEFAULT_RULES,
   type EndCondition,
   type Gender,
-  type Level,
   type Match,
   type MatchType,
   type Player,
@@ -65,7 +64,7 @@ type AppState = {
   matches: Match[]
   avatars: AvatarProfile[]
 
-  addPlayer: (name: string, level: Level, gender: Gender) => Player
+  addPlayer: (name: string, gender: Gender) => Player
   updatePlayer: (id: string, patch: Partial<Omit<Player, 'id'>>) => void
   setPlayerArchived: (id: string, archived: boolean) => void
 
@@ -103,11 +102,12 @@ export const useApp = create<AppState>()(
       matches: [],
       avatars: [],
 
-      addPlayer(name, level, gender) {
+      addPlayer(name, gender) {
         const player: Player = {
           id: newId(),
           name: name.trim(),
-          level,
+          // level 是旧版手填的水平星级，现在配对改看 MMR，字段留着只为兼容旧数据
+          level: 3,
           gender,
           archived: false,
           createdAt: Date.now(),
