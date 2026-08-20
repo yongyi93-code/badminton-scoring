@@ -1,5 +1,5 @@
 import type { Player, PlayerStats } from '@/types'
-import { Avatar } from './PlayerBits'
+import { Avatar, TitleTag } from './PlayerBits'
 import { Pill, cx } from './ui'
 import { percent, signed, streakLabel } from '@/lib/format'
 import { RankMedal } from './RankMedal'
@@ -55,6 +55,7 @@ export function RankRow({
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate font-medium">{player?.name ?? '已删除的球员'}</span>
+          <TitleTag avatar={avatar} />
           {streak && (
             <Pill tone={stats.streak > 0 ? 'lime' : 'neutral'}>{streak}</Pill>
           )}

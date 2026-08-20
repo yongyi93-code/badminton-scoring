@@ -33,18 +33,39 @@ export const AVATAR_SEXES: { sex: AvatarSex; label: string }[] = [
 /** 肤色档位，免费换，不进商店 */
 export const SKIN_TONES = ['#f6dcc0', '#e8bb96', '#c68a63', '#8d5a3b'] as const
 
-/** 装备槽位，一个槽位同时只能穿一件 */
-export type AvatarSlot = 'hair' | 'outfit' | 'weapon' | 'background'
+/**
+ * 装备槽位，一个槽位同时只能穿一件。
+ *
+ * 前三个是画在人身上的，换了立绘图片就没法再单独换（图片是一整张画好的人）；
+ * 后三个是画在人周围的另外几层 —— 背景衬在后面、头像框套在外面、
+ * 称号写在名字旁边 —— 两种画法都能用，也是有立绘之后金币唯一的去处。
+ */
+export type AvatarSlot =
+  | 'hair'
+  | 'outfit'
+  | 'weapon'
+  | 'background'
+  | 'frame'
+  | 'title'
 
 export const SLOT_LABELS: Record<AvatarSlot, string> = {
   hair: '发型',
   outfit: '战服',
   weapon: '武器',
   background: '背景',
+  frame: '头像框',
+  title: '称号',
 }
 
 /** 槽位展示顺序 */
-export const SLOT_ORDER: AvatarSlot[] = ['hair', 'outfit', 'weapon', 'background']
+export const SLOT_ORDER: AvatarSlot[] = [
+  'hair',
+  'outfit',
+  'weapon',
+  'background',
+  'frame',
+  'title',
+]
 
 export type ShopItem = {
   id: string
@@ -95,10 +116,28 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'racket-pro', name: '竞速拍', slot: 'weapon', price: 250, minLevel: 3 },
   { id: 'racket-gold', name: '金标拍', slot: 'weapon', price: 500, minLevel: 5 },
   { id: 'racket-legend', name: '传奇战拍', slot: 'weapon', price: 1200, minLevel: 7 },
-  // 背景
-  { id: 'court', name: '球场', slot: 'background', price: 150, minLevel: 1 },
-  { id: 'podium', name: '领奖台', slot: 'background', price: 500, minLevel: 5 },
+  /*
+   * 下面三类画在人的外面，不动人本身 ——
+   * 所以换成立绘图片之后，金币还有地方花，赢球还是有奔头。
+   */
+  // 背景：衬在人后面
+  { id: 'court', name: '球场', slot: 'background', price: 120, minLevel: 0 },
+  { id: 'night', name: '夜场灯光', slot: 'background', price: 260, minLevel: 2 },
+  { id: 'podium', name: '领奖台', slot: 'background', price: 500, minLevel: 4 },
+  { id: 'final', name: '决赛主场', slot: 'background', price: 800, minLevel: 6 },
   { id: 'galaxy', name: '星空', slot: 'background', price: 1200, minLevel: 7 },
+  // 头像框：套在头像圆圈外面，排行榜上一眼就看得见，最适合拿来显摆
+  { id: 'ring-steel', name: '钢圈', slot: 'frame', price: 90, minLevel: 0 },
+  { id: 'ring-jade', name: '翠环', slot: 'frame', price: 220, minLevel: 2 },
+  { id: 'ring-gold', name: '金边', slot: 'frame', price: 450, minLevel: 4 },
+  { id: 'ring-flame', name: '烈焰环', slot: 'frame', price: 900, minLevel: 6 },
+  { id: 'ring-crown', name: '王冠框', slot: 'frame', price: 1600, minLevel: 7 },
+  // 称号：写在名字旁边的一行小字
+  { id: 'title-newbie', name: '初入球场', slot: 'title', price: 40, minLevel: 0 },
+  { id: 'title-grinder', name: '球场劳模', slot: 'title', price: 150, minLevel: 1 },
+  { id: 'title-upset', name: '爆冷专家', slot: 'title', price: 300, minLevel: 3 },
+  { id: 'title-streak', name: '连胜王', slot: 'title', price: 600, minLevel: 5 },
+  { id: 'title-king', name: '无可匹敌', slot: 'title', price: 1400, minLevel: 7 },
 ]
 
 /** 某个性别能买到的东西：通用的 + 专属的 */

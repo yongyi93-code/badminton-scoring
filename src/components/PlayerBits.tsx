@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Gender, Level, Player } from '@/types'
-import type { AvatarProfile, LevelInfo } from '@/lib/avatar'
-import { AvatarFace } from './Avatar'
+import { itemById, type AvatarProfile, type LevelInfo } from '@/lib/avatar'
+import { AvatarFace, AvatarFrame } from './Avatar'
 import { stageOf } from '@/lib/avatarArt'
 import { useProgress } from '@/store/progress'
 import { RankChip } from './RankMedal'
@@ -61,22 +61,27 @@ export function Avatar({
   }
 
   if (avatar) {
+    const frame = avatar.equipped.frame
     return (
+      // 头像框画在圆圈外面，所以外层不能 overflow-hidden，裁切收到里面那层
       <span
         className={cx(
-          'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800',
+          'relative inline-flex shrink-0 items-center justify-center',
           sizes[size],
           className,
         )}
       >
-        <AvatarFace
-          sex={avatar.sex}
-          skin={avatar.skin}
-          equipped={avatar.equipped}
-          stage={stage}
-          className="h-full w-full"
-          title={name}
-        />
+        <span className="h-full w-full overflow-hidden rounded-full bg-ink-800">
+          <AvatarFace
+            sex={avatar.sex}
+            skin={avatar.skin}
+            equipped={avatar.equipped}
+            stage={stage}
+            className="h-full w-full"
+            title={name}
+          />
+        </span>
+        {frame && <AvatarFrame itemId={frame} />}
       </span>
     )
   }
@@ -95,6 +100,23 @@ export function Avatar({
       }}
     >
       {initials(name)}
+    </span>
+  )
+}
+
+/**
+ * 称号：名字旁边挂的一行小字。
+ *
+ * 和头像框一样画在人的外面，所以立绘图片版也用得上 ——
+ * 这两样加上背景，就是换成图片之后金币剩下的去处。
+ */
+export function TitleTag({ avatar }: { avatar?: AvatarProfile }) {
+  const id = avatar?.equipped.title
+  const item = id ? itemById(id) : undefined
+  if (!item) return null
+  return (
+    <span className="shrink-0 rounded-md border border-lime-glow/40 bg-lime-glow/10 px-1.5 py-px text-[11px] font-medium text-lime-glow">
+      {item.name}
     </span>
   )
 }
@@ -159,6 +181,7 @@ export function PlayerRow({
         <span className="flex items-center gap-2">
           <span className="truncate font-medium">{player.name}</span>
           <GenderTag gender={player.gender} />
+          <TitleTag avatar={avatar} />
         </span>
         <span className="mt-1 flex items-center gap-2">
           {level && <RankChip level={level} />}

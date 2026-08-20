@@ -724,6 +724,42 @@ const BACKDROPS: Record<string, ReactNode> = {
       <rect x="70" y="84" width="26" height="16" fill="#b08d57" />
     </>
   ),
+  night: (
+    <>
+      <rect x="0" y="0" width="100" height="100" fill="#0e1626" />
+      {/* 两盏顶灯打下来的光锥，夜场那种「场内亮、场外黑」的感觉 */}
+      <path d="M22 0 L44 74 L0 74 Z" fill="#cfe3ff" opacity="0.12" />
+      <path d="M78 0 L100 74 L56 74 Z" fill="#cfe3ff" opacity="0.12" />
+      <circle cx="22" cy="4" r="5" fill="#fff6d8" />
+      <circle cx="78" cy="4" r="5" fill="#fff6d8" />
+      <rect x="0" y="74" width="100" height="26" fill="#1d4f3c" />
+      <path d="M0 82 h100" {...stroke('#e6f2ea', 1.2)} />
+    </>
+  ),
+  final: (
+    <>
+      <rect x="0" y="0" width="100" height="100" fill="#141b2e" />
+      {/* 看台：一排排小方块，人多的场子 */}
+      {Array.from({ length: 4 }, (_, row) =>
+        Array.from({ length: 12 }, (_, col) => (
+          <rect
+            key={`${row}-${col}`}
+            x={col * 8.6 - 1}
+            y={row * 7 + 6}
+            width="6.4"
+            height="4.4"
+            rx="1.4"
+            fill="#2c3a5c"
+            opacity={0.5 + row * 0.12}
+          />
+        )),
+      )}
+      <rect x="0" y="40" width="100" height="60" fill="#1d4f3c" />
+      <rect x="6" y="46" width="88" height="48" {...stroke('#e6f2ea', 1.6)} />
+      <path d="M50 46 v48" {...stroke('#e6f2ea', 1.2)} />
+      <circle cx="50" cy="30" r="26" fill="#f2c14e" opacity="0.1" />
+    </>
+  ),
   galaxy: (
     <>
       <rect x="0" y="0" width="100" height="100" fill="#151a2e" />
@@ -737,6 +773,122 @@ const BACKDROPS: Record<string, ReactNode> = {
       ))}
     </>
   ),
+}
+
+/* ------------------------------------------------------------------ *
+ * 头像框
+ *
+ * 套在头像圆圈外面的一圈，和人本身无关 —— 所以立绘图片和 SVG 手绘
+ * 都能用。排行榜上每个人的头像都在，这一圈是最容易被看见的显摆位。
+ *
+ * 画在 0 0 100 100 里，圆心 50,50，人像占到半径 46 左右，
+ * 框画在 46~50 这一圈，往里不压脸、往外不出血。
+ * ------------------------------------------------------------------ */
+
+type FrameArt = { ring: ReactNode; glow?: string }
+
+const FRAMES: Record<string, FrameArt> = {
+  'ring-steel': {
+    ring: (
+      <>
+        <circle cx="50" cy="50" r="45" {...stroke('#7d8797', 5)} />
+        <circle cx="50" cy="50" r="45" {...stroke('#c3ccd9', 2)} />
+      </>
+    ),
+  },
+  'ring-jade': {
+    ring: (
+      <>
+        <circle cx="50" cy="50" r="45" {...stroke('#1f5f52', 5)} />
+        <circle cx="50" cy="50" r="45" {...stroke('#4fd6ac', 2.2)} />
+        {/* 四颗角石，等距落在圆上 */}
+        {[0, 90, 180, 270].map((a) => (
+          <circle
+            key={a}
+            cx={50 + 45 * Math.cos((a * Math.PI) / 180)}
+            cy={50 + 45 * Math.sin((a * Math.PI) / 180)}
+            r="4"
+            fill="#7ff0c8"
+            stroke="#1f5f52"
+            strokeWidth="1.4"
+          />
+        ))}
+      </>
+    ),
+    glow: '#4fd6ac',
+  },
+  'ring-gold': {
+    ring: (
+      <>
+        <circle cx="50" cy="50" r="45" {...stroke('#8a6712', 6)} />
+        <circle cx="50" cy="50" r="45" {...stroke('#f2c14e', 3)} />
+        <circle cx="50" cy="50" r="41" {...stroke('#fff3cf', 1)} opacity="0.6" />
+      </>
+    ),
+    glow: '#f2c14e',
+  },
+  'ring-flame': {
+    ring: (
+      <>
+        {/* 火苗先画，压在环下面，看起来是从环里烧出来的 */}
+        {Array.from({ length: 14 }, (_, i) => (
+          <path
+            key={i}
+            d="M50 8 C53.4 3 55 -1 50 -6 C45 -1 46.6 3 50 8 Z"
+            fill={i % 2 ? '#ffd166' : '#ff7a2f'}
+            transform={`rotate(${i * (360 / 14)} 50 50)`}
+          />
+        ))}
+        <circle cx="50" cy="50" r="45" {...stroke('#7a2410', 5.6)} />
+        <circle cx="50" cy="50" r="45" {...stroke('#ff7a2f', 3)} />
+      </>
+    ),
+    glow: '#ff7a2f',
+  },
+  'ring-crown': {
+    ring: (
+      <>
+        <circle cx="50" cy="50" r="45" {...stroke('#5c4610', 6)} />
+        <circle cx="50" cy="50" r="45" {...stroke('#ffd85e', 3.2)} />
+        {/*
+          王冠压在环的正上方，坐在 r=45 那条线上。
+          画布只到 y=0，所以冠尖顶到 1 为止 —— 再高就被裁掉了。
+        */}
+        <path
+          d="M37 12 L40.5 2 L45 9 L50 1 L55 9 L59.5 2 L63 12 Z"
+          fill="#ffd85e"
+          stroke="#8a6712"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+        <path d="M37 12 h26" {...stroke('#8a6712', 2)} />
+        <circle cx="50" cy="1.5" r="2" fill="#fff3cf" stroke="#8a6712" strokeWidth="0.9" />
+      </>
+    ),
+    glow: '#ffd85e',
+  },
+}
+
+export function AvatarFrame({ itemId }: { itemId: string }) {
+  const art = FRAMES[itemId]
+  if (!art) return null
+  return (
+    /*
+      比头像本体大一圈（-inset-[12%]），环画在 r=45，
+      正好落在头像圆的外沿上 —— 和头像同样大小的话，
+      这一圈会压在脸上。
+    */
+    <svg
+      viewBox="0 0 100 100"
+      className="pointer-events-none absolute -inset-[12%] h-[124%] w-[124%]"
+      aria-hidden
+    >
+      {art.glow && (
+        <circle cx="50" cy="50" r="45" fill="none" stroke={art.glow} strokeWidth="9" opacity="0.2" />
+      )}
+      {art.ring}
+    </svg>
+  )
 }
 
 /* ------------------------------------------------------------------ *
@@ -868,6 +1020,29 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
       <svg viewBox="0 0 100 100" className={className} aria-hidden>
         {BACKDROPS[itemId]}
       </svg>
+    )
+  }
+
+  if (item.slot === 'frame') {
+    // 框是套在头像外面的，单独看一圈线看不懂 —— 里面垫一个圆当作头像
+    return (
+      <span className={cx('relative block', className)}>
+        <span className="block h-full w-full rounded-full bg-ink-700" />
+        <AvatarFrame itemId={itemId} />
+      </span>
+    )
+  }
+
+  if (item.slot === 'title') {
+    return (
+      <span
+        className={cx(
+          'flex items-center justify-center rounded-lg bg-ink-800 p-1 text-center text-[11px] font-medium leading-tight text-lime-glow',
+          className,
+        )}
+      >
+        {item.name}
+      </span>
     )
   }
 
