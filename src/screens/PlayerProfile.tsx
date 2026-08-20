@@ -11,7 +11,7 @@ import {
   TopBar,
   cx,
 } from '@/components/ui'
-import { Avatar, GenderTag, LevelDots } from '@/components/PlayerBits'
+import { Avatar, GenderTag } from '@/components/PlayerBits'
 import {
   bestPartner,
   chronological,
@@ -86,15 +86,17 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
       <Body>
         <Card>
           <div className="flex items-center gap-4">
-            <Avatar name={player.name} size="lg" />
+            <Avatar name={player.name} avatar={avatar} size="lg" />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="truncate text-xl font-bold">{player.name}</h2>
                 <GenderTag gender={player.gender} />
               </div>
-              <div className="mt-2 flex items-center gap-2">
-                <LevelDots level={player.level} />
-                <span className="text-xs text-ink-400">水平 {player.level} 星</span>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <RankChip level={level} />
+                <span className="tnum text-xs text-ink-400">
+                  MMR {avatarProgress.mmr}
+                </span>
               </div>
               {streak && (
                 <div className="mt-2">

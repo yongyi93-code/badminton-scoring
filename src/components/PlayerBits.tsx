@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Gender, Level, Player } from '@/types'
-import type { LevelInfo } from '@/lib/avatar'
+import type { AvatarProfile, LevelInfo } from '@/lib/avatar'
+import { AvatarFace } from './Avatar'
 import { RankChip } from './RankMedal'
 import { cx } from './ui'
 
@@ -25,21 +26,54 @@ function hueOf(name: string) {
   return h
 }
 
+/**
+ * 头像。建了角色就画角色，没建才退回名字首字的色块。
+ *
+ * 做成同一个组件而不是两个，是因为头像出现在十来处（排行榜、场地看板、
+ * 等待队列、散场结算……）—— 分成两个的话每处都要自己判断该用哪个，
+ * 迟早漏掉几处，就会出现「排行榜有角色、看板还是字母」这种不一致。
+ *
+ * 角色的取景往上偏：100×100 的立绘缩成一个小圆圈时，
+ * 整个人只有几像素高，看不清是谁；裁到头和肩才认得出来。
+ */
 export function Avatar({
   name,
+  avatar,
   size = 'md',
   className,
 }: {
   name: string
+  avatar?: AvatarProfile
   size?: 'sm' | 'md' | 'lg'
   className?: string
 }) {
-  const hue = hueOf(name)
   const sizes = {
     sm: 'size-7 text-[11px]',
     md: 'size-10 text-sm',
     lg: 'size-16 text-xl',
   }
+
+  if (avatar) {
+    return (
+      <span
+        className={cx(
+          'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800',
+          sizes[size],
+          className,
+        )}
+      >
+        <AvatarFace
+          sex={avatar.sex}
+          skin={avatar.skin}
+          equipped={avatar.equipped}
+          className="h-full w-full"
+          title={name}
+        />
+      </span>
+    )
+  }
+
+  const hue = hueOf(name)
   return (
     <span
       className={cx(
@@ -98,8 +132,11 @@ export function PlayerRow({
   selected,
   meta,
   level,
+  avatar,
 }: {
   player: Player
+  /** 角色，用来当头像 */
+  avatar?: AvatarProfile
   right?: ReactNode
   onClick?: () => void
   selected?: boolean
@@ -109,7 +146,7 @@ export function PlayerRow({
 }) {
   const inner = (
     <>
-      <Avatar name={player.name} />
+      <Avatar name={player.name} avatar={avatar} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate font-medium">{player.name}</span>

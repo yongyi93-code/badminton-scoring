@@ -79,18 +79,22 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'f-twin', name: '双马尾', slot: 'hair', price: 80, minLevel: 0, sex: 'f' },
   { id: 'f-long', name: '黑长直', slot: 'hair', price: 200, minLevel: 2, sex: 'f' },
   { id: 'f-wavy', name: '金色大波浪', slot: 'hair', price: 700, minLevel: 6, sex: 'f' },
-  // 战服
-  { id: 'tee', name: '训练服', slot: 'outfit', price: 0, minLevel: 0 },
-  { id: 'jersey', name: '球队队服', slot: 'outfit', price: 60, minLevel: 0 },
-  { id: 'leather', name: '轻甲', slot: 'outfit', price: 150, minLevel: 1 },
-  { id: 'knight', name: '骑士铠', slot: 'outfit', price: 400, minLevel: 4 },
-  { id: 'shadow', name: '暗影战衣', slot: 'outfit', price: 900, minLevel: 7 },
-  // 武器
-  { id: 'racket', name: '羽毛球拍', slot: 'weapon', price: 0, minLevel: 0 },
-  { id: 'dagger', name: '短刃', slot: 'weapon', price: 70, minLevel: 0 },
-  { id: 'sword', name: '长剑', slot: 'weapon', price: 250, minLevel: 3 },
-  { id: 'staff', name: '法杖', slot: 'weapon', price: 500, minLevel: 5 },
-  { id: 'greatsword', name: '巨剑', slot: 'weapon', price: 1200, minLevel: 7 },
+  /*
+   * 战服是一条羽球的成长线，不是奇幻装备：
+   * 白队服 → 蓝黑队服 → 无袖精英 → 全黑高手 → 金翼传奇。
+   * 越往后越像「真的很能打的人」，最后一档加翅膀和金光。
+   */
+  { id: 'tee', name: '新手队服', slot: 'outfit', price: 0, minLevel: 0 },
+  { id: 'jersey', name: '进阶队服', slot: 'outfit', price: 60, minLevel: 0 },
+  { id: 'elite', name: '精英战袍', slot: 'outfit', price: 150, minLevel: 1 },
+  { id: 'pro', name: '高手战衣', slot: 'outfit', price: 400, minLevel: 4 },
+  { id: 'legend', name: '传奇金翼', slot: 'outfit', price: 900, minLevel: 7 },
+  /* 武器全是球拍 —— 这是羽球 App，手里拿剑说不过去 */
+  { id: 'racket', name: '入门球拍', slot: 'weapon', price: 0, minLevel: 0 },
+  { id: 'racket-blue', name: '碳素拍', slot: 'weapon', price: 70, minLevel: 0 },
+  { id: 'racket-pro', name: '竞速拍', slot: 'weapon', price: 250, minLevel: 3 },
+  { id: 'racket-gold', name: '金标拍', slot: 'weapon', price: 500, minLevel: 5 },
+  { id: 'racket-legend', name: '传奇战拍', slot: 'weapon', price: 1200, minLevel: 7 },
   // 背景
   { id: 'court', name: '球场', slot: 'background', price: 150, minLevel: 1 },
   { id: 'podium', name: '领奖台', slot: 'background', price: 500, minLevel: 5 },

@@ -242,6 +242,30 @@ const boots = (main: string, trim?: string) => (
   </g>
 )
 
+/**
+ * 护腕：贴着小臂画一小圈，别画成方块。
+ * 上一版是两个深色矩形，在深色战服上看起来像身上破了两个洞。
+ */
+const wristbands = (main: string, trim: string) => (
+  <g>
+    <path
+      d="M30.2 65.5 h6.6 a1.6 1.6 0 0 1 1.6 1.6 v3.4 a1.6 1.6 0 0 1 -1.6 1.6 h-6.6 Z"
+      fill={main}
+      stroke={shade(main, -0.42)}
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M69.8 65.5 h-6.6 a1.6 1.6 0 0 0 -1.6 1.6 v3.4 a1.6 1.6 0 0 0 1.6 1.6 h6.6 Z"
+      fill={main}
+      stroke={shade(main, -0.42)}
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+    <path d="M30.4 68.2 h7.6 M69.6 68.2 h-7.6" {...stroke(trim, 1.4)} />
+  </g>
+)
+
 /** 腰带：同上，是把上下身分开的关键一笔 */
 const belt = (main: string, buckle: string) => (
   <g>
@@ -270,135 +294,158 @@ function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }): Suit {
   const sleeveL = 'M38 55 C32 57 29 63 29 70 L37 70 C37 64 38 59 42 56 Z'
   const sleeveR = 'M62 55 C68 57 71 63 71 70 L63 70 C63 64 62 59 58 56 Z'
 
-  /** 裙子，女生的骑士铠和暗影战衣用 */
-  const skirt = (c: string) => (
-    <path d="M38 71 L36 82 h28 L62 71 Z" fill={c} {...line(c)} />
-  )
+  /** 短裤 / 短裙：羽球场上的下装，男女不同 */
+  const bottoms = (c: string) =>
+    female ? (
+      <path d="M38 70 L35 82 h30 L62 70 Z" fill={c} {...line(c)} />
+    ) : (
+      <path d="M39 70 h22 v10 h-9 v-4 h-4 v4 h-9 Z" fill={c} {...line(c)} />
+    )
+
+  /** 球鞋：白底 + 一道彩色边，五套都用，只换那道边的颜色 */
+  const shoes = (accent: string) => boots('#f2f4f8', accent)
 
   if (id === 'jersey') {
-    const c = '#1f6feb'
+    // 进阶：蓝黑撞色，斜襟
+    const c = '#16213b'
     return {
+      body: (
+        <g>
+          <path d={sleeveL} fill="#1f6feb" {...line('#1f6feb')} />
+          <path d={sleeveR} fill="#1f6feb" {...line('#1f6feb')} />
+          <path d={torso} fill={c} {...line(c)} />
+          <path d="M39 58 L61 68" {...stroke('#1f6feb', 3.4)} />
+          <path d="M44 52 Q50 57 56 52" {...stroke('#dbe7ff', 2.2)} />
+          {bottoms('#12182a')}
+          {shoes('#1f6feb')}
+        </g>
+      ),
+    }
+  }
+
+  if (id === 'elite') {
+    // 精英：无袖，露出手臂，护腕加护膝
+    const c = '#2b3f6b'
+    return {
+      body: (
+        <g>
+          <path d={torso} fill={c} {...line(c)} />
+          {/* 无袖：只在肩头收一个窄边，手臂露出来 */}
+          <path d="M38 55 Q50 51 62 55 L61 60 Q50 56 39 60 Z" fill="#3d5a94" {...line(c)} />
+          <path d="M40 60 L60 70" {...stroke('#7fb4ff', 2.8)} />
+          {wristbands('#3d5a94', '#7fb4ff')}
+          {bottoms('#1d2a45')}
+          {/* 护膝：精英开始有伤病管理，也是辨识度 */}
+          <path d="M42 82 h7 v5 h-7 Z" fill="#3d5a94" {...line(c)} />
+          {shoes('#4f8ef7')}
+        </g>
+      ),
+    }
+  }
+
+  if (id === 'pro') {
+    // 高手：全黑无袖 + 紫色描线 + 长筒袜
+    const c = '#2e2450'
+    return {
+      body: (
+        <g>
+          <path d={torso} fill={c} {...line(c)} />
+          <path d="M38 55 Q50 51 62 55 L61 59 Q50 55 39 59 Z" fill="#43356f" {...line(c)} />
+          <path d="M41 58 L59 71 M59 58 L41 71" {...stroke('#b490ff', 2.4)} />
+          {wristbands('#43356f', '#b490ff')}
+          {belt('#1b1533', '#b490ff')}
+          {bottoms('#211a3c')}
+          {/* 长筒袜：从裙／裤一直包到鞋口 */}
+          <path d="M42 80 h7.2 v8 h-7.2 Z" fill="#372c5e" {...line(c)} />
+          <path d="M50.8 80 h7.2 v8 h-7.2 Z" fill="#372c5e" {...line(c)} />
+          {shoes('#8b5cf6')}
+        </g>
+      ),
+    }
+  }
+
+  if (id === 'legend') {
+    // 传奇：黑金 + 金翼 + 光环。整条成长线的终点，值得画得夸张
+    const c = '#241d33'
+    const gold = '#f2c14e'
+    /**
+     * 一只翅膀：从肩后长出来，先往上扬再往下收，羽片一根根排开。
+     * 上一版是两片横着伸出去的弧形色块，看起来像挂了两根香蕉 ——
+     * 翅膀的形要靠「上缘一条弧 + 下缘一排羽尖」才立得住。
+     */
+    const wing = (flip: boolean) => (
+      <g transform={flip ? 'translate(100 0) scale(-1 1)' : undefined}>
+        {/*
+          外缘一条上扬的弧线把翼展拉到头顶高度，
+          内缘用三段扇贝形收回肩膀 —— 那三个凹口就是羽毛尖，
+          少了它整块金色就只是一片叶子。
+        */}
+        <path
+          d="M40 59
+             C33 46 22 33 7 26
+             C11 35 13 42 12 49
+             C16 44 20 42 25 42
+             C23 49 20 55 15 61
+             C21 58 27 57 32 58
+             C29 63 25 67 20 71
+             C27 68 34 66 40 65 Z"
+          fill={gold}
+          stroke="#a8801f"
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+        />
+        {/* 羽干：每根羽毛回到翼根，翅膀才有结构 */}
+        <path
+          d="M38 60 C30 51 22 42 12 34 M38 62 C31 56 27 51 21 45
+             M38 64 C32 61 28 58 23 54"
+          {...stroke('#a8801f', 1)}
+          opacity="0.7"
+        />
+        {/* 上缘高光，翅膀才有厚度 */}
+        <path d="M9 28 C20 36 31 48 39 60" {...stroke('#fff3cf', 1.5)} opacity="0.8" />
+      </g>
+    )
+    return {
+      cape: (
+        <g>
+          {/* 背后的金色光环 */}
+          <circle cx="50" cy="58" r="32" fill={gold} opacity="0.13" />
+          <circle cx="50" cy="58" r="21" fill={gold} opacity="0.12" />
+          {wing(false)}
+          {wing(true)}
+        </g>
+      ),
       body: (
         <g>
           <path d={sleeveL} fill={c} {...line(c)} />
           <path d={sleeveR} fill={c} {...line(c)} />
           <path d={torso} fill={c} {...line(c)} />
-          <path d="M45 52 Q50 57 55 52" {...stroke('#fdfbff', 2.4)} />
-          <text x="50" y="67" textAnchor="middle" fontSize="12" fontWeight="700" fill="#fdfbff">
-            1
-          </text>
-          <path d="M40 70 h20 v8 h-20 Z" fill="#e9edf3" {...line('#e9edf3')} />
-          {boots('#e9edf3', '#1f6feb')}
+          {/* 胸前金纹 */}
+          <path d="M39 58 L50 68 L61 58" {...stroke(gold, 2.6)} />
+          <path d="M44 52 Q50 57 56 52" {...stroke(gold, 2.2)} />
+          {wristbands('#3a3050', gold)}
+          {belt('#171226', gold)}
+          {bottoms('#1a1528')}
+          <path d="M42 80 h7.2 v8 h-7.2 Z" fill="#3a3050" {...line(c)} />
+          <path d="M50.8 80 h7.2 v8 h-7.2 Z" fill="#3a3050" {...line(c)} />
+          {shoes(gold)}
         </g>
       ),
     }
   }
 
-  if (id === 'leather') {
-    const c = '#7a4b2a'
-    return {
-      body: (
-        <g>
-          <path d={sleeveL} fill={shade(c, 0.12)} {...line(c)} />
-          <path d={sleeveR} fill={shade(c, 0.12)} {...line(c)} />
-          <path d={torso} fill={c} {...line(c)} />
-          {/* 胸前交叉的皮带 */}
-          <path d="M41 56 L59 70 M59 56 L41 70" {...stroke(shade(c, -0.3), 2.2)} />
-          {/* 护腕 */}
-          <path d="M30 66 h7 v5 h-7 Z" fill={shade(c, -0.14)} {...line(c)} />
-          <path d="M63 66 h7 v5 h-7 Z" fill={shade(c, -0.14)} {...line(c)} />
-          {belt('#4a2c17', '#d8a25e')}
-          <path d="M41 75 h18 v8 h-18 Z" fill={shade(c, -0.12)} {...line(c)} />
-          {boots('#5c3720', '#d8a25e')}
-        </g>
-      ),
-    }
-  }
-
-  if (id === 'knight') {
-    const s = '#c3cbd8'
-    return {
-      cape: (
-        <>
-        <path
-          d="M36 55 C26 65 23 80 25 95 L75 95 C77 80 74 65 64 55 Z"
-          fill="#a52834"
-          stroke="#6d1a22"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path d="M36 55 C29 66 27 80 28 95 L34 95 C33 79 34 65 40 56 Z" fill="#7d1f28" />
-        <path d="M64 55 C71 66 73 80 72 95 L66 95 C67 79 66 65 60 56 Z" fill="#7d1f28" />
-        </>
-      ),
-      body: (
-        <g>
-          <path d={sleeveL} fill={s} {...line(s)} />
-          <path d={sleeveR} fill={s} {...line(s)} />
-          <path d={torso} fill={s} {...line(s)} />
-          {/* 护肩：骑士的辨识度全在这两块上 */}
-          <path d="M36 55 C30 55 27 60 28 66 L38 64 C38 59 38 56 40 54 Z" fill="#dfe5ee" {...line(s)} />
-          <path d="M64 55 C70 55 73 60 72 66 L62 64 C62 59 62 56 60 54 Z" fill="#dfe5ee" {...line(s)} />
-          {/* 胸口金星 */}
-          <path
-            d="M50 57 l2.6 5.4 l6 0.8 l-4.3 4.2 l1 5.9 l-5.3 -2.8 l-5.3 2.8 l1 -5.9 l-4.3 -4.2 l6 -0.8 Z"
-            fill="#f2c14e"
-            stroke="#a8801f"
-            strokeWidth="1"
-          />
-          {belt('#6b4a2c', '#f2c14e')}
-          {female ? skirt('#eef1f6') : <path d="M41 75 h18 v8 h-18 Z" fill={s} {...line(s)} />}
-          {boots('#dfe5ee', '#f2c14e')}
-        </g>
-      ),
-    }
-  }
-
-  if (id === 'shadow') {
-    const c = '#2a2333'
-    return {
-      cape: (
-        <>
-        <path
-          d="M36 55 C26 65 22 80 24 95 L76 95 C78 80 74 65 64 55 Z"
-          fill="#1a1622"
-          stroke="#0e0b14"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path d="M36 55 C29 66 26 80 27 95 L33 95 C32 79 34 65 40 56 Z" fill="#c0392b" opacity="0.55" />
-        <path d="M64 55 C71 66 74 80 73 95 L67 95 C68 79 66 65 60 56 Z" fill="#c0392b" opacity="0.55" />
-        </>
-      ),
-      body: (
-        <g>
-          <path d={sleeveL} fill={c} {...line(c)} />
-          <path d={sleeveR} fill={c} {...line(c)} />
-          <path d={torso} fill={c} {...line(c)} />
-          <path d="M40 56 C44 62 56 62 60 56" {...stroke('#c0392b', 2.2)} />
-          <circle cx="50" cy="64" r="3.6" fill="#c0392b" stroke="#7d2018" strokeWidth="1" />
-          <circle cx="50" cy="64" r="1.5" fill="#ffb4a8" />
-          <path d="M29 65 h8 v6 h-8 Z" fill={shade(c, 0.18)} {...line(c)} />
-          <path d="M63 65 h8 v6 h-8 Z" fill={shade(c, 0.18)} {...line(c)} />
-          {belt('#15121c', '#c0392b')}
-          {female ? skirt('#1a1622') : <path d="M41 75 h18 v8 h-18 Z" fill={shade(c, -0.15)} {...line(c)} />}
-          {boots('#1a1622', '#c0392b')}
-        </g>
-      ),
-    }
-  }
-
-  // 训练服：免费款
-  const c = '#e9edf3'
+  // 新手队服：白衣黑裤，免费款
+  const c = '#f0f3f8'
   return {
     body: (
       <g>
-        <path d={sleeveL} fill={c} {...line(c)} />
-        <path d={sleeveR} fill={c} {...line(c)} />
+        <path d={sleeveL} fill="#20242f" {...line('#20242f')} />
+        <path d={sleeveR} fill="#20242f" {...line('#20242f')} />
         <path d={torso} fill={c} {...line(c)} />
-        <path d="M45 52 Q50 57 55 52" {...stroke('#aab4c4', 2)} />
-        <path d="M40 70 h20 v9 h-20 Z" fill="#3f4757" {...line('#3f4757')} />
-        {boots('#3f4757', '#e9edf3')}
+        <path d="M44 52 Q50 57 56 52" {...stroke('#98a3b5', 2.2)} />
+        <path d="M40 62 L60 62" {...stroke('#c7d0dd', 2)} />
+        {bottoms('#20242f')}
+        {shoes('#20242f')}
       </g>
     ),
   }
@@ -610,52 +657,38 @@ const hairOf = (id: string | undefined, sex: AvatarSex): Hair => {
  * 结果巨剑直接横穿角色的脸。摆位收到一处，加新武器不会再犯。
  */
 const WEAPONS: Record<string, ReactNode> = {
-  racket: (
-    <>
-      <ellipse cx="0" cy="-13" rx="9.5" ry="12" fill="#cfe3ff" opacity="0.55" />
-      <ellipse cx="0" cy="-13" rx="9.5" ry="12" {...stroke('#1f6feb', 2.4)} />
-      <path d="M-6 -22 v18 M0 -25 v21 M6 -22 v18" {...stroke('#8fbaf5', 1)} />
-      <path d="M-8 -18 h16 M-9.5 -13 h19 M-8 -8 h16" {...stroke('#8fbaf5', 1)} />
-      <path d="M0 -1 v10" {...stroke('#1f6feb', 3.2)} />
-      <path d="M0 6 v8" {...stroke('#f2a33c', 4.4)} />
-    </>
-  ),
-  dagger: (
-    <>
-      <path d="M0 -26 L4 -10 L0 -5 L-4 -10 Z" fill="#dde4ee" />
-      <path d="M0 -26 L0 -5" {...stroke('#9aa6b8', 1)} />
-      <path d="M-7 -9 h14" {...stroke('#8a6b3a', 3)} />
-      <path d="M0 -8 v11" {...stroke('#3f2f1e', 3.6)} />
-      <circle cx="0" cy="5" r="2.4" fill="#c9a227" />
-    </>
-  ),
-  sword: (
-    <>
-      <path d="M0 -36 L4.2 -28 L4.2 -8 L-4.2 -8 L-4.2 -28 Z" fill="#e4eaf3" />
-      <path d="M0 -35 L0 -8" {...stroke('#a6b1c2', 1.2)} />
-      <path d="M-9 -7 h18" {...stroke('#c9a227', 3.4)} />
-      <path d="M0 -6 v11" {...stroke('#3f2f1e', 3.8)} />
-      <circle cx="0" cy="7" r="2.8" fill="#c9a227" />
-    </>
-  ),
-  staff: (
-    <>
-      <path d="M0 -30 v40" {...stroke('#6b4a2c', 3.4)} />
-      <circle cx="0" cy="-33" r="7" fill="#7c5cf0" opacity="0.4" />
-      <circle cx="0" cy="-33" r="4.4" fill="#a48bff" />
-      <circle cx="-1.4" cy="-34.6" r="1.4" fill="#fff" />
-      <path d="M-6 -28 q6 4 12 0" {...stroke('#c9a227', 2)} />
-    </>
-  ),
-  greatsword: (
-    <>
-      <path d="M0 -42 L6.4 -32 L6.4 -8 L-6.4 -8 L-6.4 -32 Z" fill="#eef2f8" />
-      <path d="M0 -41 L0 -8" {...stroke('#9aa6b8', 1.6)} />
-      <path d="M-3.6 -32 L-3.6 -11 M3.6 -32 L3.6 -11" {...stroke('#c3ccda', 1)} />
-      <path d="M-11 -6 h22" {...stroke('#5b5060', 4.2)} />
-      <path d="M0 -5 v14" {...stroke('#2f2836', 4.2)} />
-      <circle cx="0" cy="11" r="3.2" fill="#c0392b" />
-    </>
+  ...Object.fromEntries(
+    (
+      [
+        // [id, 拍框, 拍线, 拍柄, 握把]
+        ['racket', '#cfd8e6', '#eef2f8', '#5b6577', '#f2a33c'],
+        ['racket-blue', '#1f6feb', '#cfe3ff', '#123a75', '#0f2a52'],
+        ['racket-pro', '#8b5cf6', '#e2d5ff', '#4a2f86', '#241a44'],
+        ['racket-gold', '#f2c14e', '#fff3cf', '#a8801f', '#5c4610'],
+        ['racket-legend', '#ff8a3d', '#ffe0c4', '#a8481f', '#2a2333'],
+      ] as const
+    ).map(([id, frame, mesh, shaft, grip]) => [
+      id,
+      <>
+        {id === 'racket-legend' && (
+          <circle cx="0" cy="-24" r="15" fill={frame} opacity="0.22" />
+        )}
+        <ellipse cx="0" cy="-24" rx="9.5" ry="12" fill={mesh} opacity="0.5" />
+        <ellipse cx="0" cy="-24" rx="9.5" ry="12" {...stroke(frame, 2.6)} />
+        {/* 拍线要密，三根横三根竖看起来是个井字号，不是球拍 */}
+        <path
+          d="M-7.4 -31 v14 M-3.7 -34 v20 M0 -35.5 v23 M3.7 -34 v20 M7.4 -31 v14"
+          {...stroke(mesh, 0.8)}
+        />
+        <path
+          d="M-6.6 -31 h13.2 M-8.6 -27.5 h17.2 M-9.4 -24 h18.8 M-8.6 -20.5 h17.2 M-6.6 -17 h13.2"
+          {...stroke(mesh, 0.8)}
+        />
+        {/* 拍杆穿过手心，握把往下露一小截 —— 这样才像握着，不是浮在手边 */}
+        <path d="M0 -12 v9" {...stroke(shaft, 3.2)} />
+        <path d="M0 -4 v14" {...stroke(grip, 4.8)} />
+      </>,
+    ]),
   ),
 }
 
@@ -663,8 +696,8 @@ const WEAPONS: Record<string, ReactNode> = {
  * 武器摆位：往右让开脸，握把落在肩膀高度，刀尖朝右上。
  * 头最宽到 x=77，所以握把放 x=87 才不压脸。
  */
-/** 握在右手上（手心在 66.5,73），刀身朝上，不再是浮在身边 */
-const WEAPON_AT = 'translate(67 73) rotate(12) scale(0.62)'
+/** 握在右手上（手心在 66.5,73），拍面朝上举在身侧 */
+const WEAPON_AT = 'translate(66.5 73) rotate(10) scale(0.62)'
 
 /* ------------------------------------------------------------------ *
  * 背景
@@ -750,7 +783,20 @@ function AvatarInner({
         <Face sex={sex} skin={tone} iris={IRIS[sex]} />
         {hair.front}
       </g>
-      {weapon && <g transform={WEAPON_AT}>{weapon}</g>}
+      {weapon && (
+        <>
+          <g transform={WEAPON_AT}>{weapon}</g>
+          {/* 右手补画一次，盖在拍柄上 —— 手指在握把外面，球拍才是被握住的 */}
+          <circle
+            cx="66.5"
+            cy="73"
+            r="4.4"
+            fill={tone}
+            stroke={shade(tone, -0.45)}
+            strokeWidth="1.4"
+          />
+        </>
+      )}
     </>
   )
 }
@@ -817,6 +863,32 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
   return (
     <svg viewBox={crop} className={className} aria-hidden>
       <AvatarInner sex={sex} skin={0} equipped={{ hair, outfit }} />
+    </svg>
+  )
+}
+
+/**
+ * 头肩特写：把立绘裁到头和肩膀。
+ * 全身缩进一个小圆圈时人只有几像素高，认不出是谁；裁近才有头像的作用。
+ */
+export function AvatarFace({
+  sex,
+  skin = 0,
+  equipped = {},
+  className,
+  title,
+}: {
+  sex: AvatarSex
+  skin?: number
+  equipped?: Partial<Record<AvatarSlot, string>>
+  className?: string
+  title?: string
+}) {
+  // 裁到 y=60：多带一截领口，队服的颜色也能在头像里看出来
+  return (
+    <svg viewBox="22 2 56 58" className={className} role="img" aria-label={title ?? '头像'}>
+      {title && <title>{title}</title>}
+      <AvatarInner sex={sex} skin={skin} equipped={equipped} />
     </svg>
   )
 }

@@ -175,6 +175,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
   const allMatches = useApp((s) => s.matches)
   const allSessions = useApp((s) => s.sessions)
   const players = useApp((s) => s.players)
+  const avatars = useApp((s) => s.avatars)
   const updateSession = useApp((s) => s.updateSession)
   const reopenSession = useApp((s) => s.reopenSession)
   const deleteSession = useApp((s) => s.deleteSession)
@@ -199,6 +200,12 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
 
   /** 段位与 MMR 按所有球局的总战绩算，不只今晚这一场 —— 它反映的是整体水平 */
   const progressById = useMemo(() => progressByPlayer(allMatches), [allMatches])
+
+  /** 头像用角色，没建角色的人会自动退回名字色块 */
+  const avatarsById = useMemo(
+    () => new Map(avatars.map((a) => [a.playerId, a])),
+    [avatars],
+  )
 
   /** 这个球馆的累计第一 —— 挑战者该找的人 */
   const venueKing = useMemo(() => {
@@ -388,6 +395,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
               ranked={ranked}
               playersById={names}
               progressById={progressById}
+              avatarsById={avatarsById}
               minGames={RANK_MIN_GAMES}
               onPick={(playerId) => push({ name: 'profile', playerId })}
             />

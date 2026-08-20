@@ -3,7 +3,7 @@ import { Avatar } from './PlayerBits'
 import { Pill, cx } from './ui'
 import { percent, signed, streakLabel } from '@/lib/format'
 import { RankMedal } from './RankMedal'
-import type { LevelInfo, Progress } from '@/lib/avatar'
+import type { AvatarProfile, LevelInfo, Progress } from '@/lib/avatar'
 
 const medal = (rank: number) =>
   rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null
@@ -14,12 +14,15 @@ export function RankRow({
   player,
   level,
   mmr,
+  avatar,
   onClick,
   highlight,
 }: {
   rank: number
   stats: PlayerStats
   player: Player | undefined
+  /** 建过角色就用角色当头像，没建才退回字母色块 */
+  avatar?: AvatarProfile
   /** 段位。缺省就不显示这一列，今晚排名之类的地方可以不传 */
   level?: LevelInfo
   /** MMR 数值，跟在段位名后面 —— 打 Dota 的人比的就是这个数 */
@@ -42,7 +45,7 @@ export function RankRow({
       <span className="tnum w-7 shrink-0 text-center text-sm font-semibold text-ink-400">
         {rank === 0 ? '–' : (medal(rank) ?? rank)}
       </span>
-      <Avatar name={player?.name ?? '?'} />
+      <Avatar name={player?.name ?? '?'} avatar={avatar} />
       {/* 段位单独占一列固定宽度，一排下来才对得齐、好互相比 */}
       {level && (
         <span className="flex w-7 shrink-0 flex-col items-center">
@@ -84,11 +87,14 @@ export function RankTable({
   ranked,
   playersById,
   progressById,
+  avatarsById,
   onPick,
   minGames,
 }: {
   ranked: PlayerStats[]
   playersById: Map<string, Player>
+  /** 每个球员的角色，用来当头像 */
+  avatarsById?: Map<string, AvatarProfile>
   /** 每个球员的段位与 MMR，不传就不显示段位列 */
   progressById?: Map<string, Progress>
   onPick?: (playerId: string) => void
@@ -107,6 +113,7 @@ export function RankTable({
           player={playersById.get(s.playerId)}
           level={progressById?.get(s.playerId)?.level}
           mmr={progressById?.get(s.playerId)?.mmr}
+          avatar={avatarsById?.get(s.playerId)}
           onClick={onPick ? () => onPick(s.playerId) : undefined}
           highlight={i === 0}
         />
@@ -125,6 +132,7 @@ export function RankTable({
               player={playersById.get(s.playerId)}
           level={progressById?.get(s.playerId)?.level}
           mmr={progressById?.get(s.playerId)?.mmr}
+          avatar={avatarsById?.get(s.playerId)}
               onClick={onPick ? () => onPick(s.playerId) : undefined}
             />
           ))}

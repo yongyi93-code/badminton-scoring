@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
@@ -14,6 +14,7 @@ import {
   inputClass,
 } from '@/components/ui'
 import { PlayerRow } from '@/components/PlayerBits'
+import { progressByPlayer } from '@/lib/avatar'
 import type { Gender, Player } from '@/types'
 
 export function PlayerEditor({
@@ -90,10 +91,19 @@ export function PlayerEditor({
 
 export function Players() {
   const players = useApp((s) => s.players)
+  const matches = useApp((s) => s.matches)
+  const avatars = useApp((s) => s.avatars)
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
   const [editing, setEditing] = useState<Player | null>(null)
   const [open, setOpen] = useState(false)
+
+  /** 头像用角色，名字下面显示段位 —— 取代了原来手填的水平星级 */
+  const avatarsById = useMemo(
+    () => new Map(avatars.map((a) => [a.playerId, a])),
+    [avatars],
+  )
+  const progressById = useMemo(() => progressByPlayer(matches), [matches])
 
   const active = players.filter((p) => !p.archived)
   const archived = players.filter((p) => p.archived)
@@ -128,6 +138,8 @@ export function Players() {
               <PlayerRow
                 key={p.id}
                 player={p}
+                avatar={avatarsById.get(p.id)}
+                level={progressById.get(p.id)?.level}
                 onClick={() => openEditor(p)}
                 right={
                   <button
@@ -150,6 +162,8 @@ export function Players() {
                 <PlayerRow
                   key={p.id}
                   player={p}
+                  avatar={avatarsById.get(p.id)}
+                  level={progressById.get(p.id)?.level}
                   onClick={() => openEditor(p)}
                 />
               ))}

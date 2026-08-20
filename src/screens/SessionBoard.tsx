@@ -34,6 +34,7 @@ import {
   type Player,
   type Session,
 } from '@/types'
+import type { AvatarProfile } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *
  * 场地卡片
@@ -42,12 +43,14 @@ import {
 function TeamLine({
   ids,
   names,
+  avatars,
   tone,
   score,
   leading,
 }: {
   ids: string[]
   names: Map<string, Player>
+  avatars?: Map<string, AvatarProfile>
   tone: 'teamA' | 'teamB'
   score?: number
   leading?: boolean
@@ -63,7 +66,11 @@ function TeamLine({
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         {ids.map((id) => (
           <span key={id} className="flex min-w-0 items-center gap-1.5">
-            <Avatar name={names.get(id)?.name ?? '?'} size="sm" />
+            <Avatar
+              name={names.get(id)?.name ?? '?'}
+              avatar={avatars?.get(id)}
+              size="sm"
+            />
             <span className="truncate text-[15px]">{names.get(id)?.name ?? '?'}</span>
           </span>
         ))}
@@ -144,6 +151,7 @@ function CourtCard({
   match,
   session,
   names,
+  avatars,
   onScore,
   onArrange,
   onManage,
@@ -154,6 +162,7 @@ function CourtCard({
   match: Match | undefined
   session: Session
   names: Map<string, Player>
+  avatars?: Map<string, AvatarProfile>
   onScore: () => void
   onArrange: () => void
   onManage: () => void
@@ -208,6 +217,7 @@ function CourtCard({
         <TeamLine
           ids={match.teamA}
           names={names}
+          avatars={avatars}
           tone="teamA"
           score={g?.a ?? 0}
           leading={(g?.a ?? 0) >= (g?.b ?? 0)}
@@ -215,6 +225,7 @@ function CourtCard({
         <TeamLine
           ids={match.teamB}
           names={names}
+          avatars={avatars}
           tone="teamB"
           score={g?.b ?? 0}
           leading={(g?.b ?? 0) >= (g?.a ?? 0)}
@@ -236,6 +247,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const session = useApp((s) => s.sessions.find((x) => x.id === sessionId))
   const allMatches = useApp((s) => s.matches)
   const players = useApp((s) => s.players)
+  const avatars = useApp((s) => s.avatars)
   const addMatch = useApp((s) => s.addMatch)
   const addMatches = useApp((s) => s.addMatches)
   const updateMatch = useApp((s) => s.updateMatch)
@@ -251,6 +263,12 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
    * 配对时的实力平衡看 MMR，而且要用「所有球局」的战绩算 ——
    * MMR 是跨球局的整体水平，只看今晚这一场配不准。
    */
+  /** 头像用角色，没建角色的人自动退回名字色块 */
+  const avatarsById = useMemo(
+    () => new Map(avatars.map((a) => [a.playerId, a])),
+    [avatars],
+  )
+
   const mmrById = useMemo(() => {
     const map = new Map<string, number>()
     for (const [id, prog] of progressByPlayer(allMatches)) map.set(id, prog.mmr)
@@ -641,6 +659,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
               match={onCourt.get(i)}
               session={session}
               names={names}
+              avatars={avatarsById}
               holder={format === 'king' ? courtHolder(matches, i) : null}
               arranging={waiting.length < (type === 'singles' ? 2 : 4) && queued.length === 0}
               onScore={() => push({ name: 'score', matchId: onCourt.get(i)!.id })}
@@ -772,7 +791,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 <span className="tnum w-5 shrink-0 text-center text-sm text-ink-400">
                   {idx + 1}
                 </span>
-                <Avatar name={p.name} />
+                <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
                   <span className="text-xs text-ink-400">
@@ -795,7 +814,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                     onClick={() => toggleResting(id)}
                     className="flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850 px-2.5 py-1.5 text-sm text-ink-300"
                   >
-                    <Avatar name={names.get(id)?.name ?? '?'} size="sm" />
+                    <Avatar
+                    name={names.get(id)?.name ?? '?'}
+                    avatar={avatarsById.get(id)}
+                    size="sm"
+                  />
                     {names.get(id)?.name}
                     <span className="text-ink-500">↩</span>
                   </button>
@@ -847,7 +870,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                   onClick={() => setSwapping({ match: managing, playerId: id })}
                   className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
                 >
-                  <Avatar name={names.get(id)?.name ?? '?'} size="sm" />
+                  <Avatar
+                    name={names.get(id)?.name ?? '?'}
+                    avatar={avatarsById.get(id)}
+                    size="sm"
+                  />
                   <span className="flex-1 truncate">{names.get(id)?.name}</span>
                   <span className="text-xs text-ink-400">换人 ›</span>
                 </button>
@@ -883,7 +910,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                   onClick={() => swapPlayer(swapping.match, swapping.playerId, l.playerId)}
                   className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
                 >
-                  <Avatar name={names.get(l.playerId)?.name ?? '?'} size="sm" />
+                  <Avatar
+                    name={names.get(l.playerId)?.name ?? '?'}
+                    avatar={avatarsById.get(l.playerId)}
+                    size="sm"
+                  />
                   <span className="flex-1 truncate">{names.get(l.playerId)?.name}</span>
                   <span className="text-xs text-ink-400">已打 {l.games} 场</span>
                 </button>

@@ -35,7 +35,7 @@ type Scope = 'session' | 'all'
 type VenueFilter = string | null
 
 export function Leaderboard({ sessionId }: { sessionId?: string }) {
-  const { players, sessions, matches } = useApp()
+  const { players, sessions, matches, avatars } = useApp()
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
   const [scope, setScope] = useState<Scope>(sessionId ? 'session' : 'all')
@@ -78,6 +78,12 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
    * 否则同一个人在两个榜上显示两个段位，谁也说不清哪个才算数。
    */
   const progressById = useMemo(() => progressByPlayer(matches), [matches])
+
+  /** 头像用角色，没建角色的人会自动退回名字色块 */
+  const avatarsById = useMemo(
+    () => new Map(avatars.map((a) => [a.playerId, a])),
+    [avatars],
+  )
 
   const champion = ranked.find((r) => r.qualified) ?? null
   /**
@@ -156,6 +162,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
               </div>
               <Avatar
                 name={names.get(champion.playerId)?.name ?? '?'}
+                avatar={avatarsById.get(champion.playerId)}
                 size="lg"
               />
             </div>
@@ -183,6 +190,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
               ranked={ranked}
               playersById={names}
               progressById={progressById}
+              avatarsById={avatarsById}
               minGames={RANK_MIN_GAMES}
               onPick={(playerId) => push({ name: 'profile', playerId })}
             />
