@@ -14,6 +14,7 @@ import {
   shopFor,
   STARTER_IDS,
   outfitValue,
+  retireOldGear,
   PET_LEVELS,
   SHOP_ITEMS,
   STARS_PER_TIER,
@@ -397,5 +398,54 @@ describe('身上行头估值', () => {
   it('没角色或什么都没穿时是 0', () => {
     expect(outfitValue(undefined)).toBe(0)
     expect(outfitValue(pet())).toBe(0)
+  })
+})
+
+describe('旧装备换成羽球装备', () => {
+  it('身上和衣柜里的旧 id 都换成同一档的新 id', () => {
+    const p = retireOldGear(
+      pet({
+        owned: ['knight', 'greatsword', 'm-wolf'],
+        equipped: { outfit: 'knight', weapon: 'greatsword', hair: 'm-wolf' },
+      }),
+    )
+    expect(p.equipped.outfit).toBe('pro')
+    expect(p.equipped.weapon).toBe('racket-legend')
+    // 没换掉的东西要原样留着
+    expect(p.equipped.hair).toBe('m-wolf')
+    expect(p.owned).toEqual(['pro', 'racket-legend', 'm-wolf'])
+  })
+
+  it('换过之后每一件都还在商店里 —— 找不到就会退回新手队服', () => {
+    const p = retireOldGear(
+      pet({
+        owned: ['leather', 'shadow', 'dagger', 'sword', 'staff'],
+        equipped: { outfit: 'shadow', weapon: 'staff' },
+      }),
+    )
+    for (const id of p.owned) expect(itemById(id), id).toBeDefined()
+    expect(itemById(p.equipped.outfit!)).toBeDefined()
+    expect(itemById(p.equipped.weapon!)).toBeDefined()
+  })
+
+  it('换出来的新装备和旧的同价同门槛，不用补差价也不掉级', () => {
+    const same = (oldId: string) => {
+      const now = itemById(retireOldGear(pet({ owned: [oldId] })).owned[0])!
+      return [now.price, now.minLevel]
+    }
+    // 旧价：轻甲 150/1、骑士铠 400/4、暗影战衣 900/7
+    expect(same('leather')).toEqual([150, 1])
+    expect(same('knight')).toEqual([400, 4])
+    expect(same('shadow')).toEqual([900, 7])
+    // 旧价：短刃 70/0、长剑 250/3、法杖 500/5、巨剑 1200/7
+    expect(same('dagger')).toEqual([70, 0])
+    expect(same('sword')).toEqual([250, 3])
+    expect(same('staff')).toEqual([500, 5])
+    expect(same('greatsword')).toEqual([1200, 7])
+  })
+
+  it('本来就是新装备的角色一点都不动', () => {
+    const before = pet({ owned: ['pro', 'racket-gold'], equipped: { outfit: 'pro' } })
+    expect(retireOldGear(before)).toEqual(before)
   })
 })

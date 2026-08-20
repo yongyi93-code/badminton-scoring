@@ -111,6 +111,36 @@ export const STARTER_IDS = SHOP_ITEMS.filter((i) => i.price === 0).map((i) => i.
 export const itemById = (id: string): ShopItem | undefined =>
   SHOP_ITEMS.find((i) => i.id === id)
 
+/**
+ * 装备线从奇幻改成羽球时，轻甲／骑士铠／暗影战衣和那几把刀剑都换掉了。
+ * 已经买过的人身上会留着一批不存在的 id，画的时候找不到就悄悄退回新手队服，
+ * 看起来像从来没升过级 —— 所以按同一档位一件换一件。
+ * 价格和门槛都对得上，换过去不用补差价，也没人白掉一级。
+ */
+const GEAR_RENAMES: Record<string, string> = {
+  leather: 'elite',
+  knight: 'pro',
+  shadow: 'legend',
+  dagger: 'racket-blue',
+  sword: 'racket-pro',
+  staff: 'racket-gold',
+  greatsword: 'racket-legend',
+}
+
+/** 把一个角色身上和衣柜里的旧 id 换成新 id，其余原样保留 */
+export const retireOldGear = (a: AvatarProfile): AvatarProfile => {
+  const rename = (id: string) => GEAR_RENAMES[id] ?? id
+  return {
+    ...a,
+    owned: [...new Set(a.owned.map(rename))],
+    equipped: Object.fromEntries(
+      Object.entries(a.equipped)
+        .filter(([, id]) => !!id)
+        .map(([slot, id]) => [slot, rename(id as string)]),
+    ) as AvatarProfile['equipped'],
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * 等级
  * ------------------------------------------------------------------ */

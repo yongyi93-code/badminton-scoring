@@ -5,6 +5,7 @@ import {
   defaultHair,
   itemById,
   newAvatar,
+  retireOldGear,
   STARTER_IDS,
   type AvatarProfile,
   type AvatarSex,
@@ -315,8 +316,9 @@ export const useApp = create<AppState>()(
           players: backup.players ?? [],
           sessions: backup.sessions ?? [],
           matches: backup.matches ?? [],
-          // v1/v2 的备份没有 avatars，按还没建角色处理
-          avatars: backup.avatars ?? [],
+          // v1/v2 的备份没有 avatars，按还没建角色处理；
+          // 有的话可能还带着换掉的旧装备 id，一并换成新的
+          avatars: (backup.avatars ?? []).map(retireOldGear),
         })
       },
 
@@ -330,12 +332,19 @@ export const useApp = create<AppState>()(
        * 1 = 宠物那一版（pets）。角色系统把整个商店换掉了，旧的道具 id
        * 一件都不存在，所以直接丢掉 pets 从头开始 —— 花掉的金币等于全额退回，
        * 大家重新挑角色买装备。比赛记录一点都不动，段位和金币照样是算出来的。
+       *
+       * 2 → 3 = 装备线改成羽球主题，轻甲／骑士铠／暗影战衣和那几把刀剑
+       * 换成了战袍和球拍。不做迁移的话已经买过的人身上会挂着一批不存在的
+       * id，画的时候找不到就悄悄退回新手队服 —— 人看起来像从来没升过级。
+       * 所以这里按同一档位一件换一件，买过什么还是穿着什么。
        */
-      version: 2,
+      version: 3,
       migrate: (state, from) => {
         const s = state as Partial<AppState> & { pets?: unknown }
         if (from < 2) delete s.pets
-        return { ...s, avatars: s.avatars ?? [] } as AppState
+        let avatars = s.avatars ?? []
+        if (from < 3) avatars = avatars.map(retireOldGear)
+        return { ...s, avatars } as AppState
       },
       partialize: (s) => ({
         players: s.players,
