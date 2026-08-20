@@ -10,11 +10,14 @@ import {
 /* ------------------------------------------------------------------ *
  * 角色形象
  *
- * Q 版半身像，全部用 SVG 手绘，装在 100×100 的 viewBox 里 ——
+ * 全身 Q 版立绘，约 2 头身，全部用 SVG 手绘，装在 100×100 的 viewBox 里 ——
  * 放大缩小都不糊，也不用打包任何图片资源，离线可用是这个 App 的底线。
  *
- * 分层顺序：背景 → 后发 → 身体/战服 → 脖子 → 头 → 五官 → 前发 → 武器。
+ * 分层顺序：背景 → 地面投影 → 披风 → 后发 → 光身子 → 战服 → 头 → 五官 → 前发 → 武器。
  * 后发要压在身体下面、前发要盖住额头，所以头发拆成前后两层分开画。
+ *
+ * 头和五官仍然按原来那套 100×100 的坐标画，最后整组缩放到画面上半截 ——
+ * 比把每条路径重算一遍靠谱，也不会在改比例时改漏某一笔。
  *
  * 造型全部自己画的几何形状，没有临摹任何游戏的角色美术。
  * ------------------------------------------------------------------ */
@@ -164,7 +167,7 @@ function Head({ skin }: { skin: string }) {
       <ellipse cx="79.5" cy="53" rx="4.4" ry="6.4" fill={skin} stroke={line} strokeWidth="1.3" />
       {/* 脖子先画，让下巴压在上面 */}
       <path
-        d="M41 70 h18 v10 q-9 4 -18 0 Z"
+        d="M41 70 h18 v15 q-9 4 -18 0 Z"
         fill={shade(skin, -0.16)}
         stroke={line}
         strokeWidth="1.3"
@@ -183,94 +186,222 @@ function Head({ skin }: { skin: string }) {
 }
 
 /* ------------------------------------------------------------------ *
- * 战服
+ * 身体与战服
  *
- * 都从 y=76 往下画到画面底，肩线宽度按性别微调。
+ * 全身 Q 版，约 2 头身：头占画面上半截，身体从 y≈54 往下站到 y≈97。
+ * 半身像的时候战服只剩领口那一条，五套看起来都一样；
+ * 改成全身之后胸甲、护肩、腰带、护腿、靴子、披风才有地方放。
+ *
+ * 每套战服给 { cape, body }：披风要压在身体后面，所以单独一层。
  * ------------------------------------------------------------------ */
 
-const bodyPath = (sex: AvatarSex) =>
-  sex === 'm'
-    ? 'M50 79 C64 79 76 85 81 92 L85 100 L15 100 L19 92 C24 85 36 79 50 79 Z'
-    : 'M50 80 C62 80 73 86 78 93 L82 100 L18 100 L22 93 C27 86 38 80 50 80 Z'
+/** 站立的地面投影，画在最底层，角色才像站着而不是飘着 */
+const GROUND = <ellipse cx="50" cy="97" rx="19" ry="3" fill="#000" opacity="0.2" />
 
-function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }) {
-  const body = bodyPath(sex)
+/** 光身子：躯干、手臂、手、腿。战服盖在上面，露出来的地方就是皮肤 */
+function BodyBase({ skin }: { skin: string }) {
+  const line = shade(skin, -0.45)
+  const p = { fill: skin, stroke: line, strokeWidth: 1.4, strokeLinejoin: 'round' as const }
+  return (
+    <g>
+      <path d="M39 55 Q50 52 61 55 L60 76 Q50 79 40 76 Z" {...p} />
+      <path d="M39 56 C33 58 30 64 30 71 L37 71 C37 65 38 60 42 57 Z" {...p} />
+      <path d="M61 56 C67 58 70 64 70 71 L63 71 C63 65 62 60 58 57 Z" {...p} />
+      <circle cx="33.5" cy="73" r="4.4" {...p} />
+      <circle cx="66.5" cy="73" r="4.4" {...p} />
+      <path d="M42 74 h7.2 v16 h-7.2 Z" {...p} />
+      <path d="M50.8 74 h7.2 v16 h-7.2 Z" {...p} />
+    </g>
+  )
+}
+
+type Suit = { cape?: ReactNode; body: ReactNode }
+
+/** 靴子：几套战服共用，只换颜色和金边 */
+const boots = (main: string, trim?: string) => (
+  <g>
+    <path
+      d="M40 86 h10 v8 q0 3 -3 3 h-9 q-1 -6 2 -11 Z"
+      fill={main}
+      stroke={shade(main, -0.42)}
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M60 86 h-10 v8 q0 3 3 3 h9 q1 -6 -2 -11 Z"
+      fill={main}
+      stroke={shade(main, -0.42)}
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    {trim && (
+      <>
+        <path d="M39.5 88.5 h10.5 M60.5 88.5 h-10.5" {...stroke(trim, 1.8)} />
+      </>
+    )}
+  </g>
+)
+
+/** 腰带：同上，是把上下身分开的关键一笔 */
+const belt = (main: string, buckle: string) => (
+  <g>
+    <path
+      d="M39 70 h22 v5 h-22 Z"
+      fill={main}
+      stroke={shade(main, -0.42)}
+      strokeWidth="1.3"
+    />
+    <rect x="46.5" y="70" width="7" height="5" rx="1.2" fill={buckle} />
+  </g>
+)
+
+function Outfit({ id, sex }: { id: string | undefined; sex: AvatarSex }): Suit {
+  const female = sex === 'f'
+  const line = (c: string) => ({
+    stroke: shade(c, -0.42),
+    strokeWidth: 1.4,
+    strokeLinejoin: 'round' as const,
+  })
+
+  /** 上身主体：女生腰收一点 */
+  const torso = female
+    ? 'M38 55 Q50 51 62 55 L60 71 Q50 74 40 71 Z'
+    : 'M37 55 Q50 51 63 55 L61 72 Q50 75 39 72 Z'
+  const sleeveL = 'M38 55 C32 57 29 63 29 70 L37 70 C37 64 38 59 42 56 Z'
+  const sleeveR = 'M62 55 C68 57 71 63 71 70 L63 70 C63 64 62 59 58 56 Z'
+
+  /** 裙子，女生的骑士铠和暗影战衣用 */
+  const skirt = (c: string) => (
+    <path d="M38 71 L36 82 h28 L62 71 Z" fill={c} {...line(c)} />
+  )
 
   if (id === 'jersey') {
-    return (
-      <g>
-        <path d={body} fill="#1f6feb" stroke={shade("#1f6feb", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M50 79 L43 87 L50 94 L57 87 Z" fill="#fdfbff" />
-        <path d="M19 92 L15 100 L26 100 L29 92 Z" fill="#c7e0ff" />
-        <path d="M81 92 L85 100 L74 100 L71 92 Z" fill="#c7e0ff" />
-        <text
-          x="50"
-          y="99"
-          textAnchor="middle"
-          fontSize="11"
-          fontWeight="700"
-          fill="#fdfbff"
-        >
-          1
-        </text>
-      </g>
-    )
+    const c = '#1f6feb'
+    return {
+      body: (
+        <g>
+          <path d={sleeveL} fill={c} {...line(c)} />
+          <path d={sleeveR} fill={c} {...line(c)} />
+          <path d={torso} fill={c} {...line(c)} />
+          <path d="M45 52 Q50 57 55 52" {...stroke('#fdfbff', 2.4)} />
+          <text x="50" y="67" textAnchor="middle" fontSize="12" fontWeight="700" fill="#fdfbff">
+            1
+          </text>
+          <path d="M40 70 h20 v8 h-20 Z" fill="#e9edf3" {...line('#e9edf3')} />
+          {boots('#e9edf3', '#1f6feb')}
+        </g>
+      ),
+    }
   }
 
   if (id === 'leather') {
-    return (
-      <g>
-        <path d={body} fill="#7a4b2a" stroke={shade("#7a4b2a", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M50 79 L40 89 L50 97 L60 89 Z" fill="#5c3720" />
-        <path d="M22 94 h56" {...stroke('#3f2616', 3)} />
-        <ellipse cx="26" cy="92" rx="7.5" ry="6.5" fill="#8f5c36" />
-        <ellipse cx="74" cy="92" rx="7.5" ry="6.5" fill="#8f5c36" />
-        <circle cx="50" cy="92" r="3.2" fill="#d8a25e" />
-      </g>
-    )
+    const c = '#7a4b2a'
+    return {
+      body: (
+        <g>
+          <path d={sleeveL} fill={shade(c, 0.12)} {...line(c)} />
+          <path d={sleeveR} fill={shade(c, 0.12)} {...line(c)} />
+          <path d={torso} fill={c} {...line(c)} />
+          {/* 胸前交叉的皮带 */}
+          <path d="M41 56 L59 70 M59 56 L41 70" {...stroke(shade(c, -0.3), 2.2)} />
+          {/* 护腕 */}
+          <path d="M30 66 h7 v5 h-7 Z" fill={shade(c, -0.14)} {...line(c)} />
+          <path d="M63 66 h7 v5 h-7 Z" fill={shade(c, -0.14)} {...line(c)} />
+          {belt('#4a2c17', '#d8a25e')}
+          <path d="M41 75 h18 v8 h-18 Z" fill={shade(c, -0.12)} {...line(c)} />
+          {boots('#5c3720', '#d8a25e')}
+        </g>
+      ),
+    }
   }
 
   if (id === 'knight') {
-    return (
-      <g>
-        <path d={body} fill="#b9c2cf" stroke={shade("#b9c2cf", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M50 79 L41 88 L50 97 L59 88 Z" fill="#8f99a8" />
-        {/* 肩甲 */}
-        <path d="M19 92 C20 83 29 81 34 86 L32 100 L15 100 Z" fill="#d5dce6" />
-        <path d="M81 92 C80 83 71 81 66 86 L68 100 L85 100 Z" fill="#d5dce6" />
-        <path d="M19 92 C20 83 29 81 34 86" {...stroke('#8f99a8', 1.6)} />
-        <path d="M81 92 C80 83 71 81 66 86" {...stroke('#8f99a8', 1.6)} />
-        {/* 胸前那颗金星 */}
+    const s = '#c3cbd8'
+    return {
+      cape: (
+        <>
         <path
-          d="M50 88 l2.4 5 l5.5 0.7 l-4 3.9 l0.9 5.4 l-4.8 -2.6 l-4.8 2.6 l0.9 -5.4 l-4 -3.9 l5.5 -0.7 Z"
-          fill="#f2c14e"
+          d="M36 55 C26 65 23 80 25 95 L75 95 C77 80 74 65 64 55 Z"
+          fill="#a52834"
+          stroke="#6d1a22"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
         />
-      </g>
-    )
+        <path d="M36 55 C29 66 27 80 28 95 L34 95 C33 79 34 65 40 56 Z" fill="#7d1f28" />
+        <path d="M64 55 C71 66 73 80 72 95 L66 95 C67 79 66 65 60 56 Z" fill="#7d1f28" />
+        </>
+      ),
+      body: (
+        <g>
+          <path d={sleeveL} fill={s} {...line(s)} />
+          <path d={sleeveR} fill={s} {...line(s)} />
+          <path d={torso} fill={s} {...line(s)} />
+          {/* 护肩：骑士的辨识度全在这两块上 */}
+          <path d="M36 55 C30 55 27 60 28 66 L38 64 C38 59 38 56 40 54 Z" fill="#dfe5ee" {...line(s)} />
+          <path d="M64 55 C70 55 73 60 72 66 L62 64 C62 59 62 56 60 54 Z" fill="#dfe5ee" {...line(s)} />
+          {/* 胸口金星 */}
+          <path
+            d="M50 57 l2.6 5.4 l6 0.8 l-4.3 4.2 l1 5.9 l-5.3 -2.8 l-5.3 2.8 l1 -5.9 l-4.3 -4.2 l6 -0.8 Z"
+            fill="#f2c14e"
+            stroke="#a8801f"
+            strokeWidth="1"
+          />
+          {belt('#6b4a2c', '#f2c14e')}
+          {female ? skirt('#eef1f6') : <path d="M41 75 h18 v8 h-18 Z" fill={s} {...line(s)} />}
+          {boots('#dfe5ee', '#f2c14e')}
+        </g>
+      ),
+    }
   }
 
   if (id === 'shadow') {
-    return (
-      <g>
-        <path d={body} fill="#241f2e" stroke={shade("#241f2e", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M50 79 L40 90 L50 99 L60 90 Z" fill="#15121c" />
-        <path d="M22 93 C34 100 66 100 78 93" {...stroke('#c0392b', 2.4)} />
-        <path d="M19 92 C21 84 29 82 34 87 L33 100 L16 100 Z" fill="#312a3d" />
-        <path d="M81 92 C79 84 71 82 66 87 L67 100 L84 100 Z" fill="#312a3d" />
-        <circle cx="50" cy="90" r="3.6" fill="#c0392b" />
-        <circle cx="50" cy="90" r="1.5" fill="#ffb4a8" />
-      </g>
-    )
+    const c = '#2a2333'
+    return {
+      cape: (
+        <>
+        <path
+          d="M36 55 C26 65 22 80 24 95 L76 95 C78 80 74 65 64 55 Z"
+          fill="#1a1622"
+          stroke="#0e0b14"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path d="M36 55 C29 66 26 80 27 95 L33 95 C32 79 34 65 40 56 Z" fill="#c0392b" opacity="0.55" />
+        <path d="M64 55 C71 66 74 80 73 95 L67 95 C68 79 66 65 60 56 Z" fill="#c0392b" opacity="0.55" />
+        </>
+      ),
+      body: (
+        <g>
+          <path d={sleeveL} fill={c} {...line(c)} />
+          <path d={sleeveR} fill={c} {...line(c)} />
+          <path d={torso} fill={c} {...line(c)} />
+          <path d="M40 56 C44 62 56 62 60 56" {...stroke('#c0392b', 2.2)} />
+          <circle cx="50" cy="64" r="3.6" fill="#c0392b" stroke="#7d2018" strokeWidth="1" />
+          <circle cx="50" cy="64" r="1.5" fill="#ffb4a8" />
+          <path d="M29 65 h8 v6 h-8 Z" fill={shade(c, 0.18)} {...line(c)} />
+          <path d="M63 65 h8 v6 h-8 Z" fill={shade(c, 0.18)} {...line(c)} />
+          {belt('#15121c', '#c0392b')}
+          {female ? skirt('#1a1622') : <path d="M41 75 h18 v8 h-18 Z" fill={shade(c, -0.15)} {...line(c)} />}
+          {boots('#1a1622', '#c0392b')}
+        </g>
+      ),
+    }
   }
 
   // 训练服：免费款
-  return (
-    <g>
-      <path d={body} fill="#3f4757" stroke={shade("#3f4757", -0.42)} strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M50 79 L44 86 L50 92 L56 86 Z" fill="#e9edf3" />
-      <path d="M22 96 h56" {...stroke('#2c3340', 2.4)} />
-    </g>
-  )
+  const c = '#e9edf3'
+  return {
+    body: (
+      <g>
+        <path d={sleeveL} fill={c} {...line(c)} />
+        <path d={sleeveR} fill={c} {...line(c)} />
+        <path d={torso} fill={c} {...line(c)} />
+        <path d="M45 52 Q50 57 55 52" {...stroke('#aab4c4', 2)} />
+        <path d="M40 70 h20 v9 h-20 Z" fill="#3f4757" {...line('#3f4757')} />
+        {boots('#3f4757', '#e9edf3')}
+      </g>
+    ),
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -532,7 +663,8 @@ const WEAPONS: Record<string, ReactNode> = {
  * 武器摆位：往右让开脸，握把落在肩膀高度，刀尖朝右上。
  * 头最宽到 x=77，所以握把放 x=87 才不压脸。
  */
-const WEAPON_AT = 'translate(88 78) rotate(14) scale(0.8)'
+/** 握在右手上（手心在 66.5,73），刀身朝上，不再是浮在身边 */
+const WEAPON_AT = 'translate(67 73) rotate(12) scale(0.62)'
 
 /* ------------------------------------------------------------------ *
  * 背景
@@ -578,6 +710,12 @@ const BACKDROPS: Record<string, ReactNode> = {
 
 const IRIS: Record<AvatarSex, string> = { m: '#3f7fd8', f: '#4fa89c' }
 
+/**
+ * 把整颗头（含头发五官）从原来的整张画布缩到上半截。
+ * 原来头顶在 y=9，缩放后落在 y=2；0.72 是等比，描边不会被拉扁。
+ */
+const HEAD_AT = 'translate(50 2) scale(0.7) translate(-50 -9)'
+
 /** 角色本体，不带 <svg> 外壳 —— 这样整图和商店里的裁剪图能共用同一份画法 */
 function AvatarInner({
   sex,
@@ -590,17 +728,28 @@ function AvatarInner({
 }) {
   const tone = SKIN_TONES[skin] ?? SKIN_TONES[0]
   const hair = hairOf(equipped.hair, sex)
+  const suit = Outfit({ id: equipped.outfit, sex })
   const backdrop = equipped.background ? BACKDROPS[equipped.background] : null
   const weapon = equipped.weapon ? WEAPONS[equipped.weapon] : null
 
   return (
     <>
       {backdrop}
-      {hair.back}
-      <Outfit id={equipped.outfit} sex={sex} />
-      <Head skin={tone} />
-      <Face sex={sex} skin={tone} iris={IRIS[sex]} />
-      {hair.front}
+      {GROUND}
+      {suit.cape}
+      {/*
+        头连同头发、五官原本按 100×100 整张画布画。
+        这里整组缩到画面上半截，得到约 2 头身的 Q 版比例，
+        比把每条路径重算一遍靠谱得多。
+      */}
+      <g transform={HEAD_AT}>{hair.back}</g>
+      <BodyBase skin={tone} />
+      {suit.body}
+      <g transform={HEAD_AT}>
+        <Head skin={tone} />
+        <Face sex={sex} skin={tone} iris={IRIS[sex]} />
+        {hair.front}
+      </g>
       {weapon && <g transform={WEAPON_AT}>{weapon}</g>}
     </>
   )
@@ -649,7 +798,7 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
     // 武器本来吊在角色手边，单独展示要摆正、居中、放大
     return (
       <svg viewBox="0 0 100 100" className={className} aria-hidden>
-        <g transform="translate(50 68) scale(1.9)">{WEAPONS[itemId]}</g>
+        <g transform="translate(50 72) scale(1.9)">{WEAPONS[itemId]}</g>
       </svg>
     )
   }
@@ -662,8 +811,8 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
   const sex: AvatarSex = item.sex ?? 'm'
   const hair = item.slot === 'hair' ? item.id : sex === 'm' ? 'm-short' : 'f-bob'
   const outfit = item.slot === 'outfit' ? item.id : 'tee'
-  // 发型看头，战服看肩
-  const crop = item.slot === 'hair' ? '12 0 76 76' : '12 66 76 34'
+  // 发型裁到头，战服裁到身子 —— 各看各的部位才分得清买的是什么
+  const crop = item.slot === 'hair' ? '26 0 48 50' : '14 48 72 52'
 
   return (
     <svg viewBox={crop} className={className} aria-hidden>
