@@ -363,21 +363,26 @@ function DressPanel({
         )
       })}
 
-      <SectionTitle>肤色</SectionTitle>
-      <div className="flex gap-2">
-        {SKIN_TONES.map((tone, i) => (
-          <button
-            key={tone}
-            onClick={() => onSkin(i)}
-            aria-label={`肤色 ${i + 1}`}
-            className={cx(
-              'size-11 rounded-full border-2',
-              avatar.skin === i ? 'border-lime-glow' : 'border-ink-700',
-            )}
-            style={{ backgroundColor: tone }}
-          />
-        ))}
-      </div>
+      {/* 肤色只对 SVG 手绘那套有用：立绘是画好的图，改不了肤色 */}
+      {!hasArt && (
+        <>
+          <SectionTitle>肤色</SectionTitle>
+          <div className="flex gap-2">
+            {SKIN_TONES.map((tone, i) => (
+              <button
+                key={tone}
+                onClick={() => onSkin(i)}
+                aria-label={`肤色 ${i + 1}`}
+                className={cx(
+                  'size-11 rounded-full border-2',
+                  avatar.skin === i ? 'border-lime-glow' : 'border-ink-700',
+                )}
+                style={{ backgroundColor: tone }}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       <SectionTitle>换个角色</SectionTitle>
       <div className="grid grid-cols-2 gap-2">

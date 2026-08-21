@@ -59,7 +59,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // webp 是角色立绘 —— 漏了它离线时头像会变成空白
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
+        // 十张立绘约 220KB，加上代码离线包到 700KB 上下，默认 2MiB 的上限够用
       },
     }),
   ],
