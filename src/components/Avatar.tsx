@@ -869,6 +869,24 @@ const FRAMES: Record<string, FrameArt> = {
   },
 }
 
+/**
+ * 有画法的装备 id。
+ *
+ * 商店卖的是 id，画的是这几个 Record 的 key —— 两边对不上就是
+ * 「花了金币但什么都没变」，而这种 bug 界面上一点都不报错，
+ * 只会悄悄退回默认款。测试拿这份清单和商店对一遍，
+ * 以后加新货漏画哪一件，当场就红。
+ */
+export const DRAWN_IDS: Record<string, string[]> = {
+  frame: Object.keys(FRAMES),
+  background: Object.keys(BACKDROPS),
+  weapon: Object.keys(WEAPONS),
+}
+
+/**
+ * 头像框。单独一个 <svg> 叠在头像上面，不进 AvatarInner ——
+ * 那样立绘图片版就用不上了，而这一圈恰恰是有立绘之后唯一还能买的东西。
+ */
 export function AvatarFrame({ itemId }: { itemId: string }) {
   const art = FRAMES[itemId]
   if (!art) return null

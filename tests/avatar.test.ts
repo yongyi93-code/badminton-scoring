@@ -15,6 +15,7 @@ import {
   STARTER_IDS,
   outfitValue,
   retireOldGear,
+  SLOT_LABELS,
   PET_LEVELS,
   SHOP_ITEMS,
   STARS_PER_TIER,
@@ -23,6 +24,7 @@ import {
   winCount,
   type AvatarProfile,
 } from '@/lib/avatar'
+import { DRAWN_IDS } from '@/components/Avatar'
 import type { Match } from '@/types'
 
 /** 造一场打完的比赛，winner 指定哪边赢 */
@@ -447,5 +449,38 @@ describe('旧装备换成羽球装备', () => {
   it('本来就是新装备的角色一点都不动', () => {
     const before = pet({ owned: ['pro', 'racket-gold'], equipped: { outfit: 'pro' } })
     expect(retireOldGear(before)).toEqual(before)
+  })
+})
+
+describe('商店卖的每一件都画得出来', () => {
+  /*
+   * 商店卖 id、画图按 id 查表，两边对不上就是花了金币却什么都没变 ——
+   * 界面上不会报错，只会悄悄退回默认款。今天已经栽过一次（旧装备改名没迁移），
+   * 所以这里把三类查表的装备全对一遍。
+   */
+  const slots = ['frame', 'background', 'weapon'] as const
+  for (const slot of slots) {
+    it(`${SLOT_LABELS[slot]}：每个商品都有对应的画法`, () => {
+      const selling = SHOP_ITEMS.filter((i) => i.slot === slot).map((i) => i.id)
+      expect(selling.length).toBeGreaterThan(0)
+      for (const id of selling) expect(DRAWN_IDS[slot], id).toContain(id)
+    })
+  }
+
+  it('发型和战服按性别都画得出来（画不出来会退回默认款）', () => {
+    // 这两类不查表，是 switch/if 一路匹配下来的，所以只能反过来验：
+    // 商店里的 id 必须是画法里认得的那几个，清单写死在这里当契约
+    const hair = ['m-short', 'm-spiky', 'm-wolf', 'm-silver', 'f-bob', 'f-twin', 'f-long', 'f-wavy']
+    const outfit = ['tee', 'jersey', 'elite', 'pro', 'legend']
+    expect(SHOP_ITEMS.filter((i) => i.slot === 'hair').map((i) => i.id).sort())
+      .toEqual(hair.sort())
+    expect(SHOP_ITEMS.filter((i) => i.slot === 'outfit').map((i) => i.id).sort())
+      .toEqual(outfit.sort())
+  })
+
+  it('称号只是一行字，有名字就够', () => {
+    for (const i of SHOP_ITEMS.filter((i) => i.slot === 'title')) {
+      expect(i.name.length).toBeGreaterThan(0)
+    }
   })
 })
