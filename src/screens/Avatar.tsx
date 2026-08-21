@@ -14,6 +14,8 @@ import {
   cx,
 } from '@/components/ui'
 import { AvatarView, GearIcon } from '@/components/Avatar'
+import { Avatar as AvatarPic, TitleTag } from '@/components/PlayerBits'
+import { RankChip } from '@/components/RankMedal'
 import {
   hasArt,
   nextStage,
@@ -184,6 +186,24 @@ export function Avatar({ playerId }: { playerId: string }) {
               </p>
             </div>
           )}
+
+          {/*
+            排行榜预览。
+            头像框和称号都只画在人的外面，大立绘上看不出来 ——
+            没有这一条的话，买完框和称号这一屏一点变化都没有，
+            会以为是买坏了。这里照排行榜的样子摆一遍，买完立刻看得见。
+          */}
+          <div className="rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-2.5">
+            <p className="mb-2 text-xs text-ink-400">别人在排行榜上看到的你</p>
+            <div className="flex items-center gap-3">
+              <AvatarPic name={player.name} avatar={avatar} />
+              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="truncate font-medium">{player.name}</span>
+                <TitleTag avatar={avatar} />
+                <RankChip level={level} />
+              </span>
+            </div>
+          </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Pill>

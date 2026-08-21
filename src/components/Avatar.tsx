@@ -996,19 +996,43 @@ export function AvatarView({
 }) {
   const art = stage && artUrl(sex, stage)
   if (art) {
+    /*
+     * 买来的背景要画在立绘后面。
+     * 漏掉这一层的话，有立绘的时候背景是唯一还能买的「装在人身上」的东西，
+     * 买完却一点变化都没有 —— 花了金币看不到东西，比不卖还糟。
+     */
+    const backdrop = equipped.background ? BACKDROPS[equipped.background] : null
     return (
       <span className={cx('relative block overflow-hidden', className)}>
-        <span
-          aria-hidden
-          className="absolute inset-x-0 bottom-0 top-1/4 blur-xl"
-          style={{
-            background: `radial-gradient(ellipse at 50% 60%, ${stage.glow}66, transparent 70%)`,
-          }}
-        />
+        {backdrop ? (
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="xMidYMid slice"
+            className="absolute inset-0 h-full w-full"
+            aria-hidden
+          >
+            {backdrop}
+          </svg>
+        ) : (
+          <span
+            aria-hidden
+            className="absolute inset-x-0 bottom-0 top-1/4 blur-xl"
+            style={{
+              background: `radial-gradient(ellipse at 50% 60%, ${stage.glow}66, transparent 70%)`,
+            }}
+          />
+        )}
+        {/*
+          立绘自带设计稿那层渐变底，衬在买来的背景前面会像贴了张照片。
+          圆角加一道细边，让它看起来是「裱起来的立绘」而不是没对齐。
+        */}
         <img
           src={art}
           alt={title ?? '角色'}
-          className="relative h-full w-full object-contain"
+          className={cx(
+            'relative h-full w-full object-contain',
+            !!backdrop && 'rounded-lg',
+          )}
           draggable={false}
         />
       </span>
