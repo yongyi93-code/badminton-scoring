@@ -65,13 +65,45 @@ export type Fee = {
  * king     车轮赛（打上打落）—— 赢的留场，输的排队尾
  * rotation 轮转赛（X 人转）—— 开局生成固定赛程，打完为止
  */
-export type SessionFormat = 'free' | 'king' | 'rotation'
+export type SessionFormat = 'free' | 'king' | 'rotation' | 'friendly'
 
 export const FORMAT_LABELS: Record<SessionFormat, string> = {
   free: '自由模式',
   king: '车轮赛',
   rotation: '轮转赛',
+  friendly: '友谊赛',
 }
+
+/**
+ * 友谊赛：两个俱乐部对打。
+ *
+ * 每一场都是主队 vs 客队（teamA 一定是主队），自动配对只在各自阵营里选人。
+ *
+ * 客队球员只属于这一场球局，不进正式球员名单 —— 别人俱乐部的人混进
+ * 名单和排行榜，只会让自己这边的榜变得没法看。所以他们的名字直接存在
+ * 这里，id 带 GUEST_PREFIX 前缀，一眼能认出来不是自己人。
+ *
+ * 友谊赛的比赛全部标 friendly，不进 MMR、段位和累计排行榜 ——
+ * 客队大多只打这一晚，让他们的战绩去搅动常年累计的榜没有意义。
+ */
+export type FriendlySetup = {
+  /** 主队（自己这边）名字 */
+  homeName: string
+  awayName: string
+  /** 客队球员，只在这场球局里存在 */
+  awayPlayers: GuestPlayer[]
+}
+
+export type GuestPlayer = {
+  id: string
+  name: string
+  gender: Gender
+}
+
+/** 客队球员 id 的前缀，用来和正式球员区分 */
+export const GUEST_PREFIX = 'guest:'
+
+export const isGuestId = (id: string) => id.startsWith(GUEST_PREFIX)
 
 /**
  * 配对时怎么用 MMR。
@@ -150,6 +182,8 @@ export type Session = {
   rotationPerPlayer?: number
   /** 自动配对怎么用 MMR；缺失视为 'balanced' */
   pairingMode?: PairingMode
+  /** 友谊赛的两队信息，format === 'friendly' 时才有 */
+  friendly?: FriendlySetup
 }
 
 /** 旧数据没有 format 字段，统一从这里取，避免各处散落 ?? 'free' */
@@ -199,6 +233,11 @@ export type Match = {
   seq: number
   startedAt?: number
   endedAt?: number
+  /**
+   * 友谊赛的比赛。标在比赛上而不是靠球局查 —— 统计全是从比赛记录直接推导的，
+   * 挂在比赛上才能在 decidedMatches 一处就过滤干净，不会漏掉某条统计路径。
+   */
+  friendly?: boolean
 }
 
 /** 由比赛记录推导出的球员统计，不落库 */

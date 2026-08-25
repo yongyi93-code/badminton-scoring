@@ -86,6 +86,11 @@ export type RotationInput = {
    * 两种模式都不动「已打场数最少的人必须上场」这条硬约束。
    */
   pairingMode?: PairingMode
+  /**
+   * 友谊赛的阵营划分。给了就变成硬约束：一场必须是主队 vs 客队，
+   * teamA 全是主队、teamB 全是客队，两边各出一半人。
+   */
+  clubOf?: Map<string, 'home' | 'away'>
   lookback?: number
   /** 注入随机源便于测试 */
   random?: () => number
@@ -233,6 +238,7 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     mustInclude = [],
     mmrById,
     pairingMode = 'balanced',
+    clubOf,
     lookback = DEFAULT_LOOKBACK,
     random = Math.random,
   } = input
@@ -266,6 +272,18 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     }
   }
 
+  if (clubOf) {
+    const half = need / 2
+    const count = (side: 'home' | 'away') =>
+      available.filter((p) => clubOf.get(p.id) === side).length
+    if (count('home') < half || count('away') < half) {
+      return {
+        pairing: null,
+        reason: `友谊赛一场要两队各 ${half} 人，现在主队 ${count('home')} 人、客队 ${count('away')} 人在等待区`,
+      }
+    }
+  }
+
   const missingMust = mustInclude.filter((id) => !available.some((p) => p.id === id))
   if (missingMust.length) {
     return { pairing: null, reason: '指定上场的球员当前不在等待区' }
@@ -290,6 +308,13 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     for (const group of groups) {
       for (const split of splits(group)) {
         const teams = [split.teamA, split.teamB]
+
+        // 友谊赛硬约束：teamA 全主队、teamB 全客队
+        if (clubOf) {
+          const allOf = (t: string[], side: 'home' | 'away') =>
+            t.every((id) => clubOf.get(id) === side)
+          if (!allOf(split.teamA, 'home') || !allOf(split.teamB, 'away')) continue
+        }
 
         // 混双硬约束
         if (type === 'mixed') {
@@ -356,15 +381,31 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     return best
   }
 
-  // 硬性公平：已打场数严格少于「第 need 少」的人必须上场
-  const gamesSorted = [...available]
-    .map((p) => loadById.get(p.id)!.games)
-    .sort((a, b) => a - b)
-  const threshold = gamesSorted[need - 1]
+  /**
+   * 硬性公平：已打场数严格少于「第 need 少」的人必须上场。
+   *
+   * 友谊赛要分边算。整体算的话「场数最少的 4 个人」可能三个都是主队的，
+   * 凑不出一场合法的主客对阵，直接排不出来 ——
+   * 两边各算各的「该轮到谁」，才既公平又排得出。
+   */
+  const mandatoryFrom = (pool: Player[], slots: number) => {
+    const sorted = pool.map((p) => loadById.get(p.id)!.games).sort((a, b) => a - b)
+    const th = sorted[slots - 1]
+    return {
+      threshold: th,
+      ids: pool.filter((p) => loadById.get(p.id)!.games < th).map((p) => p.id),
+    }
+  }
 
-  const mandatory = available
-    .filter((p) => loadById.get(p.id)!.games < threshold)
-    .map((p) => p.id)
+  const sides: { pool: Player[]; slots: number }[] = clubOf
+    ? (['home', 'away'] as const).map((side) => ({
+        pool: available.filter((p) => clubOf.get(p.id) === side),
+        slots: need / 2,
+      }))
+    : [{ pool: available, slots: need }]
+
+  const perSide = sides.map((s) => ({ ...s, ...mandatoryFrom(s.pool, s.slots) }))
+  const mandatory = perSide.flatMap((s) => s.ids)
 
   // mustInclude 也是硬约束，合并进去（可能超过 need，此时无解）
   const merged = Array.from(new Set([...mandatory, ...mustInclude]))
@@ -375,18 +416,20 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     }
   }
 
-  // 搜索池：与 threshold 同场数的人（等最久的优先），控制组合数量
-  const tier = available
-    .filter(
-      (p) =>
-        loadById.get(p.id)!.games === threshold && !merged.includes(p.id),
-    )
-    .sort((a, b) => {
-      const la = loadById.get(a.id)!
-      const lb = loadById.get(b.id)!
-      return lb.restRounds - la.restRounds || random() - 0.5
-    })
-    .slice(0, MAX_OPTIONAL_POOL)
+  // 搜索池：与该侧 threshold 同场数的人（等最久的优先），控制组合数量
+  const tier = perSide.flatMap((s) =>
+    s.pool
+      .filter(
+        (p) =>
+          loadById.get(p.id)!.games === s.threshold && !merged.includes(p.id),
+      )
+      .sort((a, b) => {
+        const la = loadById.get(a.id)!
+        const lb = loadById.get(b.id)!
+        return lb.restRounds - la.restRounds || random() - 0.5
+      })
+      .slice(0, MAX_OPTIONAL_POOL),
+  )
 
   const tierPool = [
     ...merged.map((id) => byId.get(id)!),

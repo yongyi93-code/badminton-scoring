@@ -46,6 +46,7 @@ function simulate(
   seed = 42,
   mmrById?: Map<string, number>,
   pairingMode?: PairingMode,
+  clubOf?: Map<string, 'home' | 'away'>,
 ) {
   const random = seeded(seed)
   const matches: Match[] = []
@@ -62,6 +63,7 @@ function simulate(
         type,
         mmrById,
         pairingMode,
+        clubOf,
         random,
       })
       if (!pairing) break
@@ -419,5 +421,68 @@ describe('配对模式', () => {
     expect(a.map((m) => [m.teamA, m.teamB])).toEqual(
       b.map((m) => [m.teamA, m.teamB]),
     )
+  })
+})
+
+describe('友谊赛：两个俱乐部对打', () => {
+  /** 前 4 人主队、后 4 人客队 */
+  const twoClubs = (n = 8) => {
+    const players = makePlayers(n)
+    const clubOf = new Map<string, 'home' | 'away'>(
+      players.map((p, i) => [p.id, i < n / 2 ? 'home' : 'away'] as const),
+    )
+    return { players, clubOf }
+  }
+
+  it('每一场都是主队打客队，teamA 全主队、teamB 全客队', () => {
+    const { players, clubOf } = twoClubs()
+    const matches = simulate(players, 1, 20, 'doubles', 5, undefined, undefined, clubOf)
+    expect(matches.length).toBe(20)
+    for (const m of matches) {
+      expect(m.teamA.every((id) => clubOf.get(id) === 'home'), m.id).toBe(true)
+      expect(m.teamB.every((id) => clubOf.get(id) === 'away'), m.id).toBe(true)
+    }
+  })
+
+  it('两边各自公平轮转，不会有人在自己队里被晾着', () => {
+    const { players, clubOf } = twoClubs()
+    const matches = simulate(players, 1, 20, 'doubles', 5, undefined, undefined, clubOf)
+    const counts = gamesPerPlayer(players, matches)
+    for (const side of ['home', 'away'] as const) {
+      const ns = players
+        .map((p, i) => [p, counts[i]] as const)
+        .filter(([p]) => clubOf.get(p.id) === side)
+        .map(([, n]) => n)
+      expect(Math.max(...ns) - Math.min(...ns), side).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('两队人数不一样也照排，人少的那队打得更勤', () => {
+    // 主队 4 人、客队 2 人：客队那 2 个每场都上
+    const players = makePlayers(6)
+    const clubOf = new Map<string, 'home' | 'away'>(
+      players.map((p, i) => [p.id, i < 4 ? 'home' : 'away'] as const),
+    )
+    const matches = simulate(players, 1, 12, 'doubles', 5, undefined, undefined, clubOf)
+    expect(matches.length).toBe(12)
+    for (const m of matches) {
+      expect(m.teamB.every((id) => clubOf.get(id) === 'away')).toBe(true)
+    }
+  })
+
+  it('某一边人不够就说清楚为什么排不出来', () => {
+    const players = makePlayers(4)
+    const clubOf = new Map<string, 'home' | 'away'>(
+      players.map((p, i) => [p.id, i < 3 ? 'home' : 'away'] as const),
+    )
+    const { pairing, reason } = pickNextMatch({
+      attending: players,
+      matches: [],
+      type: 'doubles',
+      clubOf,
+      random: seeded(1),
+    })
+    expect(pairing).toBeNull()
+    expect(reason).toContain('客队 1 人')
   })
 })

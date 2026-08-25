@@ -15,6 +15,7 @@ import {
 import {
   DEFAULT_RULES,
   type EndCondition,
+  type FriendlySetup,
   type Gender,
   type Match,
   type MatchType,
@@ -44,6 +45,7 @@ export type SessionDraft = {
   kingStreakCap?: number
   rotationPerPlayer?: number
   pairingMode?: PairingMode
+  friendly?: FriendlySetup
 }
 
 /**
@@ -153,6 +155,7 @@ export const useApp = create<AppState>()(
           kingStreakCap: draft.kingStreakCap,
           rotationPerPlayer: draft.rotationPerPlayer,
           pairingMode: draft.pairingMode ?? 'balanced',
+          friendly: draft.friendly,
         }
         set((s) => ({ sessions: [session, ...s.sessions] }))
         return session
@@ -368,6 +371,42 @@ export const sessionMatches = (matches: Match[], sessionId: string) =>
 
 export const playerMap = (players: Player[]) =>
   new Map(players.map((p) => [p.id, p]))
+
+/**
+ * 这场球局里所有人的名册 = 正式球员 + 友谊赛客队。
+ *
+ * 客队球员不进正式名单（别人俱乐部的人混进名单和排行榜只会碍事），
+ * 但看板、记分屏、结算页都得叫得出他们的名字，所以在这里补进去。
+ * 包装成 Player 的形状，界面上那些「按 id 拿名字/性别」的地方一行都不用改。
+ */
+export const rosterForSession = (
+  players: Player[],
+  session?: Session,
+): Map<string, Player> => {
+  const map = playerMap(players)
+  for (const g of session?.friendly?.awayPlayers ?? []) {
+    map.set(g.id, {
+      id: g.id,
+      name: g.name,
+      level: 3,
+      gender: g.gender,
+      archived: false,
+      createdAt: 0,
+    })
+  }
+  return map
+}
+
+/** 友谊赛里这个人属于哪一边；不是友谊赛返回 undefined */
+export const clubSideOf = (
+  session: Session | undefined,
+  playerId: string,
+): 'home' | 'away' | undefined => {
+  if (!session?.friendly) return undefined
+  return session.friendly.awayPlayers.some((g) => g.id === playerId)
+    ? 'away'
+    : 'home'
+}
 
 export const avatarOf = (avatars: AvatarProfile[], playerId: string) =>
   avatars.find((p) => p.playerId === playerId)

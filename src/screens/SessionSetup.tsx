@@ -29,6 +29,9 @@ import {
   type EndCondition,
   type MatchType,
   type SessionFormat,
+  GUEST_PREFIX,
+  type Gender,
+  type GuestPlayer,
   PAIRING_MODE_HINTS,
   PAIRING_MODE_LABELS,
   type PairingMode,
@@ -60,6 +63,9 @@ export function SessionSetup() {
   const [addOpen, setAddOpen] = useState(false)
 
   const [format, setFormat] = useState<SessionFormat>('free')
+  const [homeName, setHomeName] = useState('')
+  const [awayName, setAwayName] = useState('')
+  const [awayPlayers, setAwayPlayers] = useState<GuestPlayer[]>([])
   const [streakCap, setStreakCap] = useState(DEFAULT_STREAK_CAP)
   const [perPlayer, setPerPlayer] = useState(DEFAULT_ROTATION_PER_PLAYER)
   // 0 表示不限
@@ -89,7 +95,23 @@ export function SessionSetup() {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
 
   const needed = defaultType === 'singles' ? 2 : 4
-  const enough = selected.length >= needed
+  /*
+   * 友谊赛是两队各出一半人，所以两边都要够，不是加起来够就行 ——
+   * 主队 6 人客队 1 人加起来 7 个，一场双打照样排不出来。
+   */
+  const namedAway = awayPlayers.filter((g) => g.name.trim())
+  const isFriendly = format === 'friendly'
+  const half = needed / 2
+  const enough = isFriendly
+    ? selected.length >= half && namedAway.length >= half
+    : selected.length >= needed
+  const startHint = isFriendly
+    ? enough
+      ? `开始友谊赛（${selected.length} 打 ${namedAway.length}）`
+      : `两队各至少 ${half} 人：主队 ${selected.length}、客队 ${namedAway.length}`
+    : enough
+      ? `开始球局（${selected.length} 人）`
+      : `至少选 ${needed} 人`
 
   const genderWarning =
     defaultType === 'mixed' &&
@@ -145,6 +167,14 @@ export function SessionSetup() {
       kingStreakCap: format === 'king' ? streakCap : undefined,
       rotationPerPlayer: format === 'rotation' ? perPlayer : undefined,
       pairingMode,
+      friendly: isFriendly
+        ? {
+            homeName: homeName.trim() || '主队',
+            awayName: awayName.trim() || '客队',
+            // 没填名字的那几行直接丢掉，别把空名字带进球局
+            awayPlayers: namedAway.map((g) => ({ ...g, name: g.name.trim() })),
+          }
+        : undefined,
     })
 
     // 轮转赛开局就把整份赛程写成排队中的比赛，之后「排下一场」直接顶上去
@@ -292,6 +322,7 @@ export function SessionSetup() {
                 { value: 'free', label: '自由' },
                 { value: 'king', label: '车轮赛' },
                 { value: 'rotation', label: '轮转赛' },
+                { value: 'friendly', label: '友谊赛' },
               ]}
             />
           </Field>
@@ -303,7 +334,92 @@ export function SessionSetup() {
               '打上打落：赢的两人留在场上，输的两人下场排到队尾，队头两人组队上来挑战。'}
             {format === 'rotation' &&
               '开局就把整份赛程排好，每人场数均等、搭档尽量不重复，打完自动结算。'}
+            {format === 'friendly' &&
+              '两个俱乐部对打：每一场都是主队 vs 客队，客队球员只在这场输名字，不进球员名单。成绩单独记，不算进 MMR 和累计排行榜。'}
           </p>
+
+          {format === 'friendly' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="主队（我们）">
+                  <input
+                    className={inputClass}
+                    value={homeName}
+                    onChange={(e) => setHomeName(e.target.value)}
+                    placeholder="例如 城中羽队"
+                  />
+                </Field>
+                <Field label="客队（对手）">
+                  <input
+                    className={inputClass}
+                    value={awayName}
+                    onChange={(e) => setAwayName(e.target.value)}
+                    placeholder="例如 北区羽会"
+                  />
+                </Field>
+              </div>
+
+              <Field
+                label={`客队球员（${awayPlayers.length} 人）`}
+                hint="打对方球员的名字，一行一个。他们只属于这场球局，不会进你的球员名单，也不会上排行榜"
+              >
+                <div className="space-y-2">
+                  {awayPlayers.map((g, i) => (
+                    <div key={g.id} className="flex items-center gap-2">
+                      <input
+                        className={inputClass}
+                        value={g.name}
+                        onChange={(e) =>
+                          setAwayPlayers((xs) =>
+                            xs.map((x, j) =>
+                              j === i ? { ...x, name: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        placeholder={`客队球员 ${i + 1}`}
+                      />
+                      <Segmented
+                        value={g.gender}
+                        onChange={(v: Gender) =>
+                          setAwayPlayers((xs) =>
+                            xs.map((x, j) => (j === i ? { ...x, gender: v } : x)),
+                          )
+                        }
+                        options={[
+                          { value: 'M', label: '男' },
+                          { value: 'F', label: '女' },
+                        ]}
+                      />
+                      <button
+                        onClick={() =>
+                          setAwayPlayers((xs) => xs.filter((_, j) => j !== i))
+                        }
+                        aria-label="删掉这个客队球员"
+                        className="shrink-0 rounded-lg border border-ink-700 px-2.5 py-2 text-ink-400 active:bg-ink-800"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      setAwayPlayers((xs) => [
+                        ...xs,
+                        {
+                          id: GUEST_PREFIX + Math.random().toString(36).slice(2),
+                          name: '',
+                          gender: 'M' as Gender,
+                        },
+                      ])
+                    }
+                  >
+                    + 加一个客队球员
+                  </Button>
+                </div>
+              </Field>
+            </>
+          )}
 
           {format === 'king' && (
             <Field
@@ -473,7 +589,7 @@ export function SessionSetup() {
             <p className="mb-2 text-center text-xs text-amber-300">{genderWarning}</p>
           )}
           <Button variant="primary" size="lg" block disabled={!enough} onClick={start}>
-            {enough ? `开始球局（${selected.length} 人）` : `至少选 ${needed} 人`}
+            {startHint}
           </Button>
         </div>
       </div>
