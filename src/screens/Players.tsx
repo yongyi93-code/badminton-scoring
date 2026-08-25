@@ -56,7 +56,10 @@ export function PlayerEditor({
           />
         </Field>
 
-        <Field label="性别" hint="混双模式需要，才能强制每队一男一女">
+        <Field
+          label="性别"
+          hint="混双模式需要，才能强制每队一男一女；也决定角色是男是女，填了就不用再选一次"
+        >
           <Segmented
             value={gender}
             onChange={setGender}

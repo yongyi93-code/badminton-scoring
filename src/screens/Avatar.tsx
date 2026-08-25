@@ -86,6 +86,17 @@ export function Avatar({ playerId }: { playerId: string }) {
     )
   }, [level.index])
 
+  /*
+   * 加球员时已经选过男女了，这里不该再问一次 ——
+   * 直接按球员资料里的性别把角色建出来。
+   * 只有「不填」的球员才落到下面那个选男女的界面，因为确实没得推。
+   */
+  useEffect(() => {
+    if (avatar || !player) return
+    if (player.gender === 'M') setAvatarSex(playerId, 'm')
+    else if (player.gender === 'F') setAvatarSex(playerId, 'f')
+  }, [avatar, player, playerId, setAvatarSex])
+
   if (!player) {
     return (
       <Screen>
@@ -97,8 +108,20 @@ export function Avatar({ playerId }: { playerId: string }) {
     )
   }
 
-  /* 还没建角色：先选男女 */
+  /*
+   * 还没建角色：只有没填性别的球员会走到这里 ——
+   * 填了性别的上面那个 effect 已经把角色建好了，这一帧先什么都不画，
+   * 免得选男女的界面闪一下又消失。
+   */
   if (!avatar) {
+    if (player.gender !== '-') {
+      return (
+        <Screen>
+          <TopBar title={`${player.name} 的角色`} onBack={back} />
+          <Body>{null}</Body>
+        </Screen>
+      )
+    }
     return (
       <Screen>
         <TopBar title={`${player.name} 的角色`} onBack={back} />
@@ -135,7 +158,9 @@ export function Avatar({ playerId }: { playerId: string }) {
           </div>
 
           <p className="text-xs text-ink-400">
-            选错也没关系，之后随时能换，买过的装备不会没收。
+            这个球员没填性别，所以要在这里选一次。去球员资料里把性别填上，
+            以后建角色就会自动对上，不用再选。选错也没关系，
+            之后随时能换，买过的装备不会没收。
           </p>
         </Body>
       </Screen>
