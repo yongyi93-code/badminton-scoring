@@ -19,6 +19,7 @@ import {
   type Match,
   type MatchType,
   type Player,
+  type PairingMode,
   type Rules,
   type Session,
   type SessionFormat,
@@ -42,6 +43,7 @@ export type SessionDraft = {
   endCondition?: EndCondition
   kingStreakCap?: number
   rotationPerPlayer?: number
+  pairingMode?: PairingMode
 }
 
 /**
@@ -150,6 +152,7 @@ export const useApp = create<AppState>()(
           endCondition: draft.endCondition,
           kingStreakCap: draft.kingStreakCap,
           rotationPerPlayer: draft.rotationPerPlayer,
+          pairingMode: draft.pairingMode ?? 'balanced',
         }
         set((s) => ({ sessions: [session, ...s.sessions] }))
         return session

@@ -1,4 +1,4 @@
-import type { Match, MatchType, Player } from '@/types'
+import type { Match, MatchType, PairingMode, Player } from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 公平轮转配对
@@ -6,7 +6,9 @@ import type { Match, MatchType, Player } from '@/types'
  * 纯随机会产生三种抱怨，这里逐条用规则挡掉：
  *   1. 有人连坐冷板凳  → 「已打场数最少的人必须上场」是硬约束，不是罚分
  *   2. 同一对搭档反复凑 → 近几场同队过的组合重罚
- *   3. 高手扎堆打菜鸟   → 两队水平和的差值罚分
+ *   3. 高手扎堆打菜鸟   → 按 MMR 罚分，两种口径二选一：
+ *      均衡（默认）一场里高分带低分，两队平均分尽量相等；
+ *      同级        挑水平接近的人凑一场，高分打高分、低分打低分。
  * ------------------------------------------------------------------ */
 
 /** 回避重复搭档/对手时往回看几场 */
@@ -25,11 +27,20 @@ const W = {
   /** 历史累计对阵次数（每次） */
   totalOpponent: 2,
   /**
-   * 两队平均 MMR 每差 1 分。
-   * 用平均而不是求和，单打双打的尺度才一致；
-   * 0.4 这个值让「两队平均差 75 分」和以前「水平差 1 星」的代价差不多。
+   * 两队平均 MMR 每差 1 分。用平均而不是求和，单打双打的尺度才一致。
+   *
+   * 这个数原来是 0.4，等于形同虚设：两队平均差 100 分才值 40 分代价，
+   * 还不如「近期同队过一次」（100）贵，于是实力平衡从来没赢过搭档多样性，
+   * 排出来的场看着就是没规律。2.0 让 100 分差 = 200 代价，压过一次重复搭档，
+   * 实力这条才真的说了算。
    */
-  mmrGap: 0.4,
+  mmrGap: 2,
+  /**
+   * 同级模式专用：一场里最高分和最低分每差 1 分。
+   * 光让两队平均相等是不够的 —— 300+10 对 290+20 两队平均只差 0，
+   * 但那个 10 分的上去就是挨打。要高打高、低打低，就得直接罚这个跨度。
+   */
+  mmrSpread: 2,
   /** 休息轮数：等得越久越该上，每轮减分 */
   restBonus: 12,
   /** 随机抖动上限，避免每晚排出一模一样的顺序 */
@@ -70,6 +81,11 @@ export type RotationInput = {
    * 只看今晚这一场的战绩配不准。缺省当 0，等于不做平衡。
    */
   mmrById?: Map<string, number>
+  /**
+   * 怎么用 MMR 配对，缺省 'balanced'。
+   * 两种模式都不动「已打场数最少的人必须上场」这条硬约束。
+   */
+  pairingMode?: PairingMode
   lookback?: number
   /** 注入随机源便于测试 */
   random?: () => number
@@ -216,6 +232,7 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     excludeIds = [],
     mustInclude = [],
     mmrById,
+    pairingMode = 'balanced',
     lookback = DEFAULT_LOOKBACK,
     random = Math.random,
   } = input
@@ -307,9 +324,20 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
         }
 
         // 实力平衡：看两队的平均 MMR
+        const mmrOf = (id: string) => mmrById?.get(id) ?? 0
         const avgMmr = (t: string[]) =>
-          t.length ? t.reduce((s, id) => s + (mmrById?.get(id) ?? 0), 0) / t.length : 0
+          t.length ? t.reduce((s, id) => s + mmrOf(id), 0) / t.length : 0
         cost += W.mmrGap * Math.abs(avgMmr(split.teamA) - avgMmr(split.teamB))
+
+        /*
+         * 同级模式再罚一次这四个人之间的分差跨度。
+         * 两队平均相等只保证「队伍之间」公平，不保证场上四个人水平接近；
+         * 罚跨度才会把 300 分和 10 分拆到不同场次去。
+         */
+        if (pairingMode === 'tiered') {
+          const vals = group.map(mmrOf)
+          cost += W.mmrSpread * (Math.max(...vals) - Math.min(...vals))
+        }
 
         // 等久的人优先上场
         for (const id of group) {

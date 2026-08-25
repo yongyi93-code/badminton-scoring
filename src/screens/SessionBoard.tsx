@@ -29,6 +29,10 @@ import {
 import {
   FORMAT_LABELS,
   formatOf,
+  pairingModeOf,
+  PAIRING_MODE_HINTS,
+  PAIRING_MODE_LABELS,
+  type PairingMode,
   type Match,
   type MatchType,
   type Player,
@@ -275,6 +279,9 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
     return map
   }, [allMatches])
 
+  // 配对模式跟着球局走，打到一半也能换 —— 后面排的场立刻按新口径来
+  const pairingMode = session ? pairingModeOf(session) : 'balanced'
+
   const [nextType, setNextType] = useState<MatchType | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [endOpen, setEndOpen] = useState(false)
@@ -442,6 +449,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       mustInclude,
       type,
       mmrById,
+      pairingMode,
     })
     if (!pairing) {
       setNotice(reason ?? '排不出下一场')
@@ -466,6 +474,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       excludeIds: restingIds,
       type: match.type,
       mmrById,
+      pairingMode,
     })
     if (!pairing) {
       setNotice(reason ?? '重排失败')
@@ -562,6 +571,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       perPlayer: left,
       history: done,
       mmrById,
+      pairingMode,
     })
     if (!schedule.pairings.length) {
       setNotice(schedule.reason ?? '排不出剩余赛程')
@@ -582,6 +592,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       total: count,
       history: fresh,
       mmrById,
+      pairingMode,
     })
     if (!schedule.pairings.length) {
       setNotice(schedule.reason ?? '排不出更多场次')
@@ -741,6 +752,25 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             )}
           </div>
         )}
+
+        {/*
+          配对模式放在等待区上面：这里正是「下一场谁跟谁」发生的地方，
+          觉得排得不对的人第一眼就能看到这个开关，不用翻回设置页。
+        */}
+        <SectionTitle>怎么配对</SectionTitle>
+        <div className="space-y-1.5">
+          <Segmented
+            value={pairingMode}
+            onChange={(m: PairingMode) => updateSession(sessionId, { pairingMode: m })}
+            options={(Object.keys(PAIRING_MODE_LABELS) as PairingMode[]).map((m) => ({
+              value: m,
+              label: PAIRING_MODE_LABELS[m],
+            }))}
+          />
+          <p className="text-xs text-ink-400">
+            {PAIRING_MODE_HINTS[pairingMode]}。已排好的场不动，之后排的按新口径来。
+          </p>
+        </div>
 
         <SectionTitle>
           {format === 'king'

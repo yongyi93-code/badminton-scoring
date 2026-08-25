@@ -74,6 +74,33 @@ export const FORMAT_LABELS: Record<SessionFormat, string> = {
 }
 
 /**
+ * 配对时怎么用 MMR。
+ *
+ * balanced 均衡（高带低）—— 一场里高分带低分，两队平均分尽量相等。
+ *          图的是每一场都咬得紧，混合水平的球局用这个。
+ * tiered   同级（强打强）—— 尽量挑水平接近的四个人凑一场，
+ *          高分打高分、低分打低分。图的是各打各的强度。
+ *
+ * 两种都还是先满足「已打场数最少的人必须上场」这条硬约束，
+ * 谁也不会因为分数被晾在场下。
+ */
+export type PairingMode = 'balanced' | 'tiered'
+
+export const PAIRING_MODE_LABELS: Record<PairingMode, string> = {
+  balanced: '均衡（高带低）',
+  tiered: '同级（强打强）',
+}
+
+export const PAIRING_MODE_HINTS: Record<PairingMode, string> = {
+  balanced: '一场里高分带低分，两队实力尽量拉平，每一场都咬得紧',
+  tiered: '挑水平接近的人凑一场，高分打高分、低分打低分',
+}
+
+/** 旧球局没存这个字段，统一从这里取 */
+export const pairingModeOf = (session: Session): PairingMode =>
+  session.pairingMode ?? 'balanced'
+
+/**
  * 结束条件。三项都可留空 = 不限。
  * totalMatches / durationMinutes 是「上限」，谁先到就提示该结束了；
  * perPlayerMatches 是「下限」，用来提示「还有几个人没打够」。
@@ -121,6 +148,8 @@ export type Session = {
   kingStreakCap?: number
   /** 轮转赛生成赛程时设的每人场数，仅用于展示 */
   rotationPerPlayer?: number
+  /** 自动配对怎么用 MMR；缺失视为 'balanced' */
+  pairingMode?: PairingMode
 }
 
 /** 旧数据没有 format 字段，统一从这里取，避免各处散落 ?? 'free' */

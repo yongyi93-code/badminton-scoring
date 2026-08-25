@@ -8,6 +8,7 @@ import {
   type Session,
   type SessionFormat,
   type TeamSide,
+  type PairingMode,
 } from '@/types'
 
 /* ================================================================== *
@@ -91,6 +92,8 @@ export type ScheduleInput = {
   history?: Match[]
   /** 每个人的 MMR，用来做两队实力平衡；口径同 pickNextMatch */
   mmrById?: Map<string, number>
+  /** 配对怎么用 MMR，口径同 pickNextMatch */
+  pairingMode?: PairingMode
   random?: () => number
 }
 
@@ -156,6 +159,7 @@ function generateOnce(input: ScheduleInput): ScheduleResult {
     perPlayer,
     history = [],
     mmrById,
+    pairingMode,
     random = Math.random,
   } = input
 
@@ -200,6 +204,7 @@ function generateOnce(input: ScheduleInput): ScheduleResult {
         busyIds: busy,
         type,
         mmrById,
+        pairingMode,
         random,
       })
       if (!pairing) break

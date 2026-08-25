@@ -29,6 +29,9 @@ import {
   type EndCondition,
   type MatchType,
   type SessionFormat,
+  PAIRING_MODE_HINTS,
+  PAIRING_MODE_LABELS,
+  type PairingMode,
 } from '@/types'
 
 export function SessionSetup() {
@@ -48,6 +51,7 @@ export function SessionSetup() {
   const [venue, setVenue] = useState(lastVenue)
   const [courtCount, setCourtCount] = useState(lastCourts)
   const [defaultType, setDefaultType] = useState<MatchType>('doubles')
+  const [pairingMode, setPairingMode] = useState<PairingMode>('balanced')
   const [pointsToWin, setPointsToWin] = useState(DEFAULT_RULES.pointsToWin)
   const [winBy2, setWinBy2] = useState(DEFAULT_RULES.winBy2)
   const [bestOf, setBestOf] = useState<1 | 3>(DEFAULT_RULES.bestOf)
@@ -119,8 +123,9 @@ export function SessionSetup() {
       type: defaultType,
       perPlayer,
       mmrById,
+      pairingMode,
     })
-  }, [format, chosenPlayers, courtCount, defaultType, perPlayer, mmrById])
+  }, [format, chosenPlayers, courtCount, defaultType, perPlayer, mmrById, pairingMode])
 
   function start() {
     const endCondition: EndCondition = {}
@@ -139,6 +144,7 @@ export function SessionSetup() {
       endCondition: Object.keys(endCondition).length ? endCondition : undefined,
       kingStreakCap: format === 'king' ? streakCap : undefined,
       rotationPerPlayer: format === 'rotation' ? perPlayer : undefined,
+      pairingMode,
     })
 
     // 轮转赛开局就把整份赛程写成排队中的比赛，之后「排下一场」直接顶上去
@@ -149,6 +155,7 @@ export function SessionSetup() {
         type: defaultType,
         perPlayer,
         mmrById,
+        pairingMode,
       })
       if (schedule.pairings.length) {
         addMatches(
@@ -217,6 +224,16 @@ export function SessionSetup() {
                 { value: 'singles', label: '单打' },
                 { value: 'mixed', label: '混双' },
               ]}
+            />
+          </Field>
+
+          <Field label="怎么配对" hint={PAIRING_MODE_HINTS[pairingMode]}>
+            <Segmented
+              value={pairingMode}
+              onChange={setPairingMode}
+              options={(
+                Object.keys(PAIRING_MODE_LABELS) as PairingMode[]
+              ).map((m) => ({ value: m, label: PAIRING_MODE_LABELS[m] }))}
             />
           </Field>
 
