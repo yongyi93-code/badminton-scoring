@@ -151,6 +151,52 @@ function ProgressStrip({ progress }: { progress: SessionProgress }) {
   )
 }
 
+/**
+ * 打完的一场，带一个「退回」出口。
+ *
+ * 比分按局列出来，一眼能认出是不是记错的那一场 ——
+ * 光看双方名字的话，同样四个人打过好几场，分不清要退哪一场。
+ */
+function FinishedRow({
+  match,
+  names,
+  onReopen,
+}: {
+  match: Match
+  names: Map<string, Player>
+  onReopen: () => void
+}) {
+  const winner = matchWinnerBySets(match)
+  const side = (ids: string[], team: 'A' | 'B') => (
+    <span
+      className={cx(
+        'min-w-0 flex-1 truncate text-sm',
+        winner === team ? 'font-semibold text-lime-glow' : 'text-ink-300',
+      )}
+    >
+      {ids.map((id) => names.get(id)?.name ?? '?').join(' / ')}
+    </span>
+  )
+  return (
+    <div className="rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5">
+      <div className="flex items-center gap-2">
+        <span className="tnum shrink-0 text-xs text-ink-500">#{match.seq}</span>
+        {side(match.teamA, 'A')}
+        <span className="tnum shrink-0 text-sm text-ink-200">
+          {match.games.map((g) => `${g.a}-${g.b}`).join(' ')}
+        </span>
+        {side(match.teamB, 'B')}
+      </div>
+      <button
+        className="mt-1.5 text-xs text-lime-glow"
+        onClick={onReopen}
+      >
+        记错了，退回去改 ›
+      </button>
+    </div>
+  )
+}
+
 function CourtCard({
   index,
   match,
@@ -291,6 +337,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const [pickingRest, setPickingRest] = useState<Player | null>(null)
   const [mustInclude, setMustInclude] = useState<string[]>([])
   const [showAllSchedule, setShowAllSchedule] = useState(false)
+  const [showAllFinished, setShowAllFinished] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   // 名册要带上友谊赛的客队 —— 他们不在正式球员名单里，但看板得叫得出名字
   const names = useMemo(
@@ -561,6 +609,42 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
     setManaging(null)
   }
 
+  /**
+   * 把打完的一场退回场上。
+   *
+   * 按错「结束」是最常发生的事 —— 尤其是没人盯着手机、事后补分的那几场。
+   * 退回之后这一场立刻从 MMR、金币和排行榜里消失（那些都是从
+   * status === 'done' 的比赛实时算的），改完分再结束一次就对了。
+   *
+   * 得先找一片空场：直接退回去的话，同一片场上会同时挂着两场，
+   * 界面按 courtIndex 取，后面那场会被前面那场盖掉、点不开。
+   */
+  const reopenMatch = (match: Match) => {
+    const free = courts.find((i) => !onCourt.has(i))
+    if (free === undefined) {
+      setNotice('场上都满了，先把某一场打完或取消，再退回这一场')
+      return
+    }
+    updateMatch(match.id, {
+      status: 'playing',
+      endedAt: undefined,
+      courtIndex: free,
+    })
+    push({ name: 'score', matchId: match.id })
+  }
+
+  /**
+   * 中途加人。迟到的人开局时不用先勾上，来了再加。
+   * 已打场数从 0 算起，公平轮转会优先把他排上去 —— 这正是我们要的。
+   */
+  const addToSession = (playerId: string) => {
+    const current =
+      useApp.getState().sessions.find((x) => x.id === sessionId)?.playerIds ?? []
+    if (current.includes(playerId)) return
+    updateSession(sessionId, { playerIds: [...current, playerId] })
+    setAdding(false)
+  }
+
   const toggleResting = (playerId: string) => {
     // 同样从 store 现取，连续标记几个人休息时不会互相覆盖
     const current =
@@ -582,6 +666,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   /** 参与自动排场的人：出席且没在休息 */
   const schedulable = attending.filter((p) => !restingIds.includes(p.id))
+
+  /** 还能加进来的人：没归档、还不在这一局里 */
+  const attendingIds = new Set(attending.map((p) => p.id))
+  const addable = players.filter((p) => !p.archived && !attendingIds.has(p.id))
 
   /**
    * 有人提前走、有人晚到之后重排剩余赛程。
@@ -833,7 +921,13 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           </p>
         </div>
 
-        <SectionTitle>
+        <SectionTitle
+          right={
+            <button className="text-xs text-lime-glow" onClick={() => setAdding(true)}>
+              + 加人
+            </button>
+          }
+        >
           {format === 'king'
             ? `排队顺序（${waiting.length} 人）`
             : `等待区（${waiting.length} 人）`}
@@ -922,6 +1016,38 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             <p className="text-sm text-ink-400">所有人都在场上。</p>
           )}
         </div>
+
+        {/*
+          打完的场次。
+          原来这里什么都不显示，比分一旦按了结束就再也回不去 ——
+          而按错「结束」是最常发生的事，尤其是没人盯着手机的那几场。
+        */}
+        {finished.length > 0 && (
+          <>
+            <SectionTitle>已打完（{finished.length} 场）</SectionTitle>
+            <div className="space-y-2">
+              {[...finished]
+                .sort((a, b) => b.seq - a.seq)
+                .slice(0, showAllFinished ? undefined : 3)
+                .map((m) => (
+                  <FinishedRow
+                    key={m.id}
+                    match={m}
+                    names={names}
+                    onReopen={() => reopenMatch(m)}
+                  />
+                ))}
+              {finished.length > 3 && (
+                <button
+                  className="w-full py-1 text-xs text-lime-glow"
+                  onClick={() => setShowAllFinished((v) => !v)}
+                >
+                  {showAllFinished ? '收起' : `展开全部 ${finished.length} 场`}
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </Body>
 
       <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-ink-800 bg-ink-900/95 px-4 pt-3 backdrop-blur">
@@ -986,6 +1112,34 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             </Button>
           </div>
         )}
+      </Sheet>
+
+      {/* 中途加人 */}
+      <Sheet open={adding} onClose={() => setAdding(false)} title="加人进这一局">
+        <div className="space-y-2">
+          {addable.length === 0 ? (
+            <p className="text-sm text-ink-400">
+              所有球员都已经在这一局里了。新面孔要先去「球员」里建一个。
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-ink-300">
+                迟到的人来了就加进来，已打场数从 0 算起，下一场会优先排到他。
+              </p>
+              {addable.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => addToSession(p.id)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
+                >
+                  <Avatar name={p.name} avatar={avatarsById.get(p.id)} size="sm" />
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="text-xs text-lime-glow">加进来 ›</span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
       </Sheet>
 
       {/* 换人：从等待区挑一个 */}
