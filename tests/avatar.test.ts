@@ -351,17 +351,21 @@ describe('商店', () => {
   })
 
   it('发型分男女，商店只给看自己性别那份', () => {
+    /*
+     * 女生现在走分层换装，整条发型／战服／武器都换成了上衣下装球鞋球拍
+     * （见 lib/dressup.ts），所以只有男号这边还验得到老三样。
+     * 女号那边卖什么由 tests/dressup.test.ts 管。
+     */
     const male = shopFor('m').map((i) => i.id)
-    const female = shopFor('f').map((i) => i.id)
     expect(male).toContain('m-short')
     expect(male).not.toContain('f-bob')
-    expect(female).toContain('f-bob')
-    expect(female).not.toContain('m-short')
-    // 战服和武器男女通用，两边都要有
     expect(male).toContain('jersey')
-    expect(female).toContain('jersey')
     expect(male).toContain('racket-pro')
-    expect(female).toContain('racket-pro')
+
+    // 按性别过滤这件事本身，拿目录直接验，不受换装那条分支影响
+    const hair = SHOP_ITEMS.filter((i) => i.slot === 'hair')
+    expect(hair.every((i) => !!i.sex)).toBe(true)
+    expect(hair.filter((i) => i.sex === 'f').map((i) => i.id)).toContain('f-bob')
   })
 
   it('新建角色白送免费那几件，而且身上就穿着', () => {

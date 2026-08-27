@@ -1,4 +1,11 @@
 import { chronological, decidedMatches, matchWinnerBySets } from './ranking'
+import {
+  DRESS_ITEMS,
+  DRESS_SLOTS,
+  DRESS_STARTERS,
+  dressId,
+  dressUpFor,
+} from './dressup'
 import type { Match } from '@/types'
 
 /* ------------------------------------------------------------------ *
@@ -47,6 +54,12 @@ export type AvatarSlot =
   | 'background'
   | 'frame'
   | 'title'
+  // 分层换装的四件，见 lib/dressup.ts。有那套素材时用这四个，
+  // 上面的 hair/outfit/weapon 就收起来 —— 两套画法不能同时上身。
+  | 'top'
+  | 'bottom'
+  | 'shoes'
+  | 'racket'
 
 export const SLOT_LABELS: Record<AvatarSlot, string> = {
   hair: '发型',
@@ -55,10 +68,18 @@ export const SLOT_LABELS: Record<AvatarSlot, string> = {
   background: '背景',
   frame: '头像框',
   title: '称号',
+  top: '上衣',
+  bottom: '下装',
+  shoes: '球鞋',
+  racket: '球拍',
 }
 
 /** 槽位展示顺序 */
 export const SLOT_ORDER: AvatarSlot[] = [
+  'top',
+  'bottom',
+  'shoes',
+  'racket',
   'hair',
   'outfit',
   'weapon',
@@ -140,15 +161,30 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'title-king', name: '无可匹敌', slot: 'title', price: 1400, minLevel: 7 },
 ]
 
-/** 某个性别能买到的东西：通用的 + 专属的 */
-export const shopFor = (sex: AvatarSex): ShopItem[] =>
-  SHOP_ITEMS.filter((i) => !i.sex || i.sex === sex)
+/** 画在人身上的老三样。有分层换装素材时它们下架，换成四个新槽位 */
+const BODY_SLOTS: AvatarSlot[] = ['hair', 'outfit', 'weapon']
+
+/**
+ * 某个性别能买到的东西。
+ *
+ * 有分层换装素材的性别（目前只有女）走上衣／下装／球鞋／球拍这四个槽位；
+ * 没有的还是老的发型／战服／武器。两套不能混着卖 ——
+ * 混着卖就会出现「买了战服但身上是分层立绘，看不到变化」。
+ * 背景／头像框／称号画在人外面，两边都有。
+ */
+export const shopFor = (sex: AvatarSex): ShopItem[] => {
+  const mine = SHOP_ITEMS.filter((i) => !i.sex || i.sex === sex)
+  if (!dressUpFor(sex)) return mine
+  return [...DRESS_ITEMS, ...mine.filter((i) => !BODY_SLOTS.includes(i.slot))]
+}
 
 /** 开局白送的那几件，价格为 0 —— 新号一进来就有得穿，不至于光着 */
 export const STARTER_IDS = SHOP_ITEMS.filter((i) => i.price === 0).map((i) => i.id)
 
+const ALL_ITEMS = [...SHOP_ITEMS, ...DRESS_ITEMS]
+
 export const itemById = (id: string): ShopItem | undefined =>
-  SHOP_ITEMS.find((i) => i.id === id)
+  ALL_ITEMS.find((i) => i.id === id)
 
 /**
  * 装备线从奇幻改成羽球时，轻甲／骑士铠／暗影战衣和那几把刀剑都换掉了。
@@ -406,16 +442,39 @@ export type AvatarProfile = {
 export const defaultHair = (sex: AvatarSex): string =>
   sex === 'm' ? 'm-short' : 'f-bob'
 
-export const newAvatar = (playerId: string, sex: AvatarSex): AvatarProfile => ({
-  playerId,
-  sex,
-  skin: 0,
-  // 免费那几件直接送，新号一进来就穿戴整齐
-  owned: [...STARTER_IDS],
-  equipped: { hair: defaultHair(sex), outfit: 'tee', weapon: 'racket' },
-  spent: 0,
-  createdAt: Date.now(),
-})
+/**
+ * 补上分层换装的开局装备：白送的那几件塞进衣柜，空着的槽位穿上第一件。
+ *
+ * 幂等，重复跑没事 —— 所以三个地方都能用同一份：新建角色、换性别、
+ * 以及老存档的迁移（素材是后来才加的，之前建的女号身上一件都没有，
+ * 不补的话打开角色页只有一个底图，看起来像没穿衣服）。
+ *
+ * 已经穿着的不动。手上有更贵的球拍，不该被开局那把顶掉。
+ */
+export const grantDressUp = (a: AvatarProfile): AvatarProfile => {
+  if (!dressUpFor(a.sex)) return a
+  const equipped = { ...a.equipped }
+  for (const slot of DRESS_SLOTS) {
+    if (!equipped[slot]) equipped[slot] = dressId(slot, 0)
+  }
+  return { ...a, owned: [...new Set([...a.owned, ...DRESS_STARTERS])], equipped }
+}
+
+/**
+ * 老三样也一起给：换性别、或者以后把分层素材撤掉时，
+ * SVG 那条路还得有东西穿，不然人是光的。
+ */
+export const newAvatar = (playerId: string, sex: AvatarSex): AvatarProfile =>
+  grantDressUp({
+    playerId,
+    sex,
+    skin: 0,
+    // 免费那几件直接送，新号一进来就穿戴整齐
+    owned: [...STARTER_IDS],
+    equipped: { hair: defaultHair(sex), outfit: 'tee', weapon: 'racket' },
+    spent: 0,
+    createdAt: Date.now(),
+  })
 
 /** 还剩多少金币能花。金币只增不减，所以正常不会为负，夹一下防御 */
 export const balanceOf = (

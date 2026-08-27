@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import {
   buyBlocker,
   defaultHair,
+  grantDressUp,
   itemById,
   newAvatar,
   retireOldGear,
@@ -51,11 +52,12 @@ export type SessionDraft = {
 /**
  * 导出/导入的备份文件结构。
  * version 3 起是 avatars（v2 的 pets 会被丢弃，那套宠物已经换掉了）。
+ * version 4 起女生用分层换装，导入老备份时会自动补上开局那几件。
  * 老字段缺失一律按空处理，v1/v2 的备份照样能导入。
  */
 export type Backup = {
   app: 'badminton-scoring'
-  version: 1 | 2 | 3
+  version: 1 | 2 | 3 | 4
   exportedAt: string
   players: Player[]
   sessions: Session[]
@@ -244,12 +246,12 @@ export const useApp = create<AppState>()(
           return {
             avatars: s.avatars.map((p) =>
               p.playerId === playerId
-                ? {
+                ? grantDressUp({
                     ...p,
                     sex,
                     owned: [...new Set([...p.owned, ...STARTER_IDS])],
                     equipped: { ...p.equipped, hair: defaultHair(sex) },
-                  }
+                  })
                 : p,
             ),
           }
@@ -305,7 +307,7 @@ export const useApp = create<AppState>()(
         const { players, sessions, matches, avatars } = get()
         return {
           app: 'badminton-scoring',
-          version: 3,
+          version: 4,
           exportedAt: new Date().toISOString(),
           players,
           sessions,
@@ -323,8 +325,9 @@ export const useApp = create<AppState>()(
           sessions: backup.sessions ?? [],
           matches: backup.matches ?? [],
           // v1/v2 的备份没有 avatars，按还没建角色处理；
-          // 有的话可能还带着换掉的旧装备 id，一并换成新的
-          avatars: (backup.avatars ?? []).map(retireOldGear),
+          // 有的话可能还带着换掉的旧装备 id，一并换成新的，
+          // 再把分层换装那几件补齐 —— 和 migrate 走的是同两个函数
+          avatars: (backup.avatars ?? []).map(retireOldGear).map(grantDressUp),
         })
       },
 
@@ -343,13 +346,18 @@ export const useApp = create<AppState>()(
        * 换成了战袍和球拍。不做迁移的话已经买过的人身上会挂着一批不存在的
        * id，画的时候找不到就悄悄退回新手队服 —— 人看起来像从来没升过级。
        * 所以这里按同一档位一件换一件，买过什么还是穿着什么。
+       *
+       * 3 → 4 = 女生换成分层换装（买了衣服就穿上）。素材是后来才加的，
+       * 之前建的女号身上一个换装槽位都没有 —— 不补的话打开角色页
+       * 只剩一张底图，看起来像衣服被扒了。所以给她们补上白送的那几件。
        */
-      version: 3,
+      version: 4,
       migrate: (state, from) => {
         const s = state as Partial<AppState> & { pets?: unknown }
         if (from < 2) delete s.pets
         let avatars = s.avatars ?? []
         if (from < 3) avatars = avatars.map(retireOldGear)
+        if (from < 4) avatars = avatars.map(grantDressUp)
         return { ...s, avatars } as AppState
       },
       partialize: (s) => ({

@@ -7,6 +7,8 @@ import {
   type AvatarSlot,
 } from '@/lib/avatar'
 import { artUrl, HEAD_CROP, type Stage } from '@/lib/avatarArt'
+import { DRESS_SLOTS, dressCrop, dressUpFor, type DressSlot } from '@/lib/dressup'
+import { DressUpView, HEAD_CROP_BOX } from '@/components/DressUp'
 import { cx } from '@/components/ui'
 
 /* ------------------------------------------------------------------ *
@@ -913,6 +915,12 @@ export function AvatarFrame({ itemId }: { itemId: string }) {
  * 组装
  * ------------------------------------------------------------------ */
 
+/** 从 equipped 里挑出分层换装那四个槽位 */
+const pickDress = (equipped: Partial<Record<AvatarSlot, string>>) =>
+  Object.fromEntries(
+    DRESS_SLOTS.map((s) => [s, equipped[s]]).filter(([, v]) => !!v),
+  ) as Partial<Record<DressSlot, string>>
+
 const IRIS: Record<AvatarSex, string> = { m: '#3f7fd8', f: '#4fa89c' }
 
 /**
@@ -994,6 +1002,31 @@ export function AvatarView({
   className?: string
   title?: string
 }) {
+  // 分层换装优先：买了衣服就穿上，这条路能看到每一件的变化
+  if (dressUpFor(sex)) {
+    // 买来的背景照样要衬在人后面，不然背景这一类买了看不出变化
+    const backdrop = equipped.background ? BACKDROPS[equipped.background] : null
+    return (
+      <span className={cx('relative block', className)}>
+        {backdrop && (
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="xMidYMid slice"
+            className="absolute inset-0 h-full w-full"
+            aria-hidden
+          >
+            {backdrop}
+          </svg>
+        )}
+        <DressUpView
+          picks={pickDress(equipped)}
+          className="relative h-full w-full"
+          title={title}
+        />
+      </span>
+    )
+  }
+
   const art = stage && artUrl(sex, stage)
   if (art) {
     /*
@@ -1098,6 +1131,24 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
   }
 
   /*
+   * 分层换装的四件：直接在人身上画这一件，再裁到那个部位。
+   * 抠出来平铺看不懂 —— 一条裙子摊平和另一条摊平差不多，
+   * 穿在身上才分得出长短和版型。
+   */
+  const dressBox = dressCrop(item.id)
+  if (dressBox) {
+    return (
+      <DressUpView
+        picks={{ [item.slot as DressSlot]: item.id }}
+        crop={dressBox}
+        maxPx={200}
+        className={className}
+        title={item.name}
+      />
+    )
+  }
+
+  /*
    * 发型和战服直接拿真人预览 —— 比抽出一件平铺更看得懂穿上是什么样。
    * 但要各自裁到对应部位：整个人缩成一个小方块时战服只占底下一条，
    * 五套战服看起来会一模一样，根本不知道自己在买什么。
@@ -1134,6 +1185,19 @@ export function AvatarFace({
   className?: string
   title?: string
 }) {
+  if (dressUpFor(sex)) {
+    return (
+      <DressUpView
+        picks={pickDress(equipped)}
+        crop={HEAD_CROP_BOX}
+        // 头像最大也就 64px，排行榜上一屏几十个 —— 画布不必开满
+        maxPx={256}
+        className={className}
+        title={title}
+      />
+    )
+  }
+
   const art = stage && artUrl(sex, stage)
   if (art) {
     // 立绘是全身的，缩进小圆圈里人只有几像素高 —— 放大后把头挪到圆心
