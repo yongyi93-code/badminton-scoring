@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from 'react'
 import { useApp, type Backup } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
-import { Body, Button, Card, EmptyState, Pill, Screen, SectionTitle, Sheet } from '@/components/ui'
+import { Body, Button, Card, EmptyState, Pill, Screen, Sheet } from '@/components/ui'
+import { Ticker } from '@/components/Ticker'
 import { formatDate } from '@/lib/format'
+import { buildFeed, type FeedItem } from '@/lib/feed'
 import { decidedMatches } from '@/lib/ranking'
 import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 
@@ -14,6 +16,7 @@ export function Home() {
   const [backupOpen, setBackupOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const active = sessions.find((s) => s.status === 'active')
@@ -30,6 +33,20 @@ export function Home() {
   }, [matches])
 
   const totalPlayed = decidedMatches(matches).length
+
+  /* 快讯全部从比赛记录现算，所以删掉一场比赛消息会跟着变，不会留下旧账 */
+  const feed = useMemo(
+    () => buildFeed(players, sessions, matches),
+    [players, sessions, matches],
+  )
+
+  const openFeed = (item: FeedItem) => {
+    const l = item.link
+    if (!l) return
+    if (l.kind === 'leaderboard') push({ name: 'leaderboard' })
+    else if (l.kind === 'player') push({ name: 'profile', playerId: l.playerId })
+    else push({ name: 'summary', sessionId: l.sessionId })
+  }
 
   function download() {
     const data = exportBackup()
@@ -68,6 +85,8 @@ export function Home() {
       </div>
 
       <Body>
+        {feed.length > 0 && <Ticker items={feed} onPick={openFeed} />}
+
         {active ? (
           <Card
             className="border-lime-glow/40 bg-lime-glow/5"
@@ -111,16 +130,12 @@ export function Home() {
           </Card>
         </div>
 
-        <SectionTitle
-          right={
-            active ? (
-              <span className="text-xs text-ink-400">进行中的不列在这里</span>
-            ) : undefined
-          }
-        >
-          历史球局
-        </SectionTitle>
-
+        {/*
+          历史球局收成一行。
+          打得越久这串越长，首页就被它整个占满了 ——
+          而真正每次都要用的只有上面那几个入口。
+          默认只显示最近一场，点开才展开全部。
+        */}
         {past.length === 0 ? (
           <EmptyState
             title="还没有打过球"
@@ -128,19 +143,38 @@ export function Home() {
           />
         ) : (
           <div className="space-y-2">
-            {past.map((s) => (
-              <Card key={s.id} onClick={() => push({ name: 'summary', sessionId: s.id })}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{s.venue || '未填球馆'}</p>
-                    <p className="mt-0.5 text-sm text-ink-400">
-                      {formatDate(s.date)} · {s.playerIds.length} 人 · {countsBySession.get(s.id) ?? 0} 场
-                    </p>
+            <button
+              onClick={() => setHistoryOpen((v) => !v)}
+              className="flex w-full items-center gap-3 rounded-card border border-ink-700/70 bg-ink-850 px-4 py-3.5 text-left active:bg-ink-800"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">历史球局</span>
+                <span className="mt-0.5 block truncate text-sm text-ink-400">
+                  {historyOpen
+                    ? `共 ${past.length} 场球局`
+                    : `最近：${past[0].venue || '未填球馆'} · ${formatDate(past[0].date)}`}
+                </span>
+              </span>
+              <span className="shrink-0 text-sm text-ink-400">
+                {past.length} 场 {historyOpen ? '⌃' : '⌄'}
+              </span>
+            </button>
+
+            {historyOpen &&
+              past.map((s) => (
+                <Card key={s.id} onClick={() => push({ name: 'summary', sessionId: s.id })}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{s.venue || '未填球馆'}</p>
+                      <p className="mt-0.5 text-sm text-ink-400">
+                        {formatDate(s.date)} · {s.playerIds.length} 人 ·{' '}
+                        {countsBySession.get(s.id) ?? 0} 场
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-ink-400">›</span>
                   </div>
-                  <span className="shrink-0 text-ink-400">›</span>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              ))}
           </div>
         )}
 
