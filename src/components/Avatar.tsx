@@ -8,7 +8,7 @@ import {
 } from '@/lib/avatar'
 import { artUrl, HEAD_CROP, type Stage } from '@/lib/avatarArt'
 import { DRESS_SLOTS, dressCrop, dressUpFor, type DressSlot } from '@/lib/dressup'
-import { DressUpView, HEAD_CROP_BOX } from '@/components/DressUp'
+import { DressUpView, headCrop } from '@/components/DressUp'
 import { cx } from '@/components/ui'
 
 /* ------------------------------------------------------------------ *
@@ -1019,6 +1019,7 @@ export function AvatarView({
           </svg>
         )}
         <DressUpView
+          sex={sex}
           picks={pickDress(equipped)}
           className="relative h-full w-full"
           title={title}
@@ -1136,9 +1137,10 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
    * 穿在身上才分得出长短和版型。
    */
   const dressBox = dressCrop(item.id)
-  if (dressBox) {
+  if (dressBox && item.sex) {
     return (
       <DressUpView
+        sex={item.sex}
         picks={{ [item.slot as DressSlot]: item.id }}
         crop={dressBox}
         maxPx={200}
@@ -1188,8 +1190,9 @@ export function AvatarFace({
   if (dressUpFor(sex)) {
     return (
       <DressUpView
+        sex={sex}
         picks={pickDress(equipped)}
-        crop={HEAD_CROP_BOX}
+        crop={headCrop(sex)}
         // 头像最大也就 64px，排行榜上一屏几十个 —— 画布不必开满
         maxPx={256}
         className={className}

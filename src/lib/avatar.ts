@@ -2,8 +2,9 @@ import { chronological, decidedMatches, matchWinnerBySets } from './ranking'
 import {
   DRESS_ITEMS,
   DRESS_SLOTS,
-  DRESS_STARTERS,
   dressId,
+  dressItemsFor,
+  dressStartersFor,
   dressUpFor,
 } from './dressup'
 import type { Match } from '@/types'
@@ -167,7 +168,7 @@ const BODY_SLOTS: AvatarSlot[] = ['hair', 'outfit', 'weapon']
 /**
  * 某个性别能买到的东西。
  *
- * 有分层换装素材的性别（目前只有女）走上衣／下装／球鞋／球拍这四个槽位；
+ * 有分层换装素材的性别走上衣／下装／球鞋／球拍这四个槽位；
  * 没有的还是老的发型／战服／武器。两套不能混着卖 ——
  * 混着卖就会出现「买了战服但身上是分层立绘，看不到变化」。
  * 背景／头像框／称号画在人外面，两边都有。
@@ -175,7 +176,7 @@ const BODY_SLOTS: AvatarSlot[] = ['hair', 'outfit', 'weapon']
 export const shopFor = (sex: AvatarSex): ShopItem[] => {
   const mine = SHOP_ITEMS.filter((i) => !i.sex || i.sex === sex)
   if (!dressUpFor(sex)) return mine
-  return [...DRESS_ITEMS, ...mine.filter((i) => !BODY_SLOTS.includes(i.slot))]
+  return [...dressItemsFor(sex), ...mine.filter((i) => !BODY_SLOTS.includes(i.slot))]
 }
 
 /** 开局白送的那几件，价格为 0 —— 新号一进来就有得穿，不至于光着 */
@@ -453,11 +454,28 @@ export const defaultHair = (sex: AvatarSex): string =>
  */
 export const grantDressUp = (a: AvatarProfile): AvatarProfile => {
   if (!dressUpFor(a.sex)) return a
+  const starters = dressStartersFor(a.sex)
+  const owned = [...new Set([...a.owned, ...starters])]
+  const mine = new Set(dressItemsFor(a.sex).map((i) => i.id))
+
   const equipped = { ...a.equipped }
   for (const slot of DRESS_SLOTS) {
-    if (!equipped[slot]) equipped[slot] = dressId(slot, 0)
+    const now = equipped[slot]
+    if (now && mine.has(now)) continue
+    /*
+     * 空着，或者穿着的是另一个性别那套（换性别之后会这样 ——
+     * 两套的 id 不通用）。挑这个槽位里已经买过的最贵的一件穿上，
+     * 没买过就穿白送的那件。
+     *
+     * 挑最贵的是为了换回来时能自动穿回好东西：owned 从来不清空，
+     * 换过去换回来，攒下的家当还在身上。
+     */
+    const best = dressItemsFor(a.sex)
+      .filter((i) => i.slot === slot && owned.includes(i.id))
+      .sort((x, y) => y.price - x.price)[0]
+    equipped[slot] = best?.id ?? dressId(a.sex, slot, 0)
   }
-  return { ...a, owned: [...new Set([...a.owned, ...DRESS_STARTERS])], equipped }
+  return { ...a, owned, equipped }
 }
 
 /**

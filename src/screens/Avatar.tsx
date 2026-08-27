@@ -23,13 +23,15 @@ import {
   stageOf,
   STAGES,
 } from '@/lib/avatarArt'
-import { DRESS_DEFAULTS, dressUpFor, hasDressUp } from '@/lib/dressup'
+import { dressDefaultsFor, dressUpFor, hasDressUp } from '@/lib/dressup'
 import { useProgress } from '@/store/progress'
 import { RankMedal } from '@/components/RankMedal'
 import {
   AVATAR_SEXES,
   balanceOf,
   buyBlocker,
+  defaultHair,
+  grantDressUp,
   IMMORTAL_STEP,
   LOSS_POINTS,
   outfitValue,
@@ -151,7 +153,7 @@ export function Avatar({ playerId }: { playerId: string }) {
                     hair: s.sex === 'm' ? 'm-short' : 'f-bob',
                     outfit: 'tee',
                     // 分层换装那条路要给默认的一身，不然预览里只有一张底图
-                    ...DRESS_DEFAULTS,
+                    ...dressDefaultsFor(s.sex),
                   }}
                   stage={STAGES[0]}
                   className="h-40 w-full"
@@ -451,13 +453,25 @@ function DressPanel({
                 : 'border-ink-700 bg-ink-850 active:bg-ink-800',
             )}
           >
+            {/*
+              预览就是「真按下去会变成什么样」：换过去穿哪几件由
+              grantDressUp 说了算（那边买过最好的一件，没买过就白送的），
+              和真按下去走的是同一个函数。
+              直接把这边的 equipped 传过去是不行的 —— 两套素材 id 不通用，
+              女号那件会被贴到男生底图上。
+            */}
             <AvatarView
               sex={s.sex}
               skin={avatar.skin}
-              equipped={{
-                ...avatar.equipped,
-                hair: s.sex === 'm' ? 'm-short' : 'f-bob',
-              }}
+              equipped={
+                s.sex === avatar.sex
+                  ? avatar.equipped
+                  : grantDressUp({
+                      ...avatar,
+                      sex: s.sex,
+                      equipped: { ...avatar.equipped, hair: defaultHair(s.sex) },
+                    }).equipped
+              }
               stage={stage}
               className="h-24 w-full"
               title={s.label}
