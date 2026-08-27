@@ -47,23 +47,49 @@ SCALE = 0.5
 # 差异阈值。低于这个数当成没变（出图之间总有一点点噪声）
 DIFF_THRESHOLD = 30
 
-# 绿幕：色相偏绿且够饱和就算背景
-GREEN_MARGIN = 28
+# 绿幕抠像的软边范围。
+# 「绿度」= 绿比红蓝里高的那个还高出多少。实测纯背景在 38~45 之间。
+# 绿度 >= GREEN_OUT 全透明，<= GREEN_IN 全不透明，中间线性过渡。
+GREEN_OUT = 36
+GREEN_IN = 18
 
 
 def person_alpha(rgb: np.ndarray) -> np.ndarray:
-    """绿幕抠像。返回 0/255 的硬 alpha。
+    """绿幕抠像。返回 0~255 的软 alpha。
 
     判据是「绿比红蓝都高出一截」，不是比某个绿色近 ——
     背景本身有噪点和明暗，比颜色距离会在边上留一圈碎点。
+
+    为什么是软的：出图里的辉光（发光的球衣、发光的鞋底）会糊在绿幕上，
+    这种「辉光掺绿幕」的像素绿度介于两者之间。一刀切成不透明的话，
+    去完绿边就在人身上描了一圈青灰，深色卡片上特别明显；
+    切成透明又会把辉光整个剃掉。按绿度渐变，辉光自然成了半透明，
+    衬到什么底色上都对。
+
+    衣服本身不会被误伤：这套配色是白/黑/蓝/紫/金，绿度都 <= 0。
+    以后要是出了绿色的球衣，得换抠图方式 —— 下面那句自检会报出来。
     """
     r, g, b = rgb[:, :, 0].astype(int), rgb[:, :, 1].astype(int), rgb[:, :, 2].astype(int)
-    is_green = (g - np.maximum(r, b)) > GREEN_MARGIN
-    keep = ~is_green
-    # 抠出来难免有零星孤点，开运算扫掉，再把人身上被误判的小洞填回去
-    keep = ndimage.binary_opening(keep, np.ones((3, 3)))
-    keep = ndimage.binary_fill_holes(keep)
-    return (keep * 255).astype(np.uint8)
+    greenness = g - np.maximum(r, b)
+    soft = np.clip((GREEN_OUT - greenness) / (GREEN_OUT - GREEN_IN), 0, 1)
+
+    # 背景噪点会留下零星孤点，按「明显是人」的部分做一次开运算扫掉，
+    # 再把这些孤点从软 alpha 里减掉。不动边缘的过渡带。
+    solid = ndimage.binary_opening(soft > 0.5, np.ones((3, 3)))
+    speck = (soft > 0.5) & ~ndimage.binary_dilation(solid, np.ones((5, 5)))
+    soft[speck] = 0
+
+    # 只留和人物连在一起的部分。
+    # 出图右下角有「AI生成」水印，是压在绿幕上的半透明白字 ——
+    # 绿度介于纯背景和人之间，软抠像会留下淡淡一层，
+    # 既会跟着画进 App 的角落，也会把取景框整个带偏。
+    # 球拍、辉光都是长在人身上的，不会被这一刀切掉。
+    lab, n = ndimage.label(soft > 0.05, np.ones((3, 3)))
+    if n > 1:
+        sizes = ndimage.sum(soft > 0.05, lab, range(1, n + 1))
+        keep = [i + 1 for i, s in enumerate(sizes) if s >= 0.02 * sizes.max()]
+        soft[~np.isin(lab, keep)] = 0
+    return np.round(soft * 255).astype(np.uint8)
 
 
 def unspill(rgb: np.ndarray) -> np.ndarray:
@@ -101,6 +127,29 @@ def changed_region(base: np.ndarray, var: np.ndarray) -> np.ndarray:
     reg = ndimage.binary_fill_holes(reg)
     reg = ndimage.binary_closing(reg, np.ones((9, 9)))
     return reg
+
+
+# 这些槽位是不透光的实心东西，区域内部破洞就是出问题了。
+# 球拍不在里面：拍面本来就是镂空的，网线之间透出背景是对的，
+# 拿同一把尺子量它，每一支拍都要报警 —— 报了等于没报。
+SOLID_SLOTS = ('top', 'bottom', 'shoes')
+
+
+def warn_holes(item_id: str, reg: np.ndarray, alpha: np.ndarray) -> None:
+    """实心装备的区域深处要是破了洞，多半是抠图把衣服当背景了 —— 喊一声。
+
+    这种错在浅色底上完全看不出来，只有放到 App 的深色卡片上才现形，
+    所以宁可在这里啰嗦一句。绿色系的衣服会触发它。
+    """
+    if not item_id.startswith(SOLID_SLOTS):
+        return
+    inner = ndimage.binary_erosion(reg, np.ones((15, 15)))
+    if not inner.any():
+        return
+    hole = ndimage.binary_erosion(inner & (alpha < 200), np.ones((9, 9)))
+    ratio = hole.sum() / inner.sum()
+    if ratio > 0.1:
+        print(f'  ⚠ {item_id}: 区域内部破了 {ratio:.0%} 的洞，检查是不是被绿幕吃掉了')
 
 
 def to_canvas(arr: np.ndarray) -> Image.Image:
@@ -150,8 +199,13 @@ def main(src_dir: str, out_dir: str) -> None:
 
         sub_reg = reg[y0:y1, x0:x1]
         sub_rgb = var_rgb[y0:y1, x0:x1]
-        # 图层的 alpha：区域内 ∧ 是人。硬的，不掺差异强弱
-        alpha = ((sub_reg & (person_alpha(var_rgb)[y0:y1, x0:x1] > 0)) * 255).astype(np.uint8)
+        # 图层的 alpha = 区域内 × 抠像的软 alpha。
+        # 注意透明度只能来自抠像，不能拿「和底图差多少」当权重 ——
+        # 栽过一次：那样衣服中间和底图撞色的地方会留下一片半透明的洞，
+        # 浅色底上看不出来，深色卡片上就是一块发黑的补丁。
+        var_a = person_alpha(var_rgb)[y0:y1, x0:x1]
+        alpha = (sub_reg * var_a).astype(np.uint8)
+        warn_holes(item_id, sub_reg, alpha)
 
         layer = to_canvas(np.dstack([unspill(sub_rgb), alpha]))
         # 掩膜必须把区域放在 alpha 通道里，不能存成灰度图。
@@ -170,11 +224,55 @@ def main(src_dir: str, out_dir: str) -> None:
         }
         print(f'{item_id:12s} {items[item_id]}  实心占比 {alpha.mean() / 255:.0%}')
 
+    body, head = framing(base_a, items, W, H)
     (out / 'meta.json').write_text(
-        json.dumps({'size': [W, H], 'items': items}, separators=(',', ':')),
+        json.dumps(
+            {'size': [W, H], 'items': items, 'body': body, 'head': head},
+            separators=(',', ':'),
+        ),
         encoding='utf-8',
     )
     print(f'\n{len(items)} 件，画布 {W}×{H}')
+    print(f'全身取景 {body}')
+    print(f'头肩取景 {head}')
+
+
+def framing(base_alpha: np.ndarray, items: dict, W: int, H: int):
+    """算两个取景框，写进 meta 里，省得每换一套素材就回去改代码里的常量。
+
+    画布两边留了大片空白（画的时候要给球拍留地方），
+    按整张画布缩放的话人小得看不清脸 —— 所以全身要框到人身上，
+    头像还要再往里框到头肩，不然缩进小圆圈里认不出是谁。
+    """
+    ys, xs = np.where(base_alpha > 128)
+    px0, px1 = int(xs.min() * SCALE), int(xs.max() * SCALE)
+    py0, py1 = int(ys.min() * SCALE), int(ys.max() * SCALE)
+
+    # 全身：人 + 所有装备图层的并集。装备会伸到人形之外 ——
+    # 球拍往左挥、发光的鞋往下探，只框人形会把它们切掉
+    x0, y0, x1, y1 = px0, py0, px1, py1
+    for b in items.values():
+        x0, y0 = min(x0, b['x']), min(y0, b['y'])
+        x1, y1 = max(x1, b['x'] + b['w']), max(y1, b['y'] + b['h'])
+    pad = round(H * 0.02)
+    body = {
+        'x': max(0, x0 - pad),
+        'y': max(0, y0 - pad),
+        'w': min(W, x1 + pad) - max(0, x0 - pad),
+        'h': min(H, y1 + pad) - max(0, y0 - pad),
+    }
+
+    # 头肩：从头顶往下取一个正方形。0.29 是按这套画风的头身比来的，
+    # 换成写实比例的素材要重调
+    side = round((py1 - py0) * 0.29)
+    cx = (px0 + px1) // 2
+    head = {
+        'x': max(0, min(cx - side // 2, W - side)),
+        'y': max(0, min(py0 - round(side * 0.08), H - side)),
+        'w': side,
+        'h': side,
+    }
+    return body, head
 
 
 if __name__ == '__main__':
