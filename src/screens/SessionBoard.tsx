@@ -1111,23 +1111,45 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           <div className="space-y-3">
             <p className="text-sm text-ink-300">
               点某个球员可以换人，换人或重排都会把比分清零。
+              打得最多的那个标出来了，换他下去最公平。
             </p>
             <div className="space-y-2">
-              {[...managing.teamA, ...managing.teamB].map((id) => (
-                <button
-                  key={id}
-                  onClick={() => setSwapping({ match: managing, playerId: id })}
-                  className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
-                >
-                  <Avatar
-                    name={names.get(id)?.name ?? '?'}
-                    avatar={avatarsById.get(id)}
-                    size="sm"
-                  />
-                  <span className="flex-1 truncate">{names.get(id)?.name}</span>
-                  <span className="text-xs text-ink-400">换人 ›</span>
-                </button>
-              ))}
+              {(() => {
+                const ids = [...managing.teamA, ...managing.teamB]
+                // 场上打得最多的那个：手动换人时最该被换下去的
+                const most = Math.max(
+                  ...ids.map((id) => loadById.get(id)?.games ?? 0),
+                )
+                return ids.map((id) => {
+                  const games = loadById.get(id)?.games ?? 0
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setSwapping({ match: managing, playerId: id })}
+                      className={cx(
+                        'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left active:bg-ink-800',
+                        games === most && most > 0
+                          ? 'border-amber-400/40 bg-amber-400/10'
+                          : 'border-ink-700 bg-ink-850',
+                      )}
+                    >
+                      <Avatar
+                        name={names.get(id)?.name ?? '?'}
+                        avatar={avatarsById.get(id)}
+                        size="sm"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{names.get(id)?.name}</span>
+                        <span className="text-xs text-ink-400">已打 {games} 场</span>
+                      </span>
+                      {games === most && most > 0 && (
+                        <span className="shrink-0 text-xs text-amber-300">打得最多</span>
+                      )}
+                      <span className="shrink-0 text-xs text-ink-400">换人 ›</span>
+                    </button>
+                  )
+                })
+              })()}
             </div>
             <Button block variant="ghost" onClick={() => reshuffle(managing)}>
               整场重排
@@ -1181,21 +1203,42 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             {waiting.length === 0 ? (
               <p className="text-sm text-ink-400">等待区没人了。</p>
             ) : (
-              waiting.map((l) => (
-                <button
-                  key={l.playerId}
-                  onClick={() => swapPlayer(swapping.match, swapping.playerId, l.playerId)}
-                  className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
-                >
-                  <Avatar
-                    name={names.get(l.playerId)?.name ?? '?'}
-                    avatar={avatarsById.get(l.playerId)}
-                    size="sm"
-                  />
-                  <span className="flex-1 truncate">{names.get(l.playerId)?.name}</span>
-                  <span className="text-xs text-ink-400">已打 {l.games} 场</span>
-                </button>
-              ))
+              <>
+                {/*
+                  手动换人不走公平轮转 —— 自动排场那条硬约束（场数最少的必须上）
+                  在这里一点都不管用，全凭你点谁。所以把「该轮到谁」直接标出来，
+                  不然谁被晾着只能自己数。列表本来就按该上场的顺序排。
+                */}
+                <p className="text-sm text-ink-300">
+                  按「该轮到谁」排的，最上面的等最久、打得最少。
+                </p>
+                {waiting.map((l) => (
+                  <button
+                    key={l.playerId}
+                    onClick={() => swapPlayer(swapping.match, swapping.playerId, l.playerId)}
+                    className={cx(
+                      'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left active:bg-ink-800',
+                      l.games === waiting[0].games
+                        ? 'border-lime-glow/50 bg-lime-glow/10'
+                        : 'border-ink-700 bg-ink-850',
+                    )}
+                  >
+                    <Avatar
+                      name={names.get(l.playerId)?.name ?? '?'}
+                      avatar={avatarsById.get(l.playerId)}
+                      size="sm"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{names.get(l.playerId)?.name}</span>
+                      <span className="text-xs text-ink-400">
+                        已打 {l.games} 场
+                        {l.restRounds > 0 && ` · 休息 ${l.restRounds} 轮`}
+                      </span>
+                    </span>
+                    {l.games === waiting[0].games && <Pill tone="lime">该轮到</Pill>}
+                  </button>
+                ))}
+              </>
             )}
           </div>
         )}
