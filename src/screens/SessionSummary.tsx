@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { playerMap, sessionMatches, useApp } from '@/store/useApp'
+import { rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Body,
@@ -17,7 +17,13 @@ import {
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { RankTable } from '@/components/RankTable'
-import { computeStats, mvpOf, rankPlayers } from '@/lib/ranking'
+import {
+  computeStats,
+  decidedMatches,
+  matchWinnerBySets,
+  mvpOf,
+  rankPlayers,
+} from '@/lib/ranking'
 import { money, splitFee } from '@/lib/fee'
 import { matchesAtVenue, playerIdsAtVenue, venueLabel } from '@/lib/venues'
 import { shareNodeAsImage } from '@/lib/shareImage'
@@ -188,15 +194,54 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
   const [shareState, setShareState] = useState<'idle' | 'working' | string>('idle')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const names = useMemo(() => playerMap(players), [players])
+  // 结算页要列出双方所有人，客队也得有名字
+  const names = useMemo(
+    () => rosterForSession(players, session),
+    [players, session],
+  )
   const matches = useMemo(
     () => (session ? sessionMatches(allMatches, session.id) : []),
     [allMatches, session],
   )
-  const ranked = useMemo(
-    () => (session ? rankPlayers(computeStats(matches, session.playerIds)) : []),
-    [matches, session],
+  /*
+   * 本场结算要把友谊赛的比赛算进来 —— decidedMatches 默认把它们挡在外面，
+   * 那是为了不让客队搅动累计排行榜，但自己这一场的账当然要算。
+   */
+  const inSession = { includeFriendly: true }
+  /** 友谊赛要连客队一起排，普通球局就是出席名单 */
+  const rosterIds = useMemo(
+    () =>
+      session
+        ? [
+            ...session.playerIds,
+            ...(session.friendly?.awayPlayers ?? []).map((g) => g.id),
+          ]
+        : [],
+    [session],
   )
+  const ranked = useMemo(
+    () =>
+      session
+        ? rankPlayers(
+            computeStats(matches, rosterIds, RANK_MIN_GAMES, inSession),
+          )
+        : [],
+    [matches, session, rosterIds],
+  )
+
+  /** 友谊赛的总比分：两队各赢了几场 */
+  const clubScore = useMemo(() => {
+    if (!session?.friendly) return null
+    const done = decidedMatches(matches, { includeFriendly: true })
+    let home = 0
+    let away = 0
+    for (const m of done) {
+      // teamA 一定是主队，配对时就是这么约束的
+      if (matchWinnerBySets(m) === 'A') home += 1
+      else away += 1
+    }
+    return { home, away, total: done.length }
+  }, [session, matches])
 
   /** 段位与 MMR 按所有球局的总战绩算，不只今晚这一场 —— 它反映的是整体水平 */
   const progressById = useMemo(() => progressByPlayer(allMatches), [allMatches])
@@ -234,7 +279,9 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
   }
 
   const done = matches.filter((m) => m.status === 'done')
-  const mvp = mvpOf(computeStats(matches, session.playerIds))
+  const mvp = mvpOf(
+    computeStats(matches, rosterIds, RANK_MIN_GAMES, inSession),
+  )
   const fee = splitFee(session)
   const played =
     session.endedAt && session.createdAt
@@ -317,6 +364,56 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
           />
         ) : (
           <>
+            {/* 友谊赛最想看的就是这一行：两队谁赢了 */}
+            {clubScore && session.friendly && (
+              <Card className="border-lime-glow/40 bg-lime-glow/5">
+                <p className="text-center text-xs text-ink-400">
+                  友谊赛总比分 · 共 {clubScore.total} 场
+                </p>
+                <div className="mt-2 flex items-center justify-center gap-4">
+                  <div className="min-w-0 flex-1 text-right">
+                    <p className="truncate text-sm text-ink-300">
+                      {session.friendly.homeName}
+                    </p>
+                    <p
+                      className={cx(
+                        'tnum text-4xl font-bold',
+                        clubScore.home >= clubScore.away
+                          ? 'text-lime-glow'
+                          : 'text-ink-400',
+                      )}
+                    >
+                      {clubScore.home}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-2xl text-ink-500">:</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-ink-300">
+                      {session.friendly.awayName}
+                    </p>
+                    <p
+                      className={cx(
+                        'tnum text-4xl font-bold',
+                        clubScore.away >= clubScore.home
+                          ? 'text-lime-glow'
+                          : 'text-ink-400',
+                      )}
+                    >
+                      {clubScore.away}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2 text-center text-sm font-semibold">
+                  {clubScore.home === clubScore.away
+                    ? '打平'
+                    : `${clubScore.home > clubScore.away ? session.friendly.homeName : session.friendly.awayName} 赢下这场友谊赛`}
+                </p>
+                <p className="mt-2 text-center text-xs text-ink-400">
+                  友谊赛成绩单独记，不算进 MMR、段位和累计排行榜
+                </p>
+              </Card>
+            )}
+
             {mvp ? (
               <Card className="border-lime-glow/40 bg-lime-glow/5">
                 <div className="flex items-center gap-4">

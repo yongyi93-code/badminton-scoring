@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { playerMap, sessionMatches, useApp } from '@/store/useApp'
+import { rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
+import { matchWinnerBySets } from '@/lib/ranking'
 import {
   Body,
   Button,
@@ -29,6 +30,10 @@ import {
 import {
   FORMAT_LABELS,
   formatOf,
+  pairingModeOf,
+  PAIRING_MODE_HINTS,
+  PAIRING_MODE_LABELS,
+  type PairingMode,
   type Match,
   type MatchType,
   type Player,
@@ -275,6 +280,9 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
     return map
   }, [allMatches])
 
+  // 配对模式跟着球局走，打到一半也能换 —— 后面排的场立刻按新口径来
+  const pairingMode = session ? pairingModeOf(session) : 'balanced'
+
   const [nextType, setNextType] = useState<MatchType | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [endOpen, setEndOpen] = useState(false)
@@ -284,7 +292,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const [mustInclude, setMustInclude] = useState<string[]>([])
   const [showAllSchedule, setShowAllSchedule] = useState(false)
 
-  const names = useMemo(() => playerMap(players), [players])
+  // 名册要带上友谊赛的客队 —— 他们不在正式球员名单里，但看板得叫得出名字
+  const names = useMemo(
+    () => rosterForSession(players, session),
+    [players, session],
+  )
   const matches = useMemo(
     () => (session ? sessionMatches(allMatches, session.id) : []),
     [allMatches, session],
@@ -312,9 +324,27 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   const type = nextType ?? session.defaultType
   const restingIds = session.restingIds ?? []
-  const attending = session.playerIds
-    .map((id) => names.get(id))
-    .filter((p): p is Player => Boolean(p))
+  /*
+   * 友谊赛的出场人 = 主队（正式球员）+ 客队（只属于这场的客人）。
+   * 客队不在 session.playerIds 里，所以要单独接上去，否则自动排场找不到人。
+   */
+  const guests = session.friendly?.awayPlayers ?? []
+  const attending = [
+    ...session.playerIds
+      .map((id) => names.get(id))
+      .filter((p): p is Player => Boolean(p)),
+    ...guests
+      .map((g) => names.get(g.id))
+      .filter((p): p is Player => Boolean(p)),
+  ]
+
+  /** 友谊赛：谁是主队谁是客队，交给配对算法当硬约束 */
+  const clubOf = session.friendly
+    ? new Map<string, 'home' | 'away'>([
+        ...session.playerIds.map((id) => [id, 'home'] as const),
+        ...guests.map((g) => [g.id, 'away'] as const),
+      ])
+    : undefined
 
   const live = matches.filter((m) => m.status === 'playing')
   const queued = matches.filter((m) => m.status === 'queued')
@@ -324,6 +354,17 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const onCourt = new Map(live.map((m) => [m.courtIndex, m]))
 
   const format = formatOf(session)
+
+  /** 友谊赛实时比分：teamA 一定是主队，配对时就这么约束的 */
+  const clubScore = finished.reduce(
+    (acc, m) => {
+      const w = matchWinnerBySets(m)
+      if (w === 'A') acc.home += 1
+      else if (w === 'B') acc.away += 1
+      return acc
+    },
+    { home: 0, away: 0 },
+  )
   const progress = sessionProgress(session, matches, now)
 
   const loads = playerLoads(attending, matches)
@@ -355,6 +396,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       type: pairing.type,
       teamA: pairing.teamA,
       teamB: pairing.teamB,
+      // 标在比赛上，统计那边一处就能过滤掉，不会漏
+      friendly: session!.friendly ? true : undefined,
       games: [
         {
           a: 0,
@@ -442,6 +485,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       mustInclude,
       type,
       mmrById,
+      pairingMode,
+      clubOf,
     })
     if (!pairing) {
       setNotice(reason ?? '排不出下一场')
@@ -466,6 +511,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       excludeIds: restingIds,
       type: match.type,
       mmrById,
+      pairingMode,
+      clubOf,
     })
     if (!pairing) {
       setNotice(reason ?? '重排失败')
@@ -562,6 +609,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       perPlayer: left,
       history: done,
       mmrById,
+      pairingMode,
+      clubOf,
     })
     if (!schedule.pairings.length) {
       setNotice(schedule.reason ?? '排不出剩余赛程')
@@ -582,6 +631,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       total: count,
       history: fresh,
       mmrById,
+      pairingMode,
+      clubOf,
     })
     if (!schedule.pairings.length) {
       setNotice(schedule.reason ?? '排不出更多场次')
@@ -646,6 +697,27 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         {notice && (
           <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3.5 py-2.5 text-sm text-amber-200">
             {notice}
+          </div>
+        )}
+
+        {/* 友谊赛的实时总比分：打的时候两边最想知道的就是现在几比几 */}
+        {session.friendly && (
+          <div className="flex items-center justify-center gap-4 rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5">
+            <span className="min-w-0 flex-1 truncate text-right text-sm text-ink-300">
+              {session.friendly.homeName}
+            </span>
+            <span className="tnum shrink-0 text-2xl font-bold">
+              <span className={clubScore.home >= clubScore.away ? 'text-lime-glow' : ''}>
+                {clubScore.home}
+              </span>
+              <span className="mx-1.5 text-ink-500">:</span>
+              <span className={clubScore.away >= clubScore.home ? 'text-lime-glow' : ''}>
+                {clubScore.away}
+              </span>
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink-300">
+              {session.friendly.awayName}
+            </span>
           </div>
         )}
 
@@ -741,6 +813,25 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             )}
           </div>
         )}
+
+        {/*
+          配对模式放在等待区上面：这里正是「下一场谁跟谁」发生的地方，
+          觉得排得不对的人第一眼就能看到这个开关，不用翻回设置页。
+        */}
+        <SectionTitle>怎么配对</SectionTitle>
+        <div className="space-y-1.5">
+          <Segmented
+            value={pairingMode}
+            onChange={(m: PairingMode) => updateSession(sessionId, { pairingMode: m })}
+            options={(Object.keys(PAIRING_MODE_LABELS) as PairingMode[]).map((m) => ({
+              value: m,
+              label: PAIRING_MODE_LABELS[m],
+            }))}
+          />
+          <p className="text-xs text-ink-400">
+            {PAIRING_MODE_HINTS[pairingMode]}。已排好的场不动，之后排的按新口径来。
+          </p>
+        </div>
 
         <SectionTitle>
           {format === 'king'

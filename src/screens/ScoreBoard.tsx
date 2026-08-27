@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { playerMap, useApp } from '@/store/useApp'
+import { rosterForSession, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Button,
@@ -206,7 +206,11 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const [directA, setDirectA] = useState('')
   const [directB, setDirectB] = useState('')
 
-  const names = useMemo(() => playerMap(players), [players])
+  // 友谊赛的客队不在正式名单里，记分屏也要叫得出他们的名字
+  const names = useMemo(
+    () => rosterForSession(players, session),
+    [players, session],
+  )
   useWakeLock(Boolean(match) && match?.status === 'playing')
 
   if (!match || !session) {

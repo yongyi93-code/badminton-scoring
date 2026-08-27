@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { pickNextMatch, playerLoads } from '@/lib/rotation'
-import type { Gender, Level, Match, MatchType, Player } from '@/types'
+import type {
+  Gender,
+  Level,
+  Match,
+  MatchType,
+  PairingMode,
+  Player,
+} from '@/types'
 
 /** 固定种子的伪随机，保证测试可复现 */
 function seeded(seed: number) {
@@ -38,6 +45,8 @@ function simulate(
   type: MatchType = 'doubles',
   seed = 42,
   mmrById?: Map<string, number>,
+  pairingMode?: PairingMode,
+  clubOf?: Map<string, 'home' | 'away'>,
 ) {
   const random = seeded(seed)
   const matches: Match[] = []
@@ -53,6 +62,8 @@ function simulate(
         busyIds,
         type,
         mmrById,
+        pairingMode,
+        clubOf,
         random,
       })
       if (!pairing) break
@@ -333,5 +344,145 @@ describe('边界与人工干预', () => {
     const players = makePlayers(4)
     const out = pickNextMatch({ attending: players, matches: [], type: 'doubles' })
     expect(out.pairing).not.toBe(null)
+  })
+})
+
+describe('配对模式', () => {
+  /** 前 4 人 500 分，后 4 人 0 分 —— 两个极端，最容易看出模式有没有生效 */
+  const split8 = () => {
+    const players = makePlayers(8)
+    const mmrById = new Map(
+      players.map((p, i) => [p.id, i < 4 ? 500 : 0] as const),
+    )
+    return { players, mmrById }
+  }
+
+  /** 一场里最高分和最低分的差 —— 「这四个人水平接不接近」 */
+  const spreadOf = (m: Match, mmr: Map<string, number>) => {
+    const vals = [...m.teamA, ...m.teamB].map((id) => mmr.get(id)!)
+    return Math.max(...vals) - Math.min(...vals)
+  }
+  /** 两队平均分的差 —— 「这一场咬不咬得紧」 */
+  const gapOf = (m: Match, mmr: Map<string, number>) => {
+    const avg = (t: string[]) => t.reduce((s, id) => s + mmr.get(id)!, 0) / t.length
+    return Math.abs(avg(m.teamA) - avg(m.teamB))
+  }
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
+
+  it('均衡模式：高分带低分，两队平均分基本拉平', () => {
+    const { players, mmrById } = split8()
+    const matches = simulate(players, 1, 24, 'doubles', 7, mmrById, 'balanced')
+    // 理想分队是每队一高一低 → 两队平均都是 250，差 0
+    expect(mean(matches.map((m) => gapOf(m, mmrById)))).toBeLessThan(40)
+  })
+
+  it('同级模式：高分打高分、低分打低分，同一场不混', () => {
+    const { players, mmrById } = split8()
+    const matches = simulate(players, 1, 24, 'doubles', 7, mmrById, 'tiered')
+    // 同级下 500 和 0 不该凑一场，跨度应该压到接近 0
+    expect(mean(matches.map((m) => spreadOf(m, mmrById)))).toBeLessThan(60)
+  })
+
+  it('两种模式的差别是真的：同级的场内跨度远小于均衡', () => {
+    const { players, mmrById } = split8()
+    const bal = simulate(players, 1, 24, 'doubles', 7, mmrById, 'balanced')
+    const tie = simulate(players, 1, 24, 'doubles', 7, mmrById, 'tiered')
+    expect(mean(tie.map((m) => spreadOf(m, mmrById)))).toBeLessThan(
+      mean(bal.map((m) => spreadOf(m, mmrById))) / 3,
+    )
+  })
+
+  it('两种模式都不破坏「不能有人连坐冷板凳」', () => {
+    const { players, mmrById } = split8()
+    for (const mode of ['balanced', 'tiered'] as const) {
+      const matches = simulate(players, 1, 24, 'doubles', 7, mmrById, mode)
+      const counts = [...gamesPerPlayer(players, matches).values()]
+      // 每人场数最多差 1 场
+      expect(Math.max(...counts) - Math.min(...counts), mode).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('均衡模式：水平连续分布时也拉得平（不是只有两个极端才管用）', () => {
+    const players = makePlayers(8)
+    const grades = [300, 260, 220, 180, 140, 100, 60, 20]
+    const mmrById = new Map(players.map((p, i) => [p.id, grades[i]] as const))
+    const matches = simulate(players, 1, 24, 'doubles', 3, mmrById, 'balanced')
+    const avg = (t: string[]) =>
+      t.reduce((s, id) => s + mmrById.get(id)!, 0) / t.length
+    const gaps = matches.map((m) => Math.abs(avg(m.teamA) - avg(m.teamB)))
+    // 任取 4 人都能配出平均差 ≤ 20 的分法，所以这个门槛是够得着的
+    expect(mean(gaps)).toBeLessThan(25)
+  })
+
+  it('缺省就是均衡模式', () => {
+    const { players, mmrById } = split8()
+    const a = simulate(players, 1, 12, 'doubles', 7, mmrById)
+    const b = simulate(players, 1, 12, 'doubles', 7, mmrById, 'balanced')
+    expect(a.map((m) => [m.teamA, m.teamB])).toEqual(
+      b.map((m) => [m.teamA, m.teamB]),
+    )
+  })
+})
+
+describe('友谊赛：两个俱乐部对打', () => {
+  /** 前 4 人主队、后 4 人客队 */
+  const twoClubs = (n = 8) => {
+    const players = makePlayers(n)
+    const clubOf = new Map<string, 'home' | 'away'>(
+      players.map((p, i) => [p.id, i < n / 2 ? 'home' : 'away'] as const),
+    )
+    return { players, clubOf }
+  }
+
+  it('每一场都是主队打客队，teamA 全主队、teamB 全客队', () => {
+    const { players, clubOf } = twoClubs()
+    const matches = simulate(players, 1, 20, 'doubles', 5, undefined, undefined, clubOf)
+    expect(matches.length).toBe(20)
+    for (const m of matches) {
+      expect(m.teamA.every((id) => clubOf.get(id) === 'home'), m.id).toBe(true)
+      expect(m.teamB.every((id) => clubOf.get(id) === 'away'), m.id).toBe(true)
+    }
+  })
+
+  it('两边各自公平轮转，不会有人在自己队里被晾着', () => {
+    const { players, clubOf } = twoClubs()
+    const matches = simulate(players, 1, 20, 'doubles', 5, undefined, undefined, clubOf)
+    const counts = gamesPerPlayer(players, matches)
+    for (const side of ['home', 'away'] as const) {
+      const ns = players
+        .map((p, i) => [p, counts[i]] as const)
+        .filter(([p]) => clubOf.get(p.id) === side)
+        .map(([, n]) => n)
+      expect(Math.max(...ns) - Math.min(...ns), side).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('两队人数不一样也照排，人少的那队打得更勤', () => {
+    // 主队 4 人、客队 2 人：客队那 2 个每场都上
+    const players = makePlayers(6)
+    const clubOf = new Map<string, 'home' | 'away'>(
+      players.map((p, i) => [p.id, i < 4 ? 'home' : 'away'] as const),
+    )
+    const matches = simulate(players, 1, 12, 'doubles', 5, undefined, undefined, clubOf)
+    expect(matches.length).toBe(12)
+    for (const m of matches) {
+      expect(m.teamB.every((id) => clubOf.get(id) === 'away')).toBe(true)
+    }
+  })
+
+  it('某一边人不够就说清楚为什么排不出来', () => {
+    const players = makePlayers(4)
+    const clubOf = new Map<string, 'home' | 'away'>(
+      players.map((p, i) => [p.id, i < 3 ? 'home' : 'away'] as const),
+    )
+    const { pairing, reason } = pickNextMatch({
+      attending: players,
+      matches: [],
+      type: 'doubles',
+      clubOf,
+      random: seeded(1),
+    })
+    expect(pairing).toBeNull()
+    expect(reason).toContain('客队 1 人')
   })
 })

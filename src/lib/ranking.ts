@@ -8,9 +8,23 @@ import { RANK_MIN_GAMES, type Match, type PlayerStats, type TeamSide } from '@/t
  * 这样一局定胜负和三局两胜、跨赛制的历史数据都能一起统计。
  * ------------------------------------------------------------------ */
 
-/** 只统计打完的比赛 */
-export const decidedMatches = (matches: Match[]) =>
-  matches.filter((m) => m.status === 'done' && matchWinnerBySets(m) !== null)
+/** 打完且分出胜负的比赛 */
+const settled = (m: Match) => m.status === 'done' && matchWinnerBySets(m) !== null
+
+/**
+ * 只统计打完的比赛，并且默认把友谊赛排除在外。
+ *
+ * 过滤放在这一处是有意的：MMR、段位、金币、累计排行榜、最佳搭档、苦主、
+ * 连胜……全都从这个函数往下走，挡在这里就不可能漏掉某条统计路径。
+ * 友谊赛的客队大多只打这一晚，让他们的战绩去搅动常年累计的榜没有意义。
+ *
+ * 友谊赛自己那场的结算需要看这些比赛，用 includeFriendly 显式打开。
+ */
+export const decidedMatches = (
+  matches: Match[],
+  { includeFriendly = false } = {},
+) =>
+  matches.filter((m) => settled(m) && (includeFriendly || !m.friendly))
 
 /**
  * 按真实先后顺序排。
@@ -54,8 +68,10 @@ export function computeStats(
   matches: Match[],
   playerIds: string[],
   minGames = RANK_MIN_GAMES,
+  /** 友谊赛自己那场的结算要看自己的比赛，其余场合一律不算 */
+  { includeFriendly = false } = {},
 ): PlayerStats[] {
-  const played = chronological(decidedMatches(matches))
+  const played = chronological(decidedMatches(matches, { includeFriendly }))
 
   return playerIds.map((playerId) => {
     let games = 0

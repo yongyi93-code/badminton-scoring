@@ -1,4 +1,4 @@
-import type { Match, MatchType, Player } from '@/types'
+import type { Match, MatchType, PairingMode, Player } from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 公平轮转配对
@@ -6,7 +6,9 @@ import type { Match, MatchType, Player } from '@/types'
  * 纯随机会产生三种抱怨，这里逐条用规则挡掉：
  *   1. 有人连坐冷板凳  → 「已打场数最少的人必须上场」是硬约束，不是罚分
  *   2. 同一对搭档反复凑 → 近几场同队过的组合重罚
- *   3. 高手扎堆打菜鸟   → 两队水平和的差值罚分
+ *   3. 高手扎堆打菜鸟   → 按 MMR 罚分，两种口径二选一：
+ *      均衡（默认）一场里高分带低分，两队平均分尽量相等；
+ *      同级        挑水平接近的人凑一场，高分打高分、低分打低分。
  * ------------------------------------------------------------------ */
 
 /** 回避重复搭档/对手时往回看几场 */
@@ -25,11 +27,20 @@ const W = {
   /** 历史累计对阵次数（每次） */
   totalOpponent: 2,
   /**
-   * 两队平均 MMR 每差 1 分。
-   * 用平均而不是求和，单打双打的尺度才一致；
-   * 0.4 这个值让「两队平均差 75 分」和以前「水平差 1 星」的代价差不多。
+   * 两队平均 MMR 每差 1 分。用平均而不是求和，单打双打的尺度才一致。
+   *
+   * 这个数原来是 0.4，等于形同虚设：两队平均差 100 分才值 40 分代价，
+   * 还不如「近期同队过一次」（100）贵，于是实力平衡从来没赢过搭档多样性，
+   * 排出来的场看着就是没规律。2.0 让 100 分差 = 200 代价，压过一次重复搭档，
+   * 实力这条才真的说了算。
    */
-  mmrGap: 0.4,
+  mmrGap: 2,
+  /**
+   * 同级模式专用：一场里最高分和最低分每差 1 分。
+   * 光让两队平均相等是不够的 —— 300+10 对 290+20 两队平均只差 0，
+   * 但那个 10 分的上去就是挨打。要高打高、低打低，就得直接罚这个跨度。
+   */
+  mmrSpread: 2,
   /** 休息轮数：等得越久越该上，每轮减分 */
   restBonus: 12,
   /** 随机抖动上限，避免每晚排出一模一样的顺序 */
@@ -70,6 +81,16 @@ export type RotationInput = {
    * 只看今晚这一场的战绩配不准。缺省当 0，等于不做平衡。
    */
   mmrById?: Map<string, number>
+  /**
+   * 怎么用 MMR 配对，缺省 'balanced'。
+   * 两种模式都不动「已打场数最少的人必须上场」这条硬约束。
+   */
+  pairingMode?: PairingMode
+  /**
+   * 友谊赛的阵营划分。给了就变成硬约束：一场必须是主队 vs 客队，
+   * teamA 全是主队、teamB 全是客队，两边各出一半人。
+   */
+  clubOf?: Map<string, 'home' | 'away'>
   lookback?: number
   /** 注入随机源便于测试 */
   random?: () => number
@@ -216,6 +237,8 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     excludeIds = [],
     mustInclude = [],
     mmrById,
+    pairingMode = 'balanced',
+    clubOf,
     lookback = DEFAULT_LOOKBACK,
     random = Math.random,
   } = input
@@ -249,6 +272,18 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     }
   }
 
+  if (clubOf) {
+    const half = need / 2
+    const count = (side: 'home' | 'away') =>
+      available.filter((p) => clubOf.get(p.id) === side).length
+    if (count('home') < half || count('away') < half) {
+      return {
+        pairing: null,
+        reason: `友谊赛一场要两队各 ${half} 人，现在主队 ${count('home')} 人、客队 ${count('away')} 人在等待区`,
+      }
+    }
+  }
+
   const missingMust = mustInclude.filter((id) => !available.some((p) => p.id === id))
   if (missingMust.length) {
     return { pairing: null, reason: '指定上场的球员当前不在等待区' }
@@ -273,6 +308,13 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     for (const group of groups) {
       for (const split of splits(group)) {
         const teams = [split.teamA, split.teamB]
+
+        // 友谊赛硬约束：teamA 全主队、teamB 全客队
+        if (clubOf) {
+          const allOf = (t: string[], side: 'home' | 'away') =>
+            t.every((id) => clubOf.get(id) === side)
+          if (!allOf(split.teamA, 'home') || !allOf(split.teamB, 'away')) continue
+        }
 
         // 混双硬约束
         if (type === 'mixed') {
@@ -307,9 +349,20 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
         }
 
         // 实力平衡：看两队的平均 MMR
+        const mmrOf = (id: string) => mmrById?.get(id) ?? 0
         const avgMmr = (t: string[]) =>
-          t.length ? t.reduce((s, id) => s + (mmrById?.get(id) ?? 0), 0) / t.length : 0
+          t.length ? t.reduce((s, id) => s + mmrOf(id), 0) / t.length : 0
         cost += W.mmrGap * Math.abs(avgMmr(split.teamA) - avgMmr(split.teamB))
+
+        /*
+         * 同级模式再罚一次这四个人之间的分差跨度。
+         * 两队平均相等只保证「队伍之间」公平，不保证场上四个人水平接近；
+         * 罚跨度才会把 300 分和 10 分拆到不同场次去。
+         */
+        if (pairingMode === 'tiered') {
+          const vals = group.map(mmrOf)
+          cost += W.mmrSpread * (Math.max(...vals) - Math.min(...vals))
+        }
 
         // 等久的人优先上场
         for (const id of group) {
@@ -328,15 +381,31 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     return best
   }
 
-  // 硬性公平：已打场数严格少于「第 need 少」的人必须上场
-  const gamesSorted = [...available]
-    .map((p) => loadById.get(p.id)!.games)
-    .sort((a, b) => a - b)
-  const threshold = gamesSorted[need - 1]
+  /**
+   * 硬性公平：已打场数严格少于「第 need 少」的人必须上场。
+   *
+   * 友谊赛要分边算。整体算的话「场数最少的 4 个人」可能三个都是主队的，
+   * 凑不出一场合法的主客对阵，直接排不出来 ——
+   * 两边各算各的「该轮到谁」，才既公平又排得出。
+   */
+  const mandatoryFrom = (pool: Player[], slots: number) => {
+    const sorted = pool.map((p) => loadById.get(p.id)!.games).sort((a, b) => a - b)
+    const th = sorted[slots - 1]
+    return {
+      threshold: th,
+      ids: pool.filter((p) => loadById.get(p.id)!.games < th).map((p) => p.id),
+    }
+  }
 
-  const mandatory = available
-    .filter((p) => loadById.get(p.id)!.games < threshold)
-    .map((p) => p.id)
+  const sides: { pool: Player[]; slots: number }[] = clubOf
+    ? (['home', 'away'] as const).map((side) => ({
+        pool: available.filter((p) => clubOf.get(p.id) === side),
+        slots: need / 2,
+      }))
+    : [{ pool: available, slots: need }]
+
+  const perSide = sides.map((s) => ({ ...s, ...mandatoryFrom(s.pool, s.slots) }))
+  const mandatory = perSide.flatMap((s) => s.ids)
 
   // mustInclude 也是硬约束，合并进去（可能超过 need，此时无解）
   const merged = Array.from(new Set([...mandatory, ...mustInclude]))
@@ -347,18 +416,20 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     }
   }
 
-  // 搜索池：与 threshold 同场数的人（等最久的优先），控制组合数量
-  const tier = available
-    .filter(
-      (p) =>
-        loadById.get(p.id)!.games === threshold && !merged.includes(p.id),
-    )
-    .sort((a, b) => {
-      const la = loadById.get(a.id)!
-      const lb = loadById.get(b.id)!
-      return lb.restRounds - la.restRounds || random() - 0.5
-    })
-    .slice(0, MAX_OPTIONAL_POOL)
+  // 搜索池：与该侧 threshold 同场数的人（等最久的优先），控制组合数量
+  const tier = perSide.flatMap((s) =>
+    s.pool
+      .filter(
+        (p) =>
+          loadById.get(p.id)!.games === s.threshold && !merged.includes(p.id),
+      )
+      .sort((a, b) => {
+        const la = loadById.get(a.id)!
+        const lb = loadById.get(b.id)!
+        return lb.restRounds - la.restRounds || random() - 0.5
+      })
+      .slice(0, MAX_OPTIONAL_POOL),
+  )
 
   const tierPool = [
     ...merged.map((id) => byId.get(id)!),
