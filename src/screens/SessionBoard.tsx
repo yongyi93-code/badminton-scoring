@@ -432,6 +432,18 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             !busyIds.includes(l.playerId) && !restingIds.includes(l.playerId),
         )
 
+  /*
+   * 场上/已排队的人，按已打场数排在等待区后面。
+   *
+   * 原来这一栏只列没在场上的人，于是「谁被晾着」根本看不出来 ——
+   * 想确认某个人是不是一直没轮到，只能自己数。
+   * 全部列出来之后，最上面就是最该上的，最下面就是打得最多的，
+   * 一眼能看出公不公平；觉得不对就点谁「下一场必上」。
+   */
+  const onCourtLoads = loads.filter(
+    (l) => busyIds.includes(l.playerId) && !restingIds.includes(l.playerId),
+  )
+
   function buildMatch(
     pairing: { teamA: string[]; teamB: string[]; type: MatchType },
     courtIndex: number | null,
@@ -930,7 +942,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         >
           {format === 'king'
             ? `排队顺序（${waiting.length} 人）`
-            : `等待区（${waiting.length} 人）`}
+            : `谁该上场（等待 ${waiting.length} 人）`}
         </SectionTitle>
 
         {format === 'king' && (
@@ -989,6 +1001,26 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             )
           })}
 
+          {/* 场上的人也列出来，才看得出「谁一直在打、谁一直没轮到」 */}
+          {onCourtLoads.map((l) => {
+            const p = names.get(l.playerId)
+            if (!p) return null
+            return (
+              <div
+                key={l.playerId}
+                className="flex w-full items-center gap-3 rounded-xl border border-ink-800 bg-ink-900/60 px-3 py-2.5 opacity-60"
+              >
+                <span className="w-5 shrink-0" />
+                <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{p.name}</span>
+                  <span className="text-xs text-ink-400">已打 {l.games} 场</span>
+                </span>
+                <Pill>场上</Pill>
+              </div>
+            )
+          })}
+
           {restingIds.length > 0 && (
             <div className="pt-1">
               <p className="mb-2 text-xs text-ink-400">休息中（不参与排场）</p>
@@ -1012,8 +1044,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             </div>
           )}
 
-          {waiting.length === 0 && restingIds.length === 0 && (
-            <p className="text-sm text-ink-400">所有人都在场上。</p>
+          {waiting.length === 0 && onCourtLoads.length === 0 && restingIds.length === 0 && (
+            <p className="text-sm text-ink-400">这一局还没有人。</p>
           )}
         </div>
 
