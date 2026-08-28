@@ -103,7 +103,7 @@ export function TopBar({
   right?: ReactNode
 }) {
   return (
-    <header className="safe-top sticky top-0 z-20 border-b border-line bg-surface/95 px-4 pb-3 backdrop-blur">
+    <header className="safe-top sticky top-0 z-20 border-b border-line bg-surface/95 px-5 pb-3 backdrop-blur">
       <div className="flex items-center gap-3">
         {onBack && (
           <button
@@ -128,13 +128,27 @@ export function TopBar({
   )
 }
 
-export function Screen({ children }: { children: ReactNode }) {
-  return <div className="mx-auto min-h-dvh w-full max-w-2xl">{children}</div>
+/**
+ * tabBar：这一屏底下有主导航条。传了它，内容区就留出 72pt + 安全区的位置，
+ * 否则最后一张卡会被导航条压住 —— 那正好是「结束球局」这类按钮待的地方。
+ */
+export function Screen({
+  children,
+  tabBar,
+}: {
+  children: ReactNode
+  tabBar?: boolean
+}) {
+  return (
+    <div className={cx('mx-auto min-h-dvh w-full max-w-2xl', tabBar && 'pad-nav')}>
+      {children}
+    </div>
+  )
 }
 
 export function Body({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cx('safe-bottom space-y-4 px-4 pt-4', className)}>{children}</div>
+    <div className={cx('safe-bottom space-y-4 px-5 pt-4', className)}>{children}</div>
   )
 }
 
