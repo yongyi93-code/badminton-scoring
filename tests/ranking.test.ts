@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   bestPartner,
   computeStats,
+  decidedMatches,
   longestWinStreak,
   matchWinnerBySets,
   mvpOf,
@@ -10,6 +11,7 @@ import {
   totalPoints,
 } from '@/lib/ranking'
 import { money, roundUpToHalf, splitFee } from '@/lib/fee'
+import { progressOf } from '@/lib/avatar'
 import { DEFAULT_RULES, type Match, type Session } from '@/types'
 
 let seq = 0
@@ -268,5 +270,63 @@ describe('费用 AA', () => {
     expect(roundUpToHalf(14.01)).toBe(14.5)
     expect(money(12)).toBe('12')
     expect(money(14.5)).toBe('14.5')
+  })
+})
+
+describe('友谊赛不进累计统计', () => {
+  const friendlyMatch = (id: string, a: string[], b: string[], seq: number): Match => ({
+    id,
+    sessionId: 'f1',
+    courtIndex: 0,
+    type: 'doubles',
+    teamA: a,
+    teamB: b,
+    games: [{ a: 21, b: 10, points: null, serveInit: null }],
+    status: 'done',
+    seq,
+    endedAt: seq * 1000,
+    friendly: true,
+  })
+
+  const normal = (id: string, a: string[], b: string[], seq: number): Match => ({
+    ...friendlyMatch(id, a, b, seq),
+    sessionId: 's1',
+    friendly: undefined,
+  })
+
+  it('decidedMatches 默认把友谊赛挡掉', () => {
+    const ms = [normal('n1', ['p1'], ['p2'], 1), friendlyMatch('f1', ['p1'], ['g1'], 2)]
+    expect(decidedMatches(ms).map((m) => m.id)).toEqual(['n1'])
+    expect(decidedMatches(ms, { includeFriendly: true }).map((m) => m.id)).toEqual([
+      'n1',
+      'f1',
+    ])
+  })
+
+  it('友谊赛赢再多也不涨 MMR、不进段位', () => {
+    const only = [
+      friendlyMatch('f1', ['p1'], ['g1'], 1),
+      friendlyMatch('f2', ['p1'], ['g2'], 2),
+      friendlyMatch('f3', ['p1'], ['g3'], 3),
+    ]
+    const prog = progressOf('p1', only)
+    expect(prog.mmr).toBe(0)
+    expect(prog.wins).toBe(0)
+    expect(prog.coins).toBe(0)
+  })
+
+  it('友谊赛不进胜率统计，正常球局照算', () => {
+    const ms = [
+      normal('n1', ['p1'], ['p2'], 1),
+      friendlyMatch('f1', ['p1'], ['g1'], 2),
+      friendlyMatch('f2', ['p1'], ['g2'], 3),
+    ]
+    const [stats] = computeStats(ms, ['p1'], 1)
+    expect(stats.games).toBe(1)
+    expect(stats.wins).toBe(1)
+
+    // 本场结算显式打开时，三场都算
+    const [inSession] = computeStats(ms, ['p1'], 1, { includeFriendly: true })
+    expect(inSession.games).toBe(3)
   })
 })

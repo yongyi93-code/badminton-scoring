@@ -21,6 +21,17 @@ const buildId = (() => {
 
 export default defineConfig({
   base: './',
+  build: {
+    /*
+     * 图片一律出成独立文件，不内联成 data URI。
+     *
+     * 分层换装有九十来个小文件，其中掩膜压完只有一两 KB，默认规则会把它们
+     * 塞进主 JS 里 —— 首屏要下的那个包白白胖了几十 KB，而且这些图改一次
+     * 整个 JS 的 hash 就变，缓存全作废。出成文件反而更好：Service Worker
+     * 照样会预缓存，离线一样能用，改素材也只失效那几张。
+     */
+    assetsInlineLimit: (file) => (/\.(webp|png|jpe?g)$/.test(file) ? false : undefined),
+  },
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),

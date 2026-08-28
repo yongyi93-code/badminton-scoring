@@ -11,7 +11,6 @@ import {
   type Progress,
   levelOf,
   newAvatar,
-  shopFor,
   STARTER_IDS,
   outfitValue,
   retireOldGear,
@@ -350,18 +349,29 @@ describe('商店', () => {
     expect(buyBlocker(carbon, after, prog(100, 100))).toBe('money')
   })
 
-  it('发型分男女，商店只给看自己性别那份', () => {
-    const male = shopFor('m').map((i) => i.id)
-    const female = shopFor('f').map((i) => i.id)
+  it('发型分男女，一款只归一边', () => {
+    /*
+     * 男女都走分层换装之后，发型／战服／武器整条线在商店里已经下架了
+     * （见 lib/dressup.ts）—— shopFor 的输出取决于素材在不在，
+     * 拿它来验「按性别过滤」就成了在验素材。所以直接验目录本身：
+     * 每款发型都标了性别，而且男女两边不重叠。
+     * 谁卖什么由 tests/dressup.test.ts 管。
+     */
+    const hair = SHOP_ITEMS.filter((i) => i.slot === 'hair')
+    expect(hair.length).toBeGreaterThan(0)
+    expect(hair.every((i) => !!i.sex)).toBe(true)
+    const male = hair.filter((i) => i.sex === 'm').map((i) => i.id)
+    const female = hair.filter((i) => i.sex === 'f').map((i) => i.id)
     expect(male).toContain('m-short')
-    expect(male).not.toContain('f-bob')
     expect(female).toContain('f-bob')
-    expect(female).not.toContain('m-short')
-    // 战服和武器男女通用，两边都要有
-    expect(male).toContain('jersey')
-    expect(female).toContain('jersey')
-    expect(male).toContain('racket-pro')
-    expect(female).toContain('racket-pro')
+    expect(male.filter((id) => female.includes(id))).toEqual([])
+
+    // 战服和武器男女通用，所以不标性别
+    for (const slot of ['outfit', 'weapon'] as const) {
+      const line = SHOP_ITEMS.filter((i) => i.slot === slot)
+      expect(line.length, slot).toBeGreaterThan(0)
+      expect(line.every((i) => !i.sex), slot).toBe(true)
+    }
   })
 
   it('新建角色白送免费那几件，而且身上就穿着', () => {

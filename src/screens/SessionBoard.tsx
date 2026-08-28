@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { playerMap, sessionMatches, useApp } from '@/store/useApp'
+import { rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
+import { matchWinnerBySets } from '@/lib/ranking'
 import {
   Body,
   Button,
@@ -29,6 +30,10 @@ import {
 import {
   FORMAT_LABELS,
   formatOf,
+  pairingModeOf,
+  PAIRING_MODE_HINTS,
+  PAIRING_MODE_LABELS,
+  type PairingMode,
   type Match,
   type MatchType,
   type Player,
@@ -143,6 +148,52 @@ function ProgressStrip({ progress }: { progress: SessionProgress }) {
         </p>
       )}
     </Card>
+  )
+}
+
+/**
+ * 打完的一场，带一个「退回」出口。
+ *
+ * 比分按局列出来，一眼能认出是不是记错的那一场 ——
+ * 光看双方名字的话，同样四个人打过好几场，分不清要退哪一场。
+ */
+function FinishedRow({
+  match,
+  names,
+  onReopen,
+}: {
+  match: Match
+  names: Map<string, Player>
+  onReopen: () => void
+}) {
+  const winner = matchWinnerBySets(match)
+  const side = (ids: string[], team: 'A' | 'B') => (
+    <span
+      className={cx(
+        'min-w-0 flex-1 truncate text-sm',
+        winner === team ? 'font-semibold text-lime-glow' : 'text-ink-300',
+      )}
+    >
+      {ids.map((id) => names.get(id)?.name ?? '?').join(' / ')}
+    </span>
+  )
+  return (
+    <div className="rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5">
+      <div className="flex items-center gap-2">
+        <span className="tnum shrink-0 text-xs text-ink-500">#{match.seq}</span>
+        {side(match.teamA, 'A')}
+        <span className="tnum shrink-0 text-sm text-ink-200">
+          {match.games.map((g) => `${g.a}-${g.b}`).join(' ')}
+        </span>
+        {side(match.teamB, 'B')}
+      </div>
+      <button
+        className="mt-1.5 text-xs text-lime-glow"
+        onClick={onReopen}
+      >
+        记错了，退回去改 ›
+      </button>
+    </div>
   )
 }
 
@@ -275,6 +326,9 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
     return map
   }, [allMatches])
 
+  // 配对模式跟着球局走，打到一半也能换 —— 后面排的场立刻按新口径来
+  const pairingMode = session ? pairingModeOf(session) : 'balanced'
+
   const [nextType, setNextType] = useState<MatchType | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [endOpen, setEndOpen] = useState(false)
@@ -283,8 +337,14 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const [pickingRest, setPickingRest] = useState<Player | null>(null)
   const [mustInclude, setMustInclude] = useState<string[]>([])
   const [showAllSchedule, setShowAllSchedule] = useState(false)
+  const [showAllFinished, setShowAllFinished] = useState(false)
+  const [adding, setAdding] = useState(false)
 
-  const names = useMemo(() => playerMap(players), [players])
+  // 名册要带上友谊赛的客队 —— 他们不在正式球员名单里，但看板得叫得出名字
+  const names = useMemo(
+    () => rosterForSession(players, session),
+    [players, session],
+  )
   const matches = useMemo(
     () => (session ? sessionMatches(allMatches, session.id) : []),
     [allMatches, session],
@@ -312,9 +372,27 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   const type = nextType ?? session.defaultType
   const restingIds = session.restingIds ?? []
-  const attending = session.playerIds
-    .map((id) => names.get(id))
-    .filter((p): p is Player => Boolean(p))
+  /*
+   * 友谊赛的出场人 = 主队（正式球员）+ 客队（只属于这场的客人）。
+   * 客队不在 session.playerIds 里，所以要单独接上去，否则自动排场找不到人。
+   */
+  const guests = session.friendly?.awayPlayers ?? []
+  const attending = [
+    ...session.playerIds
+      .map((id) => names.get(id))
+      .filter((p): p is Player => Boolean(p)),
+    ...guests
+      .map((g) => names.get(g.id))
+      .filter((p): p is Player => Boolean(p)),
+  ]
+
+  /** 友谊赛：谁是主队谁是客队，交给配对算法当硬约束 */
+  const clubOf = session.friendly
+    ? new Map<string, 'home' | 'away'>([
+        ...session.playerIds.map((id) => [id, 'home'] as const),
+        ...guests.map((g) => [g.id, 'away'] as const),
+      ])
+    : undefined
 
   const live = matches.filter((m) => m.status === 'playing')
   const queued = matches.filter((m) => m.status === 'queued')
@@ -324,6 +402,17 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const onCourt = new Map(live.map((m) => [m.courtIndex, m]))
 
   const format = formatOf(session)
+
+  /** 友谊赛实时比分：teamA 一定是主队，配对时就这么约束的 */
+  const clubScore = finished.reduce(
+    (acc, m) => {
+      const w = matchWinnerBySets(m)
+      if (w === 'A') acc.home += 1
+      else if (w === 'B') acc.away += 1
+      return acc
+    },
+    { home: 0, away: 0 },
+  )
   const progress = sessionProgress(session, matches, now)
 
   const loads = playerLoads(attending, matches)
@@ -343,6 +432,18 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             !busyIds.includes(l.playerId) && !restingIds.includes(l.playerId),
         )
 
+  /*
+   * 场上/已排队的人，按已打场数排在等待区后面。
+   *
+   * 原来这一栏只列没在场上的人，于是「谁被晾着」根本看不出来 ——
+   * 想确认某个人是不是一直没轮到，只能自己数。
+   * 全部列出来之后，最上面就是最该上的，最下面就是打得最多的，
+   * 一眼能看出公不公平；觉得不对就点谁「下一场必上」。
+   */
+  const onCourtLoads = loads.filter(
+    (l) => busyIds.includes(l.playerId) && !restingIds.includes(l.playerId),
+  )
+
   function buildMatch(
     pairing: { teamA: string[]; teamB: string[]; type: MatchType },
     courtIndex: number | null,
@@ -355,6 +456,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       type: pairing.type,
       teamA: pairing.teamA,
       teamB: pairing.teamB,
+      // 标在比赛上，统计那边一处就能过滤掉，不会漏
+      friendly: session!.friendly ? true : undefined,
       games: [
         {
           a: 0,
@@ -442,6 +545,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       mustInclude,
       type,
       mmrById,
+      pairingMode,
+      clubOf,
     })
     if (!pairing) {
       setNotice(reason ?? '排不出下一场')
@@ -466,6 +571,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       excludeIds: restingIds,
       type: match.type,
       mmrById,
+      pairingMode,
+      clubOf,
     })
     if (!pairing) {
       setNotice(reason ?? '重排失败')
@@ -514,6 +621,42 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
     setManaging(null)
   }
 
+  /**
+   * 把打完的一场退回场上。
+   *
+   * 按错「结束」是最常发生的事 —— 尤其是没人盯着手机、事后补分的那几场。
+   * 退回之后这一场立刻从 MMR、金币和排行榜里消失（那些都是从
+   * status === 'done' 的比赛实时算的），改完分再结束一次就对了。
+   *
+   * 得先找一片空场：直接退回去的话，同一片场上会同时挂着两场，
+   * 界面按 courtIndex 取，后面那场会被前面那场盖掉、点不开。
+   */
+  const reopenMatch = (match: Match) => {
+    const free = courts.find((i) => !onCourt.has(i))
+    if (free === undefined) {
+      setNotice('场上都满了，先把某一场打完或取消，再退回这一场')
+      return
+    }
+    updateMatch(match.id, {
+      status: 'playing',
+      endedAt: undefined,
+      courtIndex: free,
+    })
+    push({ name: 'score', matchId: match.id })
+  }
+
+  /**
+   * 中途加人。迟到的人开局时不用先勾上，来了再加。
+   * 已打场数从 0 算起，公平轮转会优先把他排上去 —— 这正是我们要的。
+   */
+  const addToSession = (playerId: string) => {
+    const current =
+      useApp.getState().sessions.find((x) => x.id === sessionId)?.playerIds ?? []
+    if (current.includes(playerId)) return
+    updateSession(sessionId, { playerIds: [...current, playerId] })
+    setAdding(false)
+  }
+
   const toggleResting = (playerId: string) => {
     // 同样从 store 现取，连续标记几个人休息时不会互相覆盖
     const current =
@@ -535,6 +678,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   /** 参与自动排场的人：出席且没在休息 */
   const schedulable = attending.filter((p) => !restingIds.includes(p.id))
+
+  /** 还能加进来的人：没归档、还不在这一局里 */
+  const attendingIds = new Set(attending.map((p) => p.id))
+  const addable = players.filter((p) => !p.archived && !attendingIds.has(p.id))
 
   /**
    * 有人提前走、有人晚到之后重排剩余赛程。
@@ -562,6 +709,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       perPlayer: left,
       history: done,
       mmrById,
+      pairingMode,
+      clubOf,
     })
     if (!schedule.pairings.length) {
       setNotice(schedule.reason ?? '排不出剩余赛程')
@@ -582,6 +731,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       total: count,
       history: fresh,
       mmrById,
+      pairingMode,
+      clubOf,
     })
     if (!schedule.pairings.length) {
       setNotice(schedule.reason ?? '排不出更多场次')
@@ -646,6 +797,27 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         {notice && (
           <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3.5 py-2.5 text-sm text-amber-200">
             {notice}
+          </div>
+        )}
+
+        {/* 友谊赛的实时总比分：打的时候两边最想知道的就是现在几比几 */}
+        {session.friendly && (
+          <div className="flex items-center justify-center gap-4 rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5">
+            <span className="min-w-0 flex-1 truncate text-right text-sm text-ink-300">
+              {session.friendly.homeName}
+            </span>
+            <span className="tnum shrink-0 text-2xl font-bold">
+              <span className={clubScore.home >= clubScore.away ? 'text-lime-glow' : ''}>
+                {clubScore.home}
+              </span>
+              <span className="mx-1.5 text-ink-500">:</span>
+              <span className={clubScore.away >= clubScore.home ? 'text-lime-glow' : ''}>
+                {clubScore.away}
+              </span>
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink-300">
+              {session.friendly.awayName}
+            </span>
           </div>
         )}
 
@@ -742,10 +914,35 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           </div>
         )}
 
-        <SectionTitle>
+        {/*
+          配对模式放在等待区上面：这里正是「下一场谁跟谁」发生的地方，
+          觉得排得不对的人第一眼就能看到这个开关，不用翻回设置页。
+        */}
+        <SectionTitle>怎么配对</SectionTitle>
+        <div className="space-y-1.5">
+          <Segmented
+            value={pairingMode}
+            onChange={(m: PairingMode) => updateSession(sessionId, { pairingMode: m })}
+            options={(Object.keys(PAIRING_MODE_LABELS) as PairingMode[]).map((m) => ({
+              value: m,
+              label: PAIRING_MODE_LABELS[m],
+            }))}
+          />
+          <p className="text-xs text-ink-400">
+            {PAIRING_MODE_HINTS[pairingMode]}。已排好的场不动，之后排的按新口径来。
+          </p>
+        </div>
+
+        <SectionTitle
+          right={
+            <button className="text-xs text-lime-glow" onClick={() => setAdding(true)}>
+              + 加人
+            </button>
+          }
+        >
           {format === 'king'
             ? `排队顺序（${waiting.length} 人）`
-            : `等待区（${waiting.length} 人）`}
+            : `谁该上场（等待 ${waiting.length} 人）`}
         </SectionTitle>
 
         {format === 'king' && (
@@ -804,6 +1001,26 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             )
           })}
 
+          {/* 场上的人也列出来，才看得出「谁一直在打、谁一直没轮到」 */}
+          {onCourtLoads.map((l) => {
+            const p = names.get(l.playerId)
+            if (!p) return null
+            return (
+              <div
+                key={l.playerId}
+                className="flex w-full items-center gap-3 rounded-xl border border-ink-800 bg-ink-900/60 px-3 py-2.5 opacity-60"
+              >
+                <span className="w-5 shrink-0" />
+                <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{p.name}</span>
+                  <span className="text-xs text-ink-400">已打 {l.games} 场</span>
+                </span>
+                <Pill>场上</Pill>
+              </div>
+            )
+          })}
+
           {restingIds.length > 0 && (
             <div className="pt-1">
               <p className="mb-2 text-xs text-ink-400">休息中（不参与排场）</p>
@@ -827,10 +1044,42 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             </div>
           )}
 
-          {waiting.length === 0 && restingIds.length === 0 && (
-            <p className="text-sm text-ink-400">所有人都在场上。</p>
+          {waiting.length === 0 && onCourtLoads.length === 0 && restingIds.length === 0 && (
+            <p className="text-sm text-ink-400">这一局还没有人。</p>
           )}
         </div>
+
+        {/*
+          打完的场次。
+          原来这里什么都不显示，比分一旦按了结束就再也回不去 ——
+          而按错「结束」是最常发生的事，尤其是没人盯着手机的那几场。
+        */}
+        {finished.length > 0 && (
+          <>
+            <SectionTitle>已打完（{finished.length} 场）</SectionTitle>
+            <div className="space-y-2">
+              {[...finished]
+                .sort((a, b) => b.seq - a.seq)
+                .slice(0, showAllFinished ? undefined : 3)
+                .map((m) => (
+                  <FinishedRow
+                    key={m.id}
+                    match={m}
+                    names={names}
+                    onReopen={() => reopenMatch(m)}
+                  />
+                ))}
+              {finished.length > 3 && (
+                <button
+                  className="w-full py-1 text-xs text-lime-glow"
+                  onClick={() => setShowAllFinished((v) => !v)}
+                >
+                  {showAllFinished ? '收起' : `展开全部 ${finished.length} 场`}
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </Body>
 
       <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-ink-800 bg-ink-900/95 px-4 pt-3 backdrop-blur">
@@ -862,23 +1111,45 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           <div className="space-y-3">
             <p className="text-sm text-ink-300">
               点某个球员可以换人，换人或重排都会把比分清零。
+              打得最多的那个标出来了，换他下去最公平。
             </p>
             <div className="space-y-2">
-              {[...managing.teamA, ...managing.teamB].map((id) => (
-                <button
-                  key={id}
-                  onClick={() => setSwapping({ match: managing, playerId: id })}
-                  className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
-                >
-                  <Avatar
-                    name={names.get(id)?.name ?? '?'}
-                    avatar={avatarsById.get(id)}
-                    size="sm"
-                  />
-                  <span className="flex-1 truncate">{names.get(id)?.name}</span>
-                  <span className="text-xs text-ink-400">换人 ›</span>
-                </button>
-              ))}
+              {(() => {
+                const ids = [...managing.teamA, ...managing.teamB]
+                // 场上打得最多的那个：手动换人时最该被换下去的
+                const most = Math.max(
+                  ...ids.map((id) => loadById.get(id)?.games ?? 0),
+                )
+                return ids.map((id) => {
+                  const games = loadById.get(id)?.games ?? 0
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setSwapping({ match: managing, playerId: id })}
+                      className={cx(
+                        'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left active:bg-ink-800',
+                        games === most && most > 0
+                          ? 'border-amber-400/40 bg-amber-400/10'
+                          : 'border-ink-700 bg-ink-850',
+                      )}
+                    >
+                      <Avatar
+                        name={names.get(id)?.name ?? '?'}
+                        avatar={avatarsById.get(id)}
+                        size="sm"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{names.get(id)?.name}</span>
+                        <span className="text-xs text-ink-400">已打 {games} 场</span>
+                      </span>
+                      {games === most && most > 0 && (
+                        <span className="shrink-0 text-xs text-amber-300">打得最多</span>
+                      )}
+                      <span className="shrink-0 text-xs text-ink-400">换人 ›</span>
+                    </button>
+                  )
+                })
+              })()}
             </div>
             <Button block variant="ghost" onClick={() => reshuffle(managing)}>
               整场重排
@@ -897,6 +1168,34 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         )}
       </Sheet>
 
+      {/* 中途加人 */}
+      <Sheet open={adding} onClose={() => setAdding(false)} title="加人进这一局">
+        <div className="space-y-2">
+          {addable.length === 0 ? (
+            <p className="text-sm text-ink-400">
+              所有球员都已经在这一局里了。新面孔要先去「球员」里建一个。
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-ink-300">
+                迟到的人来了就加进来，已打场数从 0 算起，下一场会优先排到他。
+              </p>
+              {addable.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => addToSession(p.id)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
+                >
+                  <Avatar name={p.name} avatar={avatarsById.get(p.id)} size="sm" />
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="text-xs text-lime-glow">加进来 ›</span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      </Sheet>
+
       {/* 换人：从等待区挑一个 */}
       <Sheet open={Boolean(swapping)} onClose={() => setSwapping(null)} title="换成谁">
         {swapping && (
@@ -904,21 +1203,42 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             {waiting.length === 0 ? (
               <p className="text-sm text-ink-400">等待区没人了。</p>
             ) : (
-              waiting.map((l) => (
-                <button
-                  key={l.playerId}
-                  onClick={() => swapPlayer(swapping.match, swapping.playerId, l.playerId)}
-                  className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
-                >
-                  <Avatar
-                    name={names.get(l.playerId)?.name ?? '?'}
-                    avatar={avatarsById.get(l.playerId)}
-                    size="sm"
-                  />
-                  <span className="flex-1 truncate">{names.get(l.playerId)?.name}</span>
-                  <span className="text-xs text-ink-400">已打 {l.games} 场</span>
-                </button>
-              ))
+              <>
+                {/*
+                  手动换人不走公平轮转 —— 自动排场那条硬约束（场数最少的必须上）
+                  在这里一点都不管用，全凭你点谁。所以把「该轮到谁」直接标出来，
+                  不然谁被晾着只能自己数。列表本来就按该上场的顺序排。
+                */}
+                <p className="text-sm text-ink-300">
+                  按「该轮到谁」排的，最上面的等最久、打得最少。
+                </p>
+                {waiting.map((l) => (
+                  <button
+                    key={l.playerId}
+                    onClick={() => swapPlayer(swapping.match, swapping.playerId, l.playerId)}
+                    className={cx(
+                      'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left active:bg-ink-800',
+                      l.games === waiting[0].games
+                        ? 'border-lime-glow/50 bg-lime-glow/10'
+                        : 'border-ink-700 bg-ink-850',
+                    )}
+                  >
+                    <Avatar
+                      name={names.get(l.playerId)?.name ?? '?'}
+                      avatar={avatarsById.get(l.playerId)}
+                      size="sm"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{names.get(l.playerId)?.name}</span>
+                      <span className="text-xs text-ink-400">
+                        已打 {l.games} 场
+                        {l.restRounds > 0 && ` · 休息 ${l.restRounds} 轮`}
+                      </span>
+                    </span>
+                    {l.games === waiting[0].games && <Pill tone="lime">该轮到</Pill>}
+                  </button>
+                ))}
+              </>
             )}
           </div>
         )}

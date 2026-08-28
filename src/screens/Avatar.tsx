@@ -23,12 +23,15 @@ import {
   stageOf,
   STAGES,
 } from '@/lib/avatarArt'
+import { dressDefaultsFor, dressUpFor, hasDressUp } from '@/lib/dressup'
 import { useProgress } from '@/store/progress'
 import { RankMedal } from '@/components/RankMedal'
 import {
   AVATAR_SEXES,
   balanceOf,
   buyBlocker,
+  defaultHair,
+  grantDressUp,
   IMMORTAL_STEP,
   LOSS_POINTS,
   outfitValue,
@@ -86,6 +89,17 @@ export function Avatar({ playerId }: { playerId: string }) {
     )
   }, [level.index])
 
+  /*
+   * 加球员时已经选过男女了，这里不该再问一次 ——
+   * 直接按球员资料里的性别把角色建出来。
+   * 只有「不填」的球员才落到下面那个选男女的界面，因为确实没得推。
+   */
+  useEffect(() => {
+    if (avatar || !player) return
+    if (player.gender === 'M') setAvatarSex(playerId, 'm')
+    else if (player.gender === 'F') setAvatarSex(playerId, 'f')
+  }, [avatar, player, playerId, setAvatarSex])
+
   if (!player) {
     return (
       <Screen>
@@ -97,8 +111,20 @@ export function Avatar({ playerId }: { playerId: string }) {
     )
   }
 
-  /* 还没建角色：先选男女 */
+  /*
+   * 还没建角色：只有没填性别的球员会走到这里 ——
+   * 填了性别的上面那个 effect 已经把角色建好了，这一帧先什么都不画，
+   * 免得选男女的界面闪一下又消失。
+   */
   if (!avatar) {
+    if (player.gender !== '-') {
+      return (
+        <Screen>
+          <TopBar title={`${player.name} 的角色`} onBack={back} />
+          <Body>{null}</Body>
+        </Screen>
+      )
+    }
     return (
       <Screen>
         <TopBar title={`${player.name} 的角色`} onBack={back} />
@@ -106,9 +132,11 @@ export function Avatar({ playerId }: { playerId: string }) {
           <Card className="text-center">
             <p className="text-lg font-bold">先选个角色</p>
             <p className="mt-1 text-sm text-ink-400">
-              {hasArt
-                ? `赢球涨 MMR，段位一升角色形象就跟着换，一共 ${STAGES.length} 个阶段`
-                : `每赢一场比赛得 ${WIN_POINTS} 金币，用金币买发型、战服和武器`}
+              {hasDressUp
+                ? `每赢一场得 ${WIN_POINTS} 金币，买了上衣球鞋球拍就穿上身；段位越高，能买的越好`
+                : hasArt
+                  ? `赢球涨 MMR，段位一升角色形象就跟着换，一共 ${STAGES.length} 个阶段`
+                  : `每赢一场比赛得 ${WIN_POINTS} 金币，用金币买发型、战服和武器`}
             </p>
           </Card>
 
@@ -124,6 +152,8 @@ export function Avatar({ playerId }: { playerId: string }) {
                   equipped={{
                     hair: s.sex === 'm' ? 'm-short' : 'f-bob',
                     outfit: 'tee',
+                    // 分层换装那条路要给默认的一身，不然预览里只有一张底图
+                    ...dressDefaultsFor(s.sex),
                   }}
                   stage={STAGES[0]}
                   className="h-40 w-full"
@@ -135,7 +165,9 @@ export function Avatar({ playerId }: { playerId: string }) {
           </div>
 
           <p className="text-xs text-ink-400">
-            选错也没关系，之后随时能换，买过的装备不会没收。
+            这个球员没填性别，所以要在这里选一次。去球员资料里把性别填上，
+            以后建角色就会自动对上，不用再选。选错也没关系，
+            之后随时能换，买过的装备不会没收。
           </p>
         </Body>
       </Screen>
@@ -167,13 +199,17 @@ export function Avatar({ playerId }: { playerId: string }) {
               skin={avatar.skin}
               equipped={avatar.equipped}
               stage={stage}
-              className="mx-auto h-64 w-full max-w-64"
+              className="mx-auto h-80 w-full"
               title={player.name}
             />
           </div>
 
-          {/* 成长阶段：只有放了立绘图片才提，不然说了也看不到变化 */}
-          {hasArt && (
+          {/*
+            成长阶段：只有放了立绘图片才提，不然说了也看不到变化。
+            分层换装那条路不提 —— 她的样子是买了什么就穿什么，
+            和段位没关系，这里写「段位一升形象就换」是骗人的。
+          */}
+          {hasArt && !dressUpFor(avatar.sex) && (
             <div className="text-center">
               <p className="text-lg font-bold" style={{ color: stage.glow }}>
                 Lv.{stage.lv} {stage.label}{' '}
@@ -417,15 +453,27 @@ function DressPanel({
                 : 'border-ink-700 bg-ink-850 active:bg-ink-800',
             )}
           >
+            {/*
+              预览就是「真按下去会变成什么样」：换过去穿哪几件由
+              grantDressUp 说了算（那边买过最好的一件，没买过就白送的），
+              和真按下去走的是同一个函数。
+              直接把这边的 equipped 传过去是不行的 —— 两套素材 id 不通用，
+              女号那件会被贴到男生底图上。
+            */}
             <AvatarView
               sex={s.sex}
               skin={avatar.skin}
-              equipped={{
-                hair: s.sex === 'm' ? 'm-short' : 'f-bob',
-                outfit: avatar.equipped.outfit,
-              }}
+              equipped={
+                s.sex === avatar.sex
+                  ? avatar.equipped
+                  : grantDressUp({
+                      ...avatar,
+                      sex: s.sex,
+                      equipped: { ...avatar.equipped, hair: defaultHair(s.sex) },
+                    }).equipped
+              }
               stage={stage}
-              className="h-20 w-full"
+              className="h-24 w-full"
               title={s.label}
             />
             <p className="mt-0.5 text-sm">{s.label}</p>
@@ -433,8 +481,8 @@ function DressPanel({
         ))}
       </div>
       <p className="pb-2 text-xs text-ink-400">
-        换性别不花钱，买过的战服和武器都还在；发型会换成对应性别的免费款，
-        因为异性发型你并没有买过。
+        换性别不花钱，买过的东西一件都不会没收。男女是两套形象、两套装备线，
+        换过去会先穿上那边白送的几件 —— 那边的货你还没买过。换回来原样还在。
       </p>
     </>
   )
