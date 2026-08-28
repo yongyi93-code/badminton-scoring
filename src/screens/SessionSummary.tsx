@@ -68,15 +68,15 @@ function ShareCard({
       <div
         ref={innerRef}
         style={{ width: 480 }}
-        className="bg-ink-900 p-7 font-sans text-ink-100"
+        className="bg-canvas p-7 font-sans text-ink-900"
       >
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-[11px] tracking-[0.22em] text-lime-glow uppercase">
+            <p className="text-[11px] tracking-[0.22em] text-brand-600 uppercase">
               Badminton Night
             </p>
             <p className="mt-1 text-2xl font-bold">{session.venue || '羽球局'}</p>
-            <p className="mt-0.5 text-sm text-ink-400">
+            <p className="mt-0.5 text-sm text-ink-500">
               {formatDateFull(session.date)}
             </p>
           </div>
@@ -89,18 +89,18 @@ function ShareCard({
             { label: '打了', value: `${matchCount} 场` },
             { label: '人均', value: perPerson > 0 ? money(perPerson) : '—' },
           ].map((s) => (
-            <div key={s.label} className="rounded-xl bg-ink-850 px-3 py-2.5">
-              <p className="text-[11px] text-ink-400">{s.label}</p>
+            <div key={s.label} className="rounded-xl bg-surface px-3 py-2.5">
+              <p className="text-[11px] text-ink-500">{s.label}</p>
               <p className="text-lg font-bold">{s.value}</p>
             </div>
           ))}
         </div>
 
         {mvp && (
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-lime-glow/40 bg-lime-glow/10 px-4 py-3">
+          <div className="mt-4 flex items-center gap-3 rounded-xl border border-brand-500 bg-brand-100 px-4 py-3">
             <span className="text-2xl">🏆</span>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] tracking-widest text-lime-glow uppercase">
+              <p className="text-[11px] tracking-widest text-brand-600 uppercase">
                 今晚 MVP
               </p>
               <p className="truncate text-lg font-bold">
@@ -109,7 +109,7 @@ function ShareCard({
             </div>
             <div className="text-right">
               <p className="text-lg font-bold">{percent(mvp.winRate)}</p>
-              <p className="text-[11px] text-ink-400">
+              <p className="text-[11px] text-ink-500">
                 {mvp.wins}胜{mvp.losses}负
               </p>
             </div>
@@ -117,22 +117,22 @@ function ShareCard({
         )}
 
         {venueKing && (
-          <div className="mt-2 flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-4 py-3">
+          <div className="mt-2 flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
             <span className="text-2xl">👑</span>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] tracking-widest text-ink-400 uppercase">
+              <p className="text-[11px] tracking-widest text-ink-500 uppercase">
                 {venueLabel(session.venue)}累计第一
               </p>
               <p className="truncate text-lg font-bold">{venueKing.name}</p>
             </div>
             <div className="text-right">
               <p className="text-lg font-bold">{percent(venueKing.winRate)}</p>
-              <p className="text-[11px] text-ink-400">{venueKing.games} 场</p>
+              <p className="text-[11px] text-ink-500">{venueKing.games} 场</p>
             </div>
           </div>
         )}
 
-        <p className="mt-5 mb-2 text-[11px] tracking-[0.18em] text-ink-400 uppercase">
+        <p className="mt-5 mb-2 text-[11px] tracking-[0.18em] text-ink-500 uppercase">
           今晚排名
         </p>
         <div className="space-y-1.5">
@@ -141,20 +141,20 @@ function ShareCard({
               key={s.playerId}
               className={cx(
                 'flex items-center gap-2.5 rounded-lg px-3 py-2',
-                i === 0 ? 'bg-lime-glow/12' : 'bg-ink-850',
+                i === 0 ? 'bg-brand-100' : 'bg-surface',
               )}
             >
-              <span className="w-5 text-center text-sm font-bold text-ink-400">
+              <span className="w-5 text-center text-sm font-bold text-ink-500">
                 {i + 1}
               </span>
               <Avatar name={names.get(s.playerId)?.name ?? '?'} size="sm" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">
                 {names.get(s.playerId)?.name}
               </span>
-              <span className="text-xs text-ink-400">
+              <span className="text-xs text-ink-500">
                 {s.wins}胜{s.losses}负
               </span>
-              <span className="w-14 text-right text-xs text-ink-400">
+              <span className="w-14 text-right text-xs text-ink-500">
                 净 {signed(s.diff)}
               </span>
               <span className="w-10 text-right text-sm font-bold">
@@ -164,7 +164,7 @@ function ShareCard({
           ))}
         </div>
 
-        <p className="mt-5 text-center text-[10px] text-ink-400">
+        <p className="mt-5 text-center text-[10px] text-ink-500">
           排名按胜率 → 净分差 · 至少 {RANK_MIN_GAMES} 场上榜
         </p>
       </div>
@@ -366,21 +366,21 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
           <>
             {/* 友谊赛最想看的就是这一行：两队谁赢了 */}
             {clubScore && session.friendly && (
-              <Card className="border-lime-glow/40 bg-lime-glow/5">
-                <p className="text-center text-xs text-ink-400">
+              <Card className="border-brand-500/40 bg-brand-50">
+                <p className="text-center text-xs text-ink-500">
                   友谊赛总比分 · 共 {clubScore.total} 场
                 </p>
                 <div className="mt-2 flex items-center justify-center gap-4">
                   <div className="min-w-0 flex-1 text-right">
-                    <p className="truncate text-sm text-ink-300">
+                    <p className="truncate text-sm text-ink-700">
                       {session.friendly.homeName}
                     </p>
                     <p
                       className={cx(
                         'tnum text-4xl font-bold',
                         clubScore.home >= clubScore.away
-                          ? 'text-lime-glow'
-                          : 'text-ink-400',
+                          ? 'text-brand-600'
+                          : 'text-ink-500',
                       )}
                     >
                       {clubScore.home}
@@ -388,15 +388,15 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                   </div>
                   <span className="shrink-0 text-2xl text-ink-500">:</span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-ink-300">
+                    <p className="truncate text-sm text-ink-700">
                       {session.friendly.awayName}
                     </p>
                     <p
                       className={cx(
                         'tnum text-4xl font-bold',
                         clubScore.away >= clubScore.home
-                          ? 'text-lime-glow'
-                          : 'text-ink-400',
+                          ? 'text-brand-600'
+                          : 'text-ink-500',
                       )}
                     >
                       {clubScore.away}
@@ -408,22 +408,22 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                     ? '打平'
                     : `${clubScore.home > clubScore.away ? session.friendly.homeName : session.friendly.awayName} 赢下这场友谊赛`}
                 </p>
-                <p className="mt-2 text-center text-xs text-ink-400">
+                <p className="mt-2 text-center text-xs text-ink-500">
                   友谊赛成绩单独记，不算进 MMR、段位和累计排行榜
                 </p>
               </Card>
             )}
 
             {mvp ? (
-              <Card className="border-lime-glow/40 bg-lime-glow/5">
+              <Card className="border-brand-500/40 bg-brand-50">
                 <div className="flex items-center gap-4">
                   <span className="text-3xl">🏆</span>
                   <div className="min-w-0 flex-1">
-                    <Pill tone="lime">今晚 MVP</Pill>
+                    <Pill tone="brand">今晚 MVP</Pill>
                     <p className="mt-1.5 truncate text-xl font-bold">
                       {names.get(mvp.playerId)?.name}
                     </p>
-                    <p className="tnum text-sm text-ink-400">
+                    <p className="tnum text-sm text-ink-500">
                       {mvp.games} 场 {mvp.wins}胜{mvp.losses}负 · 胜率{' '}
                       {percent(mvp.winRate)} · 净分 {signed(mvp.diff)}
                     </p>
@@ -432,7 +432,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
               </Card>
             ) : (
               <Card>
-                <p className="text-sm text-ink-300">
+                <p className="text-sm text-ink-700">
                   今晚没有人打满 {RANK_MIN_GAMES} 场，不评 MVP。
                 </p>
               </Card>
@@ -441,11 +441,11 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
             {venueKing && (
               <button
                 onClick={() => push({ name: 'profile', playerId: venueKing.playerId })}
-                className="flex w-full items-center gap-3 rounded-xl border border-ink-700/70 bg-ink-850 px-3.5 py-3 text-left active:bg-ink-800"
+                className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 text-left active:bg-fill"
               >
                 <span className="text-2xl">👑</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-xs text-ink-400">
+                  <span className="block text-xs text-ink-500">
                     {venueLabel(session.venue)}累计第一
                   </span>
                   <span className="block truncate font-semibold">
@@ -454,14 +454,14 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                 </span>
                 <span className="tnum shrink-0 text-right">
                   <span className="block font-bold">{percent(venueKing.winRate)}</span>
-                  <span className="block text-xs text-ink-400">
+                  <span className="block text-xs text-ink-500">
                     {venueKing.games} 场
                   </span>
                 </span>
               </button>
             )}
 
-            <p className="text-sm text-ink-400">
+            <p className="text-sm text-ink-500">
               {FORMAT_LABELS[formatOf(session)]}
               {session.rotationPerPlayer
                 ? ` · 每人 ${session.rotationPerPlayer} 场的赛程`
@@ -479,9 +479,9 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
               ].map((s) => (
                 <div
                   key={s.label}
-                  className="rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5"
+                  className="rounded-xl border border-line bg-surface px-3 py-2.5"
                 >
-                  <p className="text-xs text-ink-400">{s.label}</p>
+                  <p className="text-xs text-ink-500">{s.label}</p>
                   <p className="mt-0.5 font-bold">{s.value}</p>
                 </div>
               ))}
@@ -528,31 +528,31 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
             />
           </Field>
 
-          <div className="rounded-xl bg-ink-800 px-4 py-3">
+          <div className="rounded-xl bg-fill px-4 py-3">
             <div className="flex items-baseline justify-between">
-              <span className="text-sm text-ink-300">
+              <span className="text-sm text-ink-700">
                 总额 {money(fee.total)}（场地 {money(session.fee.courtFee)} + 球{' '}
                 {money(fee.shuttleTotal)}）
               </span>
             </div>
             <div className="mt-1 flex items-baseline justify-between">
-              <span className="text-sm text-ink-300">每人</span>
-              <span className="tnum text-2xl font-bold text-lime-glow">
+              <span className="text-sm text-ink-700">每人</span>
+              <span className="tnum text-2xl font-bold text-brand-600">
                 {money(fee.perPerson)}
               </span>
             </div>
             {fee.outstanding > 0 && (
-              <p className="mt-1 text-xs text-amber-300">
+              <p className="mt-1 text-xs text-warning-600">
                 还有 {fee.unpaidIds.length} 人没付，共 {money(fee.outstanding)}
               </p>
             )}
             {fee.total > 0 && fee.outstanding === 0 && (
-              <p className="mt-1 text-xs text-lime-glow">全部收齐 ✓</p>
+              <p className="mt-1 text-xs text-brand-600">全部收齐 ✓</p>
             )}
           </div>
 
           <div>
-            <p className="mb-2 text-xs text-ink-400">点名字标记已付</p>
+            <p className="mb-2 text-xs text-ink-500">点名字标记已付</p>
             <div className="flex flex-wrap gap-2">
               {session.playerIds.map((id) => {
                 const paid = session.fee.paidPlayerIds.includes(id)
@@ -563,8 +563,8 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                     className={cx(
                       'flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-sm',
                       paid
-                        ? 'border-lime-glow/60 bg-lime-glow/15 text-lime-glow'
-                        : 'border-ink-700 bg-ink-850 text-ink-300',
+                        ? 'border-brand-500 bg-brand-100 text-brand-600'
+                        : 'border-line bg-surface text-ink-700',
                     )}
                   >
                     <Avatar name={names.get(id)?.name ?? '?'} size="sm" />
@@ -587,7 +587,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
           {shareState === 'working' ? '生成中…' : '生成战绩图，发到群里'}
         </Button>
         {shareState !== 'idle' && shareState !== 'working' && (
-          <p className="text-center text-sm text-lime-glow">{shareState}</p>
+          <p className="text-center text-sm text-brand-600">{shareState}</p>
         )}
 
         {session.status === 'ended' && (
@@ -608,8 +608,8 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
         </Button>
 
         {confirmDelete ? (
-          <div className="space-y-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3">
-            <p className="text-sm text-red-200">
+          <div className="space-y-2 rounded-xl border border-danger-600/30 bg-danger-50 p-3">
+            <p className="text-sm text-danger-600">
               删除后这个球局的所有比赛记录都会消失，累计排行榜也会跟着变。确定吗？
             </p>
             <div className="flex gap-2">
@@ -635,7 +635,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
         ) : (
           <button
             onClick={() => setConfirmDelete(true)}
-            className="w-full pb-4 text-center text-sm text-ink-500 underline decoration-ink-700 underline-offset-4"
+            className="w-full pb-4 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
           >
             删除这个球局
           </button>

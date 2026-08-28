@@ -49,13 +49,13 @@ export function Ticker({
   return (
     <button
       onClick={() => onPick?.(item)}
-      className="flex w-full items-center gap-2.5 overflow-hidden rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
+      className="flex w-full items-center gap-2.5 overflow-hidden rounded-xl border border-line bg-surface px-3 py-2.5 text-left active:bg-fill"
     >
       <span className="shrink-0 text-base">{item.icon}</span>
       <span
         key={item.id}
         className={cx(
-          'min-w-0 flex-1 truncate text-sm text-ink-200 transition-all duration-[420ms]',
+          'min-w-0 flex-1 truncate text-sm text-ink-700 transition-all duration-[420ms]',
           leaving ? '-translate-y-2 opacity-0' : 'translate-y-0 opacity-100',
         )}
       >

@@ -1103,7 +1103,7 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
     // 框是套在头像外面的，单独看一圈线看不懂 —— 里面垫一个圆当作头像
     return (
       <span className={cx('relative block', className)}>
-        <span className="block h-full w-full rounded-full bg-ink-700" />
+        <span className="block h-full w-full rounded-full bg-fill-strong" />
         <AvatarFrame itemId={itemId} />
       </span>
     )
@@ -1113,7 +1113,7 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
     return (
       <span
         className={cx(
-          'flex items-center justify-center rounded-lg bg-ink-800 p-1 text-center text-[11px] font-medium leading-tight text-lime-glow',
+          'flex items-center justify-center rounded-lg bg-fill p-1 text-center text-[11px] font-medium leading-tight text-brand-600',
           className,
         )}
       >
@@ -1239,7 +1239,7 @@ export function AvatarBadge({
 }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800"
+      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-fill"
       style={{ width: size, height: size }}
     >
       <AvatarView

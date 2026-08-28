@@ -1,7 +1,7 @@
 {
-  "name": "badminton-scoring-system",
+  "name": "rally",
   "version": "1.0.0",
-  "description": "羽球记分排名 App — 球局轮转配对、记分、排行榜、AA 分摊",
+  "description": "RALLY 羽球社交竞技平台 — 球局轮转配对、记分、排行榜、AA 分摊",
   "private": true,
   "type": "module",
   "scripts": {

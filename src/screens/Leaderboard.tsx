@@ -121,7 +121,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
 
         {showVenueRow && (
           <div className="space-y-2">
-            <p className="text-xs text-ink-400">
+            <p className="text-xs text-ink-500">
               按球馆看排名（点一下切换，各馆分开算）
             </p>
             <div className="-mx-4 overflow-x-auto px-4">
@@ -147,15 +147,15 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
 
         {/* 谁是这个场的第一 —— 挑战者一眼就知道该找谁 */}
         {scope === 'all' && venue !== null && champion && (
-          <Card className="border-lime-glow/40 bg-lime-glow/5">
+          <Card className="border-brand-500/40 bg-brand-50">
             <div className="flex items-center gap-4">
               <span className="text-3xl">👑</span>
               <div className="min-w-0 flex-1">
-                <Pill tone="lime">{(current?.label ?? venueLabel(venue))}之王</Pill>
+                <Pill tone="brand">{(current?.label ?? venueLabel(venue))}之王</Pill>
                 <p className="mt-1.5 truncate text-xl font-bold">
                   {names.get(champion.playerId)?.name ?? '已删除的球员'}
                 </p>
-                <p className="tnum text-sm text-ink-400">
+                <p className="tnum text-sm text-ink-500">
                   在这里打了 {champion.games} 场 · 胜率{' '}
                   {percent(champion.winRate)} · 净分 {signed(champion.diff)}
                 </p>
@@ -170,7 +170,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
         )}
 
         {current && (
-          <p className="text-xs text-ink-400">
+          <p className="text-xs text-ink-500">
             {current.sessionCount} 次球局 · {current.matchCount} 场 ·{' '}
             {current.playerCount} 人在这里打过
           </p>
@@ -194,7 +194,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
               minGames={RANK_MIN_GAMES}
               onPick={(playerId) => push({ name: 'profile', playerId })}
             />
-            <p className="pt-2 pb-4 text-xs leading-relaxed text-ink-400">
+            <p className="pt-2 pb-4 text-xs leading-relaxed text-ink-500">
               排名口径：胜率 ↓ → 净分差 ↓ → 场数 ↓。
               净分差 = 本人所在队伍的总得分 − 总失分，
               双打里搭档的表现也会算进你的净分差。
@@ -233,13 +233,13 @@ function VenueChip({
       className={cx(
         'shrink-0 rounded-full border px-3.5 py-2 text-sm whitespace-nowrap transition-colors',
         active
-          ? 'border-lime-glow bg-lime-glow/15 text-lime-glow'
-          : 'border-ink-700 bg-ink-850 text-ink-300 active:bg-ink-800',
+          ? 'border-brand-600 bg-brand-100 text-brand-600'
+          : 'border-line bg-surface text-ink-700 active:bg-fill',
       )}
     >
       {label}
       {meta && (
-        <span className={cx('ml-1.5 text-xs', active ? 'text-lime-glow/70' : 'text-ink-500')}>
+        <span className={cx('ml-1.5 text-xs', active ? 'text-brand-500' : 'text-ink-500')}>
           {meta}
         </span>
       )}

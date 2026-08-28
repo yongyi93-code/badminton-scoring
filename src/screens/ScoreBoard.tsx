@@ -62,17 +62,17 @@ function CourtCell({
       className={cx(
         'relative flex min-h-16 flex-col items-center justify-center gap-0.5 rounded-lg border px-1 py-1.5 text-center',
         isServer
-          ? 'border-lime-glow bg-lime-glow/20'
+          ? 'border-brand-600 bg-brand-100'
           : isReceiver
-            ? 'border-dashed border-lime-glow/60 bg-ink-800'
-            : 'border-ink-700 bg-ink-850',
+            ? 'border-dashed border-brand-500 bg-fill'
+            : 'border-line bg-surface',
       )}
     >
-      <span className="text-[10px] text-ink-400">{label}</span>
+      <span className="text-[10px] text-ink-500">{label}</span>
       <span
         className={cx(
           'max-w-full truncate text-[13px] font-medium',
-          tone === 'teamA' ? 'text-teamA' : 'text-teamB',
+          tone === 'teamA' ? 'text-team-a' : 'text-team-b',
         )}
       >
         {name}
@@ -108,7 +108,7 @@ function CourtDiagram({
   if (!isDoubles) {
     return (
       <div className="relative grid grid-cols-2 gap-2">
-        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-ink-600" />
+        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-line" />
         {cell('A', serve.serveCourt)}
         {cell('B', serve.serveCourt)}
       </div>
@@ -117,7 +117,7 @@ function CourtDiagram({
 
   return (
     <div className="relative grid grid-cols-2 grid-rows-2 gap-2">
-      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-ink-600" />
+      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-line" />
       {cell('A', 'right')}
       {cell('B', 'left')}
       {cell('A', 'left')}
@@ -156,8 +156,8 @@ function ScoreZone({
       className={cx(
         'relative flex flex-1 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-4 py-6 transition-colors',
         tone === 'teamA'
-          ? 'border-teamA/40 bg-teamA/10 active:bg-teamA/20'
-          : 'border-teamB/40 bg-teamB/10 active:bg-teamB/20',
+          ? 'border-team-a/40 bg-team-a/10 active:bg-team-a/20'
+          : 'border-team-b/40 bg-team-b/10 active:bg-team-b/20',
         disabled && 'opacity-60',
       )}
     >
@@ -167,7 +167,7 @@ function ScoreZone({
             key={id}
             className={cx(
               'text-sm',
-              id === serverId ? 'font-semibold text-lime-glow' : 'text-ink-300',
+              id === serverId ? 'font-semibold text-brand-600' : 'text-ink-700',
             )}
           >
             {id === serverId && '🏸 '}
@@ -178,13 +178,13 @@ function ScoreZone({
       <span
         className={cx(
           'tnum text-[clamp(3.5rem,18vh,7rem)] leading-none font-black',
-          tone === 'teamA' ? 'text-teamA' : 'text-teamB',
+          tone === 'teamA' ? 'text-team-a' : 'text-team-b',
         )}
       >
         {score}
       </span>
       {gamePoint && <Pill tone="warn">局点</Pill>}
-      {!disabled && <span className="text-xs text-ink-400">点这里 +1</span>}
+      {!disabled && <span className="text-xs text-ink-500">点这里 +1</span>}
     </button>
   )
 }
@@ -368,18 +368,18 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
 
         {serve && !gameOver && (
           <div className="px-4 pt-3">
-            <div className="rounded-card border border-ink-700/70 bg-ink-850 p-3">
+            <div className="rounded-card border border-line bg-surface p-3">
               <p className="mb-2.5 text-center text-sm">
-                <span className="font-semibold text-lime-glow">
+                <span className="font-semibold text-brand-600">
                   {names.get(serve.serverId)?.name}
                 </span>
-                <span className="text-ink-300"> 发球 · </span>
+                <span className="text-ink-700"> 发球 · </span>
                 <span className="font-medium">
                   {serve.serveCourt === 'right' ? '右发球区' : '左发球区'}
                 </span>
                 {isDoubles && (
                   <>
-                    <span className="text-ink-300"> · 接发 </span>
+                    <span className="text-ink-700"> · 接发 </span>
                     <span className="font-medium">
                       {names.get(serve.receiverId)?.name}
                     </span>
@@ -392,7 +392,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
         )}
 
         {!serve && !gameOver && (
-          <p className="px-4 pt-3 text-center text-xs text-ink-400">
+          <p className="px-4 pt-3 text-center text-xs text-ink-500">
             这一局是直接输入比分的，没有发球提示
           </p>
         )}
@@ -420,24 +420,24 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           />
         </div>
 
-        <div className="safe-bottom border-t border-ink-800 bg-ink-900 px-4 pt-3">
+        <div className="safe-bottom border-t border-line bg-canvas px-4 pt-3">
           {gameOver ? (
             <div className="space-y-2">
               <p className="text-center text-sm">
-                <span className="font-semibold text-lime-glow">
+                <span className="font-semibold text-brand-600">
                   {(game.a > game.b ? match.teamA : match.teamB)
                     .map((id) => names.get(id)?.name ?? '?')
                     .join(' / ')}
                 </span>
-                <span className="text-ink-300">
+                <span className="text-ink-700">
                   {' '}
                   拿下这一局 {Math.max(game.a, game.b)}:{Math.min(game.a, game.b)}
                 </span>
               </p>
               {kingNext && (
-                <div className="rounded-xl border border-ink-700 bg-ink-850 px-3.5 py-2.5 text-center text-sm">
+                <div className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-center text-sm">
                   {kingNext.cappedOut ? (
-                    <p className="text-amber-300">
+                    <p className="text-warning-600">
                       {kingNext.streak} 连胜到顶，
                       {(game.a > game.b ? match.teamA : match.teamB)
                         .map((id) => names.get(id)?.name)
@@ -445,12 +445,12 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                       下场休息
                     </p>
                   ) : (
-                    <p className="text-lime-glow">
+                    <p className="text-brand-600">
                       守场成功 · {kingNext.streak} 连胜
                     </p>
                   )}
                   {kingNext.pairing ? (
-                    <p className="mt-1 text-ink-300">
+                    <p className="mt-1 text-ink-700">
                       下一场：
                       {kingNext.pairing.teamA
                         .map((id) => names.get(id)?.name)
@@ -461,7 +461,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                         .join('/')}
                     </p>
                   ) : (
-                    <p className="mt-1 text-amber-300">{kingNext.reason}</p>
+                    <p className="mt-1 text-warning-600">{kingNext.reason}</p>
                   )}
                 </div>
               )}
@@ -503,7 +503,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               {game.a !== game.b && (
                 <button
                   onClick={finishMatch}
-                  className="w-full py-1.5 text-center text-sm text-ink-400 underline decoration-ink-700 underline-offset-4"
+                  className="w-full py-1.5 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
                 >
                   提前结束这一场（按 {game.a}:{game.b} 算）
                 </button>
@@ -514,7 +514,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
       </div>
 
       <Sheet open={directOpen} onClose={() => setDirectOpen(false)} title="直接输入最终比分">
-        <p className="text-sm text-ink-300">
+        <p className="text-sm text-ink-700">
           没人盯着手机计分的那几场用这个。输入后这一局就没有发球提示和撤销了。
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3">

@@ -71,7 +71,7 @@ export function Avatar({
           className,
         )}
       >
-        <span className="h-full w-full overflow-hidden rounded-full bg-ink-800">
+        <span className="h-full w-full overflow-hidden rounded-full bg-fill">
           <AvatarFace
             sex={avatar.sex}
             skin={avatar.skin}
@@ -115,7 +115,7 @@ export function TitleTag({ avatar }: { avatar?: AvatarProfile }) {
   const item = id ? itemById(id) : undefined
   if (!item) return null
   return (
-    <span className="shrink-0 rounded-md border border-lime-glow/40 bg-lime-glow/10 px-1.5 py-px text-[11px] font-medium text-lime-glow">
+    <span className="shrink-0 rounded-md border border-brand-500 bg-brand-100 px-1.5 py-px text-[11px] font-medium text-brand-600">
       {item.name}
     </span>
   )
@@ -129,7 +129,7 @@ export function LevelDots({ level }: { level: Level }) {
           key={i}
           className={cx(
             'size-1.5 rounded-full',
-            i <= level ? 'bg-lime-glow' : 'bg-ink-700',
+            i <= level ? 'bg-brand-600' : 'bg-fill-strong',
           )}
         />
       ))}
@@ -143,7 +143,7 @@ export function GenderTag({ gender }: { gender: Gender }) {
     <span
       className={cx(
         'text-xs font-medium',
-        gender === 'M' ? 'text-sky-400' : 'text-pink-400',
+        gender === 'M' ? 'text-male' : 'text-female',
       )}
     >
       {gender === 'M' ? '男' : '女'}
@@ -185,7 +185,7 @@ export function PlayerRow({
         </span>
         <span className="mt-1 flex items-center gap-2">
           {level && <RankChip level={level} />}
-          {meta && <span className="text-xs text-ink-400">{meta}</span>}
+          {meta && <span className="text-xs text-ink-500">{meta}</span>}
         </span>
       </span>
     </>
@@ -196,14 +196,14 @@ export function PlayerRow({
       className={cx(
         'flex items-center gap-2 rounded-xl border pr-2 transition-colors',
         selected
-          ? 'border-lime-glow/60 bg-lime-glow/10'
-          : 'border-ink-700/70 bg-ink-850',
+          ? 'border-brand-500 bg-brand-100'
+          : 'border-line bg-surface',
       )}
     >
       {onClick ? (
         <button
           onClick={onClick}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-l-xl px-3 py-2.5 text-left active:bg-ink-800/60"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-l-xl px-3 py-2.5 text-left active:bg-fill/60"
         >
           {inner}
         </button>

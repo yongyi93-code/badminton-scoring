@@ -131,7 +131,7 @@ export function Avatar({ playerId }: { playerId: string }) {
         <Body>
           <Card className="text-center">
             <p className="text-lg font-bold">先选个角色</p>
-            <p className="mt-1 text-sm text-ink-400">
+            <p className="mt-1 text-sm text-ink-500">
               {hasDressUp
                 ? `每赢一场得 ${WIN_POINTS} 金币，买了上衣球鞋球拍就穿上身；段位越高，能买的越好`
                 : hasArt
@@ -145,7 +145,7 @@ export function Avatar({ playerId }: { playerId: string }) {
               <button
                 key={s.sex}
                 onClick={() => setAvatarSex(playerId, s.sex)}
-                className="rounded-2xl border border-ink-700 bg-ink-850 p-2 active:bg-ink-800"
+                className="rounded-2xl border border-line bg-surface p-2 active:bg-fill"
               >
                 <AvatarView
                   sex={s.sex}
@@ -164,7 +164,7 @@ export function Avatar({ playerId }: { playerId: string }) {
             ))}
           </div>
 
-          <p className="text-xs text-ink-400">
+          <p className="text-xs text-ink-500">
             这个球员没填性别，所以要在这里选一次。去球员资料里把性别填上，
             以后建角色就会自动对上，不用再选。选错也没关系，
             之后随时能换，买过的装备不会没收。
@@ -193,7 +193,7 @@ export function Avatar({ playerId }: { playerId: string }) {
       <Body>
         {/* 角色本体 */}
         <Card className="space-y-3">
-          <div className="overflow-hidden rounded-2xl bg-ink-800">
+          <div className="overflow-hidden rounded-2xl bg-fill">
             <AvatarView
               sex={avatar.sex}
               skin={avatar.skin}
@@ -215,7 +215,7 @@ export function Avatar({ playerId }: { playerId: string }) {
                 Lv.{stage.lv} {stage.label}{' '}
                 <span className="text-sm font-semibold opacity-80">{stage.en}</span>
               </p>
-              <p className="mt-0.5 text-xs text-ink-400">
+              <p className="mt-0.5 text-xs text-ink-500">
                 {upcoming
                   ? `还差 ${PET_LEVELS[upcoming.minTier].min - mmr} 分升 ${upcoming.label} ${upcoming.en}`
                   : '已经是最高形象，无可匹敌的王者'}
@@ -229,8 +229,8 @@ export function Avatar({ playerId }: { playerId: string }) {
             没有这一条的话，买完框和称号这一屏一点变化都没有，
             会以为是买坏了。这里照排行榜的样子摆一遍，买完立刻看得见。
           */}
-          <div className="rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-2.5">
-            <p className="mb-2 text-xs text-ink-400">别人在排行榜上看到的你</p>
+          <div className="rounded-xl border border-line bg-fill/60 px-3 py-2.5">
+            <p className="mb-2 text-xs text-ink-500">别人在排行榜上看到的你</p>
             <div className="flex items-center gap-3">
               <AvatarPic name={player.name} avatar={avatar} />
               <span className="flex min-w-0 flex-wrap items-center gap-2">
@@ -260,8 +260,8 @@ export function Avatar({ playerId }: { playerId: string }) {
                   <span className="ml-1.5 text-base">{level.star}★</span>
                 )}
               </p>
-              <p className="text-sm text-ink-400">{level.tier.label}</p>
-              <p className="tnum mt-1 text-xs text-ink-400">
+              <p className="text-sm text-ink-500">{level.tier.label}</p>
+              <p className="tnum mt-1 text-xs text-ink-500">
                 MMR {mmr}
                 {level.next
                   ? ` · 还差 ${level.toNext} 分升 ${level.next.name}`
@@ -270,7 +270,7 @@ export function Avatar({ playerId }: { playerId: string }) {
             </div>
           </div>
 
-          <div className="h-2 overflow-hidden rounded-full bg-ink-800">
+          <div className="h-2 overflow-hidden rounded-full bg-fill">
             <div
               className="h-full rounded-full transition-[width]"
               style={{
@@ -290,8 +290,8 @@ export function Avatar({ playerId }: { playerId: string }) {
                   className={cx(
                     'w-16 shrink-0 rounded-lg border px-1 py-1.5 text-center',
                     i === level.index
-                      ? 'border-lime-glow bg-lime-glow/10'
-                      : 'border-ink-700/70 bg-ink-850',
+                      ? 'border-brand-600 bg-brand-100'
+                      : 'border-line bg-surface',
                   )}
                 >
                   <RankMedal
@@ -311,7 +311,7 @@ export function Avatar({ playerId }: { playerId: string }) {
             </div>
           </div>
 
-          <p className="text-xs leading-relaxed text-ink-400">
+          <p className="text-xs leading-relaxed text-ink-500">
             MMR：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}，扣到 0 就打住、不会变负。
             赢了 MMR 比自己高的一队算爆冷，那一场拿 {WIN_POINTS * UPSET_MULTIPLIER} 分。
             每段 5 颗星，星满升段；打到最高段之后每 {IMMORTAL_STEP} 分加一级。
@@ -331,7 +331,7 @@ export function Avatar({ playerId }: { playerId: string }) {
         />
 
         {toast && (
-          <div className="rounded-xl border border-lime-glow/40 bg-lime-glow/10 px-3 py-2 text-sm text-lime-glow">
+          <div className="rounded-xl border border-brand-500 bg-brand-100 px-3 py-2 text-sm text-brand-600">
             {toast}
           </div>
         )}
@@ -396,17 +396,17 @@ function DressPanel({
                     className={cx(
                       'rounded-xl border p-1.5 transition-colors',
                       on
-                        ? 'border-lime-glow bg-lime-glow/15'
-                        : 'border-ink-700 bg-ink-850 active:bg-ink-800',
+                        ? 'border-brand-600 bg-brand-100'
+                        : 'border-line bg-surface active:bg-fill',
                     )}
                   >
-                    <span className="block overflow-hidden rounded-lg bg-ink-800">
+                    <span className="block overflow-hidden rounded-lg bg-fill">
                       <GearIcon itemId={item.id} className="h-14 w-full" />
                     </span>
                     <p
                       className={cx(
                         'mt-1 truncate text-xs',
-                        on ? 'text-lime-glow' : 'text-ink-300',
+                        on ? 'text-brand-600' : 'text-ink-700',
                       )}
                     >
                       {item.name}
@@ -431,7 +431,7 @@ function DressPanel({
                 aria-label={`肤色 ${i + 1}`}
                 className={cx(
                   'size-11 rounded-full border-2',
-                  avatar.skin === i ? 'border-lime-glow' : 'border-ink-700',
+                  avatar.skin === i ? 'border-brand-600' : 'border-line',
                 )}
                 style={{ backgroundColor: tone }}
               />
@@ -449,8 +449,8 @@ function DressPanel({
             className={cx(
               'rounded-xl border p-1.5',
               s.sex === avatar.sex
-                ? 'border-lime-glow bg-lime-glow/15'
-                : 'border-ink-700 bg-ink-850 active:bg-ink-800',
+                ? 'border-brand-600 bg-brand-100'
+                : 'border-line bg-surface active:bg-fill',
             )}
           >
             {/*
@@ -480,7 +480,7 @@ function DressPanel({
           </button>
         ))}
       </div>
-      <p className="pb-2 text-xs text-ink-400">
+      <p className="pb-2 text-xs text-ink-500">
         换性别不花钱，买过的东西一件都不会没收。男女是两套形象、两套装备线，
         换过去会先穿上那边白送的几件 —— 那边的货你还没买过。换回来原样还在。
       </p>
@@ -508,13 +508,13 @@ function ShopPanel({
   return (
     <>
       <Card className="flex items-center justify-between">
-        <span className="text-sm text-ink-400">
+        <span className="text-sm text-ink-500">
           可用金币
           <span className="mt-0.5 block text-xs text-ink-500">
             只按赢的场次算，输球不扣
           </span>
         </span>
-        <span className="tnum text-2xl font-bold text-lime-glow">{balance}</span>
+        <span className="tnum text-2xl font-bold text-brand-600">{balance}</span>
       </Card>
 
       {SLOT_ORDER.filter(slotIsDressable).map((slot) => {
@@ -530,30 +530,30 @@ function ShopPanel({
                 return (
                   <Card key={item.id}>
                     <div className="flex items-center gap-3">
-                      <span className="size-16 shrink-0 overflow-hidden rounded-xl bg-ink-800">
+                      <span className="size-16 shrink-0 overflow-hidden rounded-xl bg-fill">
                         <GearIcon itemId={item.id} className="h-full w-full" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold">{item.name}</p>
-                        <p className="tnum text-sm text-ink-400">
+                        <p className="tnum text-sm text-ink-500">
                           {item.price} 金币
                           {item.minLevel > 0 && ` · 需 ${need.name}`}
                         </p>
                         {block === 'level' && (
-                          <p className="text-xs text-ink-400">
+                          <p className="text-xs text-ink-500">
                             MMR 不够，到 {need.min}（{need.name}）才能买，现在{' '}
                             {progress.mmr}
                           </p>
                         )}
                         {block === 'money' && (
-                          <p className="text-xs text-ink-400">
+                          <p className="text-xs text-ink-500">
                             还差 {item.price - balance} 金币，再赢{' '}
                             {Math.ceil((item.price - balance) / WIN_POINTS)} 场
                           </p>
                         )}
                       </div>
                       {block === 'owned' ? (
-                        <Pill tone="lime">已拥有</Pill>
+                        <Pill tone="brand">已拥有</Pill>
                       ) : (
                         <Button
                           size="sm"
@@ -573,7 +573,7 @@ function ShopPanel({
         )
       })}
 
-      <p className="pb-4 text-xs leading-relaxed text-ink-400">
+      <p className="pb-4 text-xs leading-relaxed text-ink-500">
         价格看金币（赢一场 +{WIN_POINTS}，输球不扣），
         门槛看 MMR（赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}）。
         现在 {progress.level.display}，MMR {progress.mmr}，金币 {balance}。

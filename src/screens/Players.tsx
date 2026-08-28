@@ -147,7 +147,7 @@ export function Players() {
                 right={
                   <button
                     onClick={() => push({ name: 'profile', playerId: p.id })}
-                    className="shrink-0 rounded-lg px-2 py-2 text-xs text-ink-400 active:bg-ink-700"
+                    className="shrink-0 rounded-lg px-2 py-2 text-xs text-ink-500 active:bg-fill-strong"
                   >
                     战绩 ›
                   </button>

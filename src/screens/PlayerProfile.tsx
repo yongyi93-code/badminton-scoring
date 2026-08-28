@@ -31,10 +31,10 @@ import { balanceOf, progressOf, WIN_POINTS } from '@/lib/avatar'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5">
-      <p className="text-xs text-ink-400">{label}</p>
+    <div className="rounded-xl border border-line bg-surface px-3 py-2.5">
+      <p className="text-xs text-ink-500">{label}</p>
       <p className="tnum mt-0.5 text-xl font-bold">{value}</p>
-      {hint && <p className="text-xs text-ink-400">{hint}</p>}
+      {hint && <p className="text-xs text-ink-500">{hint}</p>}
     </div>
   )
 }
@@ -95,13 +95,13 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <RankChip level={level} />
-                <span className="tnum text-xs text-ink-400">
+                <span className="tnum text-xs text-ink-500">
                   MMR {avatarProgress.mmr}
                 </span>
               </div>
               {streak && (
                 <div className="mt-2">
-                  <Pill tone={stats.streak > 0 ? 'lime' : 'neutral'}>{streak}</Pill>
+                  <Pill tone={stats.streak > 0 ? 'success' : 'danger'}>{streak}</Pill>
                 </div>
               )}
             </div>
@@ -111,7 +111,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
         {/* 角色入口：养成的东西要一眼看得见，才有人想去赢球赚金币 */}
         <Card onClick={() => push({ name: 'avatar', playerId })}>
           <div className="flex items-center gap-4">
-            <span className="size-16 shrink-0 overflow-hidden rounded-2xl bg-ink-800">
+            <span className="size-16 shrink-0 overflow-hidden rounded-2xl bg-fill">
               {avatar ? (
                 <AvatarView
                   sex={avatar.sex}
@@ -131,7 +131,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
               {avatar ? (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <RankChip level={level} />
-                  <span className="tnum text-sm text-ink-400">
+                  <span className="tnum text-sm text-ink-500">
                     MMR {avatarProgress.mmr} · 金币{' '}
                     {balanceOf(avatar, avatarProgress.coins)}
                   </span>
@@ -139,13 +139,13 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
               ) : (
                 <>
                   <p className="text-lg font-semibold">还没有角色</p>
-                  <p className="text-sm text-ink-400">
+                  <p className="text-sm text-ink-500">
                     选个角色，赢一场得 {WIN_POINTS} 金币买装备
                   </p>
                 </>
               )}
             </div>
-            <span className="shrink-0 text-ink-400">›</span>
+            <span className="shrink-0 text-ink-500">›</span>
           </div>
         </Card>
 
@@ -167,37 +167,37 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
             <SectionTitle>搭档与对手</SectionTitle>
             <div className="space-y-2">
               <Card>
-                <p className="text-xs text-ink-400">最佳搭档</p>
+                <p className="text-xs text-ink-500">最佳搭档</p>
                 {partner ? (
                   <>
                     <p className="mt-1 text-lg font-semibold">
                       {names.get(partner.partnerId)?.name ?? '已删除的球员'}
                     </p>
-                    <p className="tnum text-sm text-ink-400">
+                    <p className="tnum text-sm text-ink-500">
                       同队 {partner.games} 场，赢 {partner.wins} 场（
                       {percent(partner.winRate)}）
                     </p>
                   </>
                 ) : (
-                  <p className="mt-1 text-sm text-ink-400">
+                  <p className="mt-1 text-sm text-ink-500">
                     还没有和同一个人搭档满 3 场
                   </p>
                 )}
               </Card>
 
               <Card>
-                <p className="text-xs text-ink-400">苦主</p>
+                <p className="text-xs text-ink-500">苦主</p>
                 {foe ? (
                   <>
                     <p className="mt-1 text-lg font-semibold">
                       {names.get(foe.opponentId)?.name ?? '已删除的球员'}
                     </p>
-                    <p className="tnum text-sm text-ink-400">
+                    <p className="tnum text-sm text-ink-500">
                       交手 {foe.games} 场，输了 {foe.losses} 场
                     </p>
                   </>
                 ) : (
-                  <p className="mt-1 text-sm text-ink-400">还没输过球，暂无苦主</p>
+                  <p className="mt-1 text-sm text-ink-500">还没输过球，暂无苦主</p>
                 )}
               </Card>
             </div>
@@ -220,14 +220,14 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                         <div className="min-w-0">
                           <p className="text-sm">
                             {mates.length > 0 && (
-                              <span className="text-ink-400">
+                              <span className="text-ink-500">
                                 搭 {mates.map((id) => names.get(id)?.name).join('/')}{' '}
                               </span>
                             )}
-                            <span className="text-ink-400">对 </span>
+                            <span className="text-ink-500">对 </span>
                             <span>{foes.map((id) => names.get(id)?.name).join('/')}</span>
                           </p>
-                          <p className="mt-0.5 truncate text-xs text-ink-400">
+                          <p className="mt-0.5 truncate text-xs text-ink-500">
                             {venueOf(m.sessionId)}
                           </p>
                         </div>
@@ -235,12 +235,12 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                           <span
                             className={cx(
                               'text-sm font-semibold',
-                              won ? 'text-lime-glow' : 'text-ink-400',
+                              won ? 'text-brand-600' : 'text-ink-500',
                             )}
                           >
                             {won ? '胜' : '负'}
                           </span>
-                          <p className="tnum text-xs text-ink-400">
+                          <p className="tnum text-xs text-ink-500">
                             {side === 'A'
                               ? scoreLine(m.games)
                               : scoreLine(
@@ -258,7 +258,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
 
         <button
           onClick={() => push({ name: 'leaderboard' })}
-          className="w-full py-4 text-center text-sm text-ink-400 underline decoration-ink-700 underline-offset-4"
+          className="w-full py-4 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
         >
           看累计排行榜
         </button>

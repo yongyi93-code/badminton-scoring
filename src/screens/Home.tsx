@@ -56,7 +56,7 @@ export function Home() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `羽球记分备份-${data.exportedAt.slice(0, 10)}.json`
+    a.download = `RALLY-备份-${data.exportedAt.slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
     setMessage('备份文件已导出')
@@ -77,8 +77,8 @@ export function Home() {
       <div className="safe-top px-4 pb-2">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs tracking-[0.2em] text-lime-glow uppercase">Badminton</p>
-            <h1 className="text-2xl font-bold">羽球记分</h1>
+            <h1 className="text-h1 tracking-[0.08em]">RALLY</h1>
+            <p className="text-caption text-ink-500">羽球社交竞技平台</p>
           </div>
           <span className="text-3xl">🏸</span>
         </div>
@@ -89,21 +89,21 @@ export function Home() {
 
         {active ? (
           <Card
-            className="border-lime-glow/40 bg-lime-glow/5"
+            className="border-brand-500/40 bg-brand-50"
             onClick={() => push({ name: 'board', sessionId: active.id })}
           >
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <Pill tone="lime">进行中</Pill>
+                <Pill tone="brand">进行中</Pill>
                 <p className="mt-2 truncate text-lg font-semibold">
                   {active.venue || '未填球馆'}
                 </p>
-                <p className="mt-0.5 text-sm text-ink-400">
+                <p className="mt-0.5 text-sm text-ink-500">
                   {formatDate(active.date)} · {active.playerIds.length} 人 ·{' '}
                   {active.courtCount} 片场 · 已打 {countsBySession.get(active.id) ?? 0} 场
                 </p>
               </div>
-              <span className="shrink-0 text-lime-glow">继续 →</span>
+              <span className="shrink-0 text-brand-600">继续 →</span>
             </div>
           </Card>
         ) : (
@@ -119,14 +119,14 @@ export function Home() {
 
         <div className="grid grid-cols-2 gap-3">
           <Card onClick={() => push({ name: 'leaderboard' })}>
-            <p className="text-sm text-ink-400">累计排行榜</p>
+            <p className="text-sm text-ink-500">累计排行榜</p>
             <p className="tnum mt-1 text-xl font-bold">{totalPlayed}</p>
-            <p className="text-xs text-ink-400">场已记录</p>
+            <p className="text-xs text-ink-500">场已记录</p>
           </Card>
           <Card onClick={() => push({ name: 'players' })}>
-            <p className="text-sm text-ink-400">球员库</p>
+            <p className="text-sm text-ink-500">球员库</p>
             <p className="tnum mt-1 text-xl font-bold">{activePlayers.length}</p>
-            <p className="text-xs text-ink-400">人</p>
+            <p className="text-xs text-ink-500">人</p>
           </Card>
         </div>
 
@@ -145,17 +145,17 @@ export function Home() {
           <div className="space-y-2">
             <button
               onClick={() => setHistoryOpen((v) => !v)}
-              className="flex w-full items-center gap-3 rounded-card border border-ink-700/70 bg-ink-850 px-4 py-3.5 text-left active:bg-ink-800"
+              className="flex w-full items-center gap-3 rounded-card border border-line bg-surface px-4 py-3.5 text-left active:bg-fill"
             >
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">历史球局</span>
-                <span className="mt-0.5 block truncate text-sm text-ink-400">
+                <span className="mt-0.5 block truncate text-sm text-ink-500">
                   {historyOpen
                     ? `共 ${past.length} 场球局`
                     : `最近：${past[0].venue || '未填球馆'} · ${formatDate(past[0].date)}`}
                 </span>
               </span>
-              <span className="shrink-0 text-sm text-ink-400">
+              <span className="shrink-0 text-sm text-ink-500">
                 {past.length} 场 {historyOpen ? '⌃' : '⌄'}
               </span>
             </button>
@@ -166,12 +166,12 @@ export function Home() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">{s.venue || '未填球馆'}</p>
-                      <p className="mt-0.5 text-sm text-ink-400">
+                      <p className="mt-0.5 text-sm text-ink-500">
                         {formatDate(s.date)} · {s.playerIds.length} 人 ·{' '}
                         {countsBySession.get(s.id) ?? 0} 场
                       </p>
                     </div>
-                    <span className="shrink-0 text-ink-400">›</span>
+                    <span className="shrink-0 text-ink-500">›</span>
                   </div>
                 </Card>
               ))}
@@ -186,7 +186,7 @@ export function Home() {
 
         <button
           onClick={() => setBackupOpen(true)}
-          className="w-full pt-2 text-center text-sm text-ink-400 underline decoration-ink-700 underline-offset-4"
+          className="w-full pt-2 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
         >
           数据备份与恢复
         </button>
@@ -205,7 +205,7 @@ export function Home() {
               void forceUpdate()
             }}
             disabled={updating}
-            className="underline decoration-ink-700 underline-offset-4 disabled:opacity-60"
+            className="underline decoration-line underline-offset-4 disabled:opacity-60"
           >
             {updating ? '更新中…' : '检查更新'}
           </button>
@@ -213,7 +213,7 @@ export function Home() {
       </Body>
 
       <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title="数据备份">
-        <p className="text-sm text-ink-300">
+        <p className="text-sm text-ink-700">
           所有数据只存在这台手机的浏览器里。清掉浏览器数据或换手机就会丢，
           建议每次打完球导出一次备份。
         </p>
@@ -235,11 +235,11 @@ export function Home() {
               e.target.value = ''
             }}
           />
-          <p className="text-xs text-amber-300">
+          <p className="text-xs text-warning-600">
             恢复会覆盖当前所有数据，请先导出一次再恢复。
           </p>
         </div>
-        {message && <p className="mt-3 text-sm text-lime-glow">{message}</p>}
+        {message && <p className="mt-3 text-sm text-brand-600">{message}</p>}
       </Sheet>
     </Screen>
   )
