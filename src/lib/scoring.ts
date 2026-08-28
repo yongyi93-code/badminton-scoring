@@ -48,6 +48,22 @@ export function isGamePoint(
   return null
 }
 
+/**
+ * 平分时该提醒什么。没什么可说的就返回 null。
+ *
+ * 20 平之后规则会变（要净胜 2 分），29 平之后又变一次（下一分直接定胜负）——
+ * 这两处是场上最容易吵起来的地方，与其让人去记，不如比分到了就写在屏幕上。
+ * 不打净胜 2 分的球局没有这回事，直接返回 null。
+ */
+export function deuceNote(a: number, b: number, rules: Rules): string | null {
+  if (!rules.winBy2) return null
+  if (a !== b) return null
+  const cap = effectiveCap(rules)
+  if (a === cap - 1) return '下一分决胜'
+  if (a >= rules.pointsToWin - 1) return `${a} 平 · 要领先 2 分才算赢`
+  return null
+}
+
 /* ------------------------------------------------------------------ *
  * 整场的胜负判定（一局定胜负 / 三局两胜）
  * ------------------------------------------------------------------ */

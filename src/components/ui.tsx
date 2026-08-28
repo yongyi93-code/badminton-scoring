@@ -372,6 +372,50 @@ export function Sheet({
   )
 }
 
+/**
+ * Toast：一句话说清刚刚发生了什么。
+ *
+ * 成功类 2.5 秒自己走，错误类不自动关 —— 场上没看到的那一眼，
+ * 就是后面对着比分吵半天的起点。位置压在底部操作区之上。
+ */
+export function Toast({
+  message,
+  tone = 'info',
+  onClose,
+}: {
+  message: string | null
+  tone?: 'info' | 'error'
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!message || tone === 'error') return
+    const t = setTimeout(onClose, 2500)
+    return () => clearTimeout(t)
+  }, [message, tone, onClose])
+
+  if (!message) return null
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center px-5">
+      <div
+        role="status"
+        className={cx(
+          'shadow-pop pointer-events-auto flex max-w-md items-center gap-2 rounded-btn px-4 py-3 text-label',
+          tone === 'error'
+            ? 'bg-danger-50 text-danger-600 border-danger-600/30 border'
+            : 'bg-ink-900 text-canvas',
+        )}
+      >
+        <span className="min-w-0 flex-1">{message}</span>
+        {tone === 'error' && (
+          <button onClick={onClose} aria-label="关闭" className="shrink-0 px-1">
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function Pill({
   children,
   tone = 'neutral',

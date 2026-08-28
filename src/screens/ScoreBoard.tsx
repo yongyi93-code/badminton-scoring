@@ -8,6 +8,7 @@ import {
   Pill,
   Screen,
   Sheet,
+  Toast,
   TopBar,
   cx,
   inputClass,
@@ -16,6 +17,7 @@ import {
   activeGameIndex,
   addPoint,
   deriveServe,
+  deuceNote,
   gamesWon,
   isGameOver,
   isGamePoint,
@@ -134,6 +136,7 @@ function ScoreZone({
   ids,
   names,
   score,
+  team,
   tone,
   serverId,
   gamePoint,
@@ -143,31 +146,56 @@ function ScoreZone({
   ids: string[]
   names: Map<string, Player>
   score: number
+  team: TeamSide
   tone: 'teamA' | 'teamB'
   serverId?: string
   gamePoint: boolean
   disabled: boolean
   onTap: () => void
 }) {
+  const who = ids.map((id) => names.get(id)?.name ?? '?').join(' / ')
   return (
     <button
-      onClick={onTap}
+      onClick={() => {
+        if (disabled) return
+        // 汗手 + 强光下看不清，震一下比看一眼可靠
+        navigator.vibrate?.(12)
+        onTap()
+      }}
       disabled={disabled}
+      /* 读屏和大字体模式下，「点这里 +1」那种小字提示是没用的，标签才有用 */
+      aria-label={`为 ${team} 队 ${who} 加 1 分，当前 ${score} 分`}
       className={cx(
-        'relative flex flex-1 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-4 py-6 transition-colors',
+        'relative flex flex-1 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl border px-4 py-6 transition-colors',
         tone === 'teamA'
-          ? 'border-team-a/40 bg-team-a/10 active:bg-team-a/20'
-          : 'border-team-b/40 bg-team-b/10 active:bg-team-b/20',
+          ? 'border-team-a/30 bg-team-a/8 active:bg-team-a/20'
+          : 'border-team-b/30 bg-team-b/8 active:bg-team-b/20',
         disabled && 'opacity-60',
       )}
     >
+      {/* 队色收成顶上一条细带，不再整块高饱和铺满 */}
+      <span
+        aria-hidden
+        className={cx(
+          'absolute inset-x-0 top-0 h-1.5',
+          tone === 'teamA' ? 'bg-team-a' : 'bg-team-b',
+        )}
+      />
       <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+        <span
+          className={cx(
+            'text-label font-semibold',
+            tone === 'teamA' ? 'text-team-a' : 'text-team-b',
+          )}
+        >
+          {team} 队
+        </span>
         {ids.map((id) => (
           <span
             key={id}
             className={cx(
-              'text-sm',
-              id === serverId ? 'font-semibold text-brand-600' : 'text-ink-700',
+              'text-label',
+              id === serverId ? 'text-brand-600 font-semibold' : 'text-ink-700',
             )}
           >
             {id === serverId && '🏸 '}
@@ -177,14 +205,13 @@ function ScoreZone({
       </div>
       <span
         className={cx(
-          'tnum text-[clamp(3.5rem,18vh,7rem)] leading-none font-black',
+          'tnum text-[clamp(4.5rem,20vh,7.5rem)] leading-none font-black',
           tone === 'teamA' ? 'text-team-a' : 'text-team-b',
         )}
       >
         {score}
       </span>
       {gamePoint && <Pill tone="warn">局点</Pill>}
-      {!disabled && <span className="text-xs text-ink-500">点这里 +1</span>}
     </button>
   )
 }
@@ -205,6 +232,20 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const [directOpen, setDirectOpen] = useState(false)
   const [directA, setDirectA] = useState('')
   const [directB, setDirectB] = useState('')
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  /**
+   * 只换屏幕上的左右，不动数据。
+   * 11 分和换局时两队要交换场地，人站过去了，手机上却还是原来的上下 ——
+   * 每次都要在脑子里镜像一遍，迟早点错。
+   */
+  const [flipped, setFlipped] = useState(false)
+  /**
+   * 打完之后弹的结果确认。
+   * 不做成「到分自动结束」——最后一分点错的代价是整场重来，
+   * 而多按一下确认的代价是一秒。
+   */
+  const [confirmEnd, setConfirmEnd] = useState(false)
 
   // 友谊赛的客队不在正式名单里，记分屏也要叫得出他们的名字
   const names = useMemo(
@@ -233,6 +274,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const sets = gamesWon(match.games, rules)
   const gamePoint = isGamePoint(game.a, game.b, rules)
   const isDoubles = match.teamA.length > 1
+  const deuce = deuceNote(game.a, game.b, rules)
 
   const writeGame = (next: typeof game) => {
     const games = [...match.games]
@@ -260,8 +302,16 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
     if (!fresh) return
     const idx = activeGameIndex(fresh, rules)
     const games = [...fresh.games]
-    games[idx] = undoPoint(games[idx])
+    const before = games[idx]
+    games[idx] = undoPoint(before)
+    if (games[idx] === before) {
+      setToast('这一局还没有可以撤销的分')
+      return
+    }
     updateMatch(fresh.id, { games })
+    // 说清撤掉的是哪一队的分 —— 「已撤销」三个字本身不解决任何争议
+    const removed = before.points?.[before.points.length - 1]
+    setToast(removed ? `已撤销 ${removed} 队 1 分` : '已撤销上一分')
   }
 
   /**
@@ -360,9 +410,17 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           }
           onBack={back}
           right={
-            <Button size="sm" variant="ghost" onClick={() => setDirectOpen(true)}>
-              直接输比分
-            </Button>
+            <button
+              onClick={() => setMoreOpen(true)}
+              aria-label="更多"
+              className="text-ink-700 active:bg-fill -mr-1 flex size-10 shrink-0 items-center justify-center rounded-xl"
+            >
+              <svg viewBox="0 0 24 24" className="size-6" fill="currentColor" aria-hidden>
+                <circle cx="5" cy="12" r="1.8" />
+                <circle cx="12" cy="12" r="1.8" />
+                <circle cx="19" cy="12" r="1.8" />
+              </svg>
+            </button>
           }
         />
 
@@ -397,11 +455,23 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           </p>
         )}
 
-        <div className="flex flex-1 flex-col gap-3 p-4">
+        {deuce && !gameOver && (
+          <p className="text-warning-600 bg-warning-50 mx-5 mt-3 rounded-btn px-3 py-2 text-center text-label font-medium">
+            {deuce}
+          </p>
+        )}
+
+        <div
+          className={cx(
+            'flex flex-1 gap-3 p-5',
+            flipped ? 'flex-col-reverse' : 'flex-col',
+          )}
+        >
           <ScoreZone
             ids={match.teamA}
             names={names}
             score={game.a}
+            team="A"
             tone="teamA"
             serverId={serve?.servingTeam === 'A' ? serve.serverId : undefined}
             gamePoint={gamePoint === 'A'}
@@ -412,6 +482,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
             ids={match.teamB}
             names={names}
             score={game.b}
+            team="B"
             tone="teamB"
             serverId={serve?.servingTeam === 'B' ? serve.serverId : undefined}
             gamePoint={gamePoint === 'B'}
@@ -467,7 +538,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               )}
 
               {winner ? (
-                <Button variant="primary" size="lg" block onClick={finishMatch}>
+                <Button variant="primary" size="lg" block onClick={() => setConfirmEnd(true)}>
                   {kingNext?.pairing || formatOf(session) === 'rotation'
                     ? '结束比赛，排下一场'
                     : '结束比赛，回到看板'}
@@ -492,26 +563,104 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                 >
                   撤销
                 </Button>
-                <Button variant="soft" className="flex-1" onClick={back}>
-                  先回看板
+                {/* 场上交换场地之后，屏幕上的上下也跟着换，省得每次在脑子里镜像一遍 */}
+                <Button
+                  variant="soft"
+                  className="flex-1"
+                  onClick={() => {
+                    setFlipped((v) => !v)
+                    setToast(flipped ? '已换回原来的上下' : '已换边，A 队现在在下面')
+                  }}
+                >
+                  换边
                 </Button>
               </div>
-              {/*
-                场地时间到了、或者比分输错卡在没打完的状态时的出口。
-                按当前比分算胜负（谁分高谁赢），不然这场会一直挂在场上。
-              */}
-              {game.a !== game.b && (
-                <button
-                  onClick={finishMatch}
-                  className="w-full py-1.5 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
-                >
-                  提前结束这一场（按 {game.a}:{game.b} 算）
-                </button>
-              )}
+              <Button block variant="soft" onClick={back}>
+                先回看板
+              </Button>
             </div>
           )}
         </div>
       </div>
+
+      <Toast message={toast} onClose={() => setToast(null)} />
+
+      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="这一场">
+        <div className="space-y-2">
+          <Button
+            block
+            variant="soft"
+            onClick={() => {
+              setMoreOpen(false)
+              setDirectOpen(true)
+            }}
+          >
+            直接输入最终比分
+          </Button>
+          <Button
+            block
+            variant="soft"
+            onClick={() => {
+              setFlipped((v) => !v)
+              setMoreOpen(false)
+              setToast(flipped ? '已换回原来的上下' : '已换边，A 队现在在下面')
+            }}
+          >
+            交换屏幕上的上下
+          </Button>
+          {/*
+            场地时间到了、或者比分输错卡在没打完的状态时的出口。
+            按当前比分算胜负（谁分高谁赢），不然这场会一直挂在场上。
+          */}
+          {game.a !== game.b && !gameOver && (
+            <Button
+              block
+              variant="dangerSoft"
+              onClick={() => {
+                setMoreOpen(false)
+                setConfirmEnd(true)
+              }}
+            >
+              提前结束这一场（按 {game.a}:{game.b} 算）
+            </Button>
+          )}
+        </div>
+      </Sheet>
+
+      {/*
+        规格 §E：打到分了不直接结束，弹一层确认，可以「继续比赛」。
+        最后一分点错的代价是整场重来，多按一下的代价是一秒。
+      */}
+      <Sheet open={confirmEnd} onClose={() => setConfirmEnd(false)} title="这一场结束了？">
+        <p className="tnum text-display text-center">
+          {game.a} : {game.b}
+        </p>
+        <p className="text-ink-700 mt-2 text-center text-label">
+          {(game.a > game.b ? match.teamA : match.teamB)
+            .map((id) => names.get(id)?.name ?? '?')
+            .join(' / ')}{' '}
+          获胜
+        </p>
+        <p className="text-ink-500 mt-3 text-caption">
+          结束后这一场会记进战绩和排名。记错了可以在看板上把它退回来改。
+        </p>
+        <div className="mt-4 space-y-2">
+          <Button
+            block
+            variant="primary"
+            size="lg"
+            onClick={() => {
+              setConfirmEnd(false)
+              finishMatch()
+            }}
+          >
+            确认结束
+          </Button>
+          <Button block variant="ghost" onClick={() => setConfirmEnd(false)}>
+            继续比赛
+          </Button>
+        </div>
+      </Sheet>
 
       <Sheet open={directOpen} onClose={() => setDirectOpen(false)} title="直接输入最终比分">
         <p className="text-sm text-ink-700">

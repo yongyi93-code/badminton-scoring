@@ -3,6 +3,7 @@ import {
   activeGameIndex,
   addPoint,
   deriveServe,
+  deuceNote,
   emptyGame,
   gameWinner,
   gamesWon,
@@ -280,5 +281,37 @@ describe('加分与撤销', () => {
     const m = doublesMatch()
     const g = emptyGame(m, 'A')
     expect(undoPoint(g)).toBe(g)
+  })
+})
+
+describe('平分提示', () => {
+  it('还没到 20 平不提示', () => {
+    expect(deuceNote(15, 15, rules)).toBeNull()
+    expect(deuceNote(19, 19, rules)).toBeNull()
+  })
+
+  it('比分不相等一律不提示', () => {
+    expect(deuceNote(20, 19, rules)).toBeNull()
+    expect(deuceNote(29, 28, rules)).toBeNull()
+  })
+
+  it('20 平之后提醒要净胜 2 分，并且带上当前比分', () => {
+    expect(deuceNote(20, 20, rules)).toBe('20 平 · 要领先 2 分才算赢')
+    expect(deuceNote(24, 24, rules)).toBe('24 平 · 要领先 2 分才算赢')
+  })
+
+  it('封顶前一分改成「下一分决胜」', () => {
+    expect(deuceNote(29, 29, rules)).toBe('下一分决胜')
+  })
+
+  it('11 分制跟着自己的封顶走，不套 21 分制的数字', () => {
+    const r11: Rules = { ...DEFAULT_RULES, pointsToWin: 11, cap: capFor(11) }
+    expect(deuceNote(9, 9, r11)).toBeNull()
+    expect(deuceNote(10, 10, r11)).toBe('10 平 · 要领先 2 分才算赢')
+    expect(deuceNote(14, 14, r11)).toBe('下一分决胜')
+  })
+
+  it('不打净胜 2 分的球局没有平分这回事', () => {
+    expect(deuceNote(20, 20, noWinBy2)).toBeNull()
   })
 })
