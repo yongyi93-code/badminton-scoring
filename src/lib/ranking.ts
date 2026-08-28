@@ -122,6 +122,42 @@ export function computeStats(
  * 场次不足的人一律排在合格球员之后，避免打 1 场全胜就霸榜。
  * 完全没上过场的人不进榜。
  */
+/* ------------------------------------------------------------------ *
+ * 榜的时间范围
+ * ------------------------------------------------------------------ */
+
+export type Period = 'all' | 'month' | 'quarter'
+
+export const PERIOD_LABELS: Record<Period, string> = {
+  all: '总榜',
+  month: '本月',
+  quarter: '本季',
+}
+
+/**
+ * 按球局的日期切出一段时间内的比赛。
+ *
+ * 以球局的 date 为准，不是比赛的 endedAt —— 跨零点还在打的那几场，
+ * 记在开球那天才对得上大家嘴里说的「上周三那场」。
+ */
+export function matchesInPeriod(
+  sessions: { id: string; date: string }[],
+  matches: Match[],
+  period: Period,
+  now = new Date(),
+): Match[] {
+  if (period === 'all') return matches
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const from =
+    period === 'month'
+      ? new Date(y, m, 1)
+      : new Date(y, Math.floor(m / 3) * 3, 1)
+  const iso = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-01`
+  const ids = new Set(sessions.filter((s) => s.date >= iso).map((s) => s.id))
+  return matches.filter((x) => ids.has(x.sessionId))
+}
+
 export function rankPlayers(stats: PlayerStats[]): PlayerStats[] {
   return [...stats]
     .filter((s) => s.games > 0)

@@ -4,6 +4,7 @@ import {
   computeStats,
   decidedMatches,
   longestWinStreak,
+  matchesInPeriod,
   matchWinnerBySets,
   mvpOf,
   nemesis,
@@ -328,5 +329,39 @@ describe('友谊赛不进累计统计', () => {
     // 本场结算显式打开时，三场都算
     const [inSession] = computeStats(ms, ['p1'], 1, { includeFriendly: true })
     expect(inSession.games).toBe(3)
+  })
+})
+
+describe('榜的时间范围', () => {
+  // 以球局的日期为准，不是比赛的 endedAt —— 跨零点还在打的那几场
+  // 要记在开球那天，才对得上大家嘴里说的「上周三那场」
+  const sessions = [
+    { id: 'jan', date: '2026-01-20' },
+    { id: 'jul', date: '2026-07-15' },
+    { id: 'aug1', date: '2026-08-02' },
+    { id: 'aug2', date: '2026-08-28' },
+  ]
+  const ms = sessions.map((s, i) => ({ ...match(['a'], ['b'], [[21, 10]]), sessionId: s.id, id: `x${i}` }))
+  const now = new Date(2026, 7, 28) // 8 月 28 日，第三季度
+
+  const ids = (p: Parameters<typeof matchesInPeriod>[2]) =>
+    matchesInPeriod(sessions, ms, p, now).map((m) => m.sessionId).sort()
+
+  it('总榜一场都不筛', () => {
+    expect(ids('all')).toEqual(['aug1', 'aug2', 'jan', 'jul'])
+  })
+
+  it('本月只留 8 月，月初那场也算在内', () => {
+    expect(ids('month')).toEqual(['aug1', 'aug2'])
+  })
+
+  it('本季从 7 月 1 日算起，7 月那场要留下，1 月那场不能留', () => {
+    expect(ids('quarter')).toEqual(['aug1', 'aug2', 'jul'])
+  })
+
+  it('没有球局记录的比赛不会被算进任何一段时间', () => {
+    const orphan = { ...match(['a'], ['b'], [[21, 0]]), sessionId: '不存在' }
+    expect(matchesInPeriod(sessions, [orphan], 'month', now)).toEqual([])
+    expect(matchesInPeriod(sessions, [orphan], 'all', now)).toEqual([orphan])
   })
 })
