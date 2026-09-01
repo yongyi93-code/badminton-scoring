@@ -2,12 +2,12 @@ import { LANG_LABELS, type Lang, useLang, useT } from '@/lib/i18n'
 import { useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { avatarOf, playerMap, useApp, type Backup } from '@/store/useApp'
+import type { Gender } from '@/types'
 import { useNav } from '@/store/useNav'
 import {
   Body,
   Button,
   Card,
-  EmptyState,
   Field,
   Pill,
   Screen,
@@ -321,6 +321,12 @@ export function Me() {
   const { theme, setTheme } = useTheme()
 
   const [picking, setPicking] = useState(false)
+  const [newSelf, setNewSelf] = useState(false)
+  const [selfName, setSelfName] = useState('')
+  const [selfGender, setSelfGender] = useState<Gender>('-')
+  const addPlayer = useApp((s) => s.addPlayer)
+  const claimPlayer = useApp((s) => s.claimPlayer)
+  const releasePlayer = useApp((s) => s.releasePlayer)
   const [authOpen, setAuthOpen] = useState(false)
   const [cloudOpen, setCloudOpen] = useState(false)
   const sync = useSyncStatus()
@@ -333,6 +339,8 @@ export function Me() {
           ? t(`还有 ${sync.pending} 条没推上去`, `${sync.pending} still to push`)
           : t('已经和云端一致', 'Up to date')
   const { session } = useAuth()
+  /** 登录账号 id。没登录就是 null，那时选人只是本机标记 */
+  const uid = session?.user.id ?? null
   const [backupOpen, setBackupOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -539,16 +547,17 @@ export function Me() {
                 'Pick a player to link to this phone and this page will show your own rank, record and character. It is just a marker on this device, not an account — all the data still lives on this phone.',
               )}
             </p>
+            {/*
+              球员库空着的时候也走同一个入口。原来这里是「先去添加球员」，
+              把人丢到球员库自己想办法 —— 而一个刚注册的新人第一件该做的事
+              是把自己建出来，不是去管理一份名单。
+            */}
             <div className="mt-4">
-              {roster.length === 0 ? (
-                <Button block variant="primary" onClick={() => push({ name: 'players' })}>
-                  {t('先去添加球员', 'Add players first')}
-                </Button>
-              ) : (
-                <Button block variant="primary" onClick={() => setPicking(true)}>
-                  {t('选一个', 'Pick one')}
-                </Button>
-              )}
+              <Button block variant="primary" onClick={() => setPicking(true)}>
+                {roster.length === 0
+                  ? t('先建一个「我」', 'Create yourself first')
+                  : t('选一个', 'Pick one')}
+              </Button>
             </div>
           </Card>
         )}
@@ -635,10 +644,12 @@ export function Me() {
           />
           <MenuRow
             title={t('数据备份与恢复', 'Backup and restore')}
-            hint={t(
-              '数据只存在这台手机上，每次打完球导一次',
-              'Data lives only on this phone — export after every session',
-            )}
+            /* 登录之后数据不再只在这台手机上了，这句话得跟着变 */
+            hint={
+              session
+                ? t('导一份文件留底，清空重来之前尤其要导', 'Export a file to keep — especially before clearing everything')
+                : t('数据只存在这台手机上，每次打完球导一次', 'Data lives only on this phone — export after every session')
+            }
             onClick={() => setBackupOpen(true)}
           />
           <MenuRow
@@ -670,40 +681,124 @@ export function Me() {
       </Body>
 
       <Sheet open={picking} onClose={() => setPicking(false)} title={t('你是哪一位？', 'Which one are you?')}>
-        {roster.length === 0 ? (
-          <EmptyState
-            title={t('球员库是空的', 'No players yet')}
-            hint={t('先去球员库添加人', 'Add someone in the players list first')}
-          />
+        {/*
+          登录之后这一步不只是本机标记了，而是「认领」：
+          账号会写进球员本身、跟着同步出去，别人手机上就知道
+          那个人是有主的，不会再建一个重名的。
+        */}
+        {uid && (
+          <p className="text-ink-500 mb-3 text-caption">
+            {t(
+              '认领之后，别人手机上也能看到这个球员是你，不会再有人重复建一个。',
+              'Once claimed, everyone else sees that this player is you — nobody creates a duplicate.',
+            )}
+          </p>
+        )}
+
+        {newSelf ? (
+          <div className="space-y-4">
+            <Field label={t('你的名字', 'Your name')}>
+              <input
+                className={inputClass}
+                value={selfName}
+                onChange={(e) => setSelfName(e.target.value)}
+                placeholder={t('例如 阿明', 'e.g. Alvin')}
+                autoFocus
+              />
+            </Field>
+            <Field label={t('性别', 'Gender')}>
+              <Segmented
+                value={selfGender}
+                onChange={setSelfGender}
+                options={[
+                  { value: 'M', label: t('男', 'Male') },
+                  { value: 'F', label: t('女', 'Female') },
+                  { value: '-', label: t('不填', 'Skip') },
+                ]}
+              />
+            </Field>
+            <Button
+              variant="primary"
+              block
+              disabled={!selfName.trim()}
+              onClick={() => {
+                const created = addPlayer(selfName.trim(), selfGender)
+                if (uid) claimPlayer(created.id, uid)
+                else setMeId(created.id)
+                setSelfName('')
+                setNewSelf(false)
+                setPicking(false)
+              }}
+            >
+              {t('就是我', "That's me")}
+            </Button>
+            <Button block variant="ghost" onClick={() => setNewSelf(false)}>
+              {t('返回列表', 'Back to the list')}
+            </Button>
+          </div>
         ) : (
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-            {roster.map((p) => (
-              <button
-                key={p.id}
+          <>
+            {roster.length > 0 && (
+              <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+                {roster.map((p) => {
+                  /* 已经被别人认领的不给点 —— 点了也只会把人家挤掉 */
+                  const takenByOther = Boolean(p.ownerId) && p.ownerId !== uid
+                  return (
+                    <button
+                      key={p.id}
+                      disabled={takenByOther}
+                      onClick={() => {
+                        if (uid) claimPlayer(p.id, uid)
+                        else setMeId(p.id)
+                        setPicking(false)
+                      }}
+                      className={
+                        p.id === meId
+                          ? 'border-brand-500 bg-brand-100 flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
+                          : takenByOther
+                            ? 'border-line bg-surface flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left opacity-40'
+                            : 'border-line bg-surface active:bg-fill flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
+                      }
+                    >
+                      <Avatar name={p.name} avatar={avatarOf(avatars, p.id)} />
+                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                      {p.id === meId ? (
+                        <Pill tone="brand">{t('就是我', "That's me")}</Pill>
+                      ) : takenByOther ? (
+                        <Pill>{t('别人认领了', 'Taken')}</Pill>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            <Button
+              block
+              variant="primary"
+              className="mt-3"
+              onClick={() => setNewSelf(true)}
+            >
+              {roster.length === 0
+                ? t('建一个球员，就是我', 'Create a player — that is me')
+                : t('都不是，我是新来的', 'None of these — I am new')}
+            </Button>
+
+            {meId && (
+              <Button
+                block
+                variant="soft"
+                className="mt-2"
                 onClick={() => {
-                  setMeId(p.id)
+                  if (uid) releasePlayer(uid)
+                  setMeId(null)
                   setPicking(false)
                 }}
-                className={
-                  p.id === meId
-                    ? 'border-brand-500 bg-brand-100 flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
-                    : 'border-line bg-surface active:bg-fill flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
-                }
               >
-                <Avatar name={p.name} avatar={avatarOf(avatars, p.id)} />
-                <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                {p.id === meId && <Pill tone="brand">{t('就是我', "That's me")}</Pill>}
-              </button>
-            ))}
-          </div>
-        )}
-        {meId && (
-          <Button block variant="soft" className="mt-3" onClick={() => {
-            setMeId(null)
-            setPicking(false)
-          }}>
-            {t('取消绑定', 'Unlink')}
-          </Button>
+                {t('取消绑定', 'Unlink')}
+              </Button>
+            )}
+          </>
         )}
       </Sheet>
 
