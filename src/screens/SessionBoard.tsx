@@ -4,6 +4,7 @@ import { useNav } from '@/store/useNav'
 import { matchWinnerBySets } from '@/lib/ranking'
 import {
   Body,
+  BottomBar,
   Button,
   Card,
   EmptyState,
@@ -800,7 +801,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         }
       />
 
-      <Body className="pb-32">
+      <Body>
         {progress.shouldWrapUp && (
           <div className="rounded-card border border-brand-500 bg-brand-100 px-4 py-3.5">
             <p className="font-semibold text-brand-600">{progress.wrapUpReason}</p>
@@ -1114,8 +1115,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         )}
       </Body>
 
-      <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pt-3 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl gap-2">
+      <BottomBar>
+        <div className="flex gap-2">
           <Button
             variant="ghost"
             className="flex-1"
@@ -1131,7 +1132,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             {courts.some((i) => !onCourt.has(i)) ? '排下一场' : '预排下一场'}
           </Button>
         </div>
-      </div>
+      </BottomBar>
 
       {/* 调整某一场 */}
       <Sheet

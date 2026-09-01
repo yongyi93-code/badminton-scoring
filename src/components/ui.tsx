@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
   parts.filter(Boolean).join(' ')
@@ -146,9 +146,50 @@ export function Screen({
   )
 }
 
+/**
+ * 注意：这里的 safe-bottom 会盖掉从 className 传进来的 pb-*。
+ * 两个都是 padding-bottom，同权重，谁在样式表里靠后谁赢 ——
+ * 而 safe-bottom 是自定义 utility，排在 pb-32 这些后面。
+ * 底部有固定操作条的页面别靠传 pb-* 留位置，用下面的 BottomBar。
+ */
 export function Body({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className={cx('safe-bottom space-y-4 px-5 pt-4', className)}>{children}</div>
+  )
+}
+
+/**
+ * 吸在底部的固定操作条。
+ *
+ * 自己量自己有多高，在文档流里放一块同样高的占位 ——
+ * 不这么做，滚到底时最后一行会被压在条底下，点不到。
+ * 写死一个 padding 不行：这条的高度是会变的（开新球局那条在人数不够时
+ * 多一行提示），写死的数字总有一种状态是错的。
+ */
+export function BottomBar({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState(0)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const sync = () => setHeight(el.offsetHeight)
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <>
+      <div aria-hidden style={{ height }} />
+      <div
+        ref={ref}
+        className="safe-bottom border-line bg-surface/95 fixed inset-x-0 bottom-0 z-30 border-t px-5 pt-3 backdrop-blur"
+      >
+        <div className="mx-auto max-w-2xl">{children}</div>
+      </div>
+    </>
   )
 }
 

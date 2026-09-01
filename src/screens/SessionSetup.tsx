@@ -3,6 +3,7 @@ import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Body,
+  BottomBar,
   Button,
   Card,
   Field,
@@ -200,7 +201,7 @@ export function SessionSetup() {
   return (
     <Screen>
       <TopBar title="开新球局" onBack={back} />
-      <Body className="pb-40">
+      <Body>
         <Card className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Field label="日期">
@@ -583,16 +584,14 @@ export function SessionSetup() {
         )}
       </Body>
 
-      <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pt-3 backdrop-blur">
-        <div className="mx-auto max-w-2xl">
-          {genderWarning && (
-            <p className="mb-2 text-center text-xs text-warning-600">{genderWarning}</p>
-          )}
-          <Button variant="primary" size="lg" block disabled={!enough} onClick={start}>
-            {startHint}
-          </Button>
-        </div>
-      </div>
+      <BottomBar>
+        {genderWarning && (
+          <p className="text-warning-600 mb-2 text-center text-caption">{genderWarning}</p>
+        )}
+        <Button variant="primary" size="lg" block disabled={!enough} onClick={start}>
+          {startHint}
+        </Button>
+      </BottomBar>
 
       <PlayerEditor open={addOpen} onClose={() => setAddOpen(false)} player={null} />
     </Screen>
