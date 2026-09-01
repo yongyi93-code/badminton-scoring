@@ -13,6 +13,7 @@ import {
   newAvatar,
   STARTER_IDS,
   outfitValue,
+  outcomeOf,
   retireOldGear,
   SLOT_LABELS,
   PET_LEVELS,
@@ -507,5 +508,86 @@ describe('商店卖的每一件都画得出来', () => {
     for (const i of SHOP_ITEMS.filter((i) => i.slot === 'title')) {
       expect(i.name.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('单场的账（赛后结算页用的）', () => {
+  it('赢的 +10 输的 −10，两边的前后分都对得上', () => {
+    const ms = [match('m1', ['p1'], ['p2'], 'A', 1), match('m2', ['p1'], ['p2'], 'A', 2)]
+    const o = outcomeOf(ms, 'm2')!
+    expect(o.winner).toBe('A')
+    expect(o.upset).toBe(false)
+
+    const win = o.impacts.find((i) => i.playerId === 'p1')!
+    expect(win.won).toBe(true)
+    expect(win.mmrBefore).toBe(WIN_POINTS) // 第一场赢来的
+    expect(win.delta).toBe(WIN_POINTS)
+    expect(win.mmrAfter).toBe(2 * WIN_POINTS)
+    expect(win.coins).toBe(WIN_POINTS)
+
+    const lose = o.impacts.find((i) => i.playerId === 'p2')!
+    expect(lose.won).toBe(false)
+    expect(lose.coins).toBe(0)
+  })
+
+  /*
+   * 这条是这一屏存在的理由之一：MMR 扣到 0 就封底，
+   * 所以已经是 0 分的人再输一场，实际变化是 0，不是 −10。
+   * 结算页显示名义值的话，写着 −10 但分没少，对不上账。
+   */
+  it('已经是 0 分的人再输，delta 是 0 而不是 −10', () => {
+    const ms = [match('m1', ['p1'], ['p2'], 'B', 1), match('m2', ['p1'], ['p2'], 'B', 2)]
+    const first = outcomeOf(ms, 'm1')!.impacts.find((i) => i.playerId === 'p1')!
+    const second = outcomeOf(ms, 'm2')!.impacts.find((i) => i.playerId === 'p1')!
+    expect(first.delta).toBe(0) // 一开始就是 0，第一场输完还是 0
+    expect(second.delta).toBe(0)
+    expect(second.mmrBefore).toBe(0)
+    expect(second.mmrAfter).toBe(0)
+  })
+
+  it('爆冷那一场标出来，赢家 delta 是双倍', () => {
+    const ms = [
+      match('m1', ['p1'], ['p3'], 'A', 1), // p1 先赢一场垫高
+      match('m2', ['p2'], ['p1'], 'A', 2), // p2（0 分）赢 p1（10 分）＝ 爆冷
+    ]
+    const o = outcomeOf(ms, 'm2')!
+    expect(o.upset).toBe(true)
+    const win = o.impacts.find((i) => i.playerId === 'p2')!
+    expect(win.delta).toBe(WIN_POINTS * UPSET_MULTIPLIER)
+    // 金币不跟着翻倍
+    expect(win.coins).toBe(WIN_POINTS)
+  })
+
+  it('每场的增减加起来，正好是总的 MMR —— 两个口径不许对不上', () => {
+    const ms = [
+      match('m1', ['p1', 'p2'], ['p3', 'p4'], 'A', 1),
+      match('m2', ['p1', 'p3'], ['p2', 'p4'], 'B', 2),
+      match('m3', ['p1', 'p4'], ['p2', 'p3'], 'A', 3),
+      match('m4', ['p2', 'p3'], ['p1', 'p4'], 'A', 4),
+    ]
+    const total = progressByPlayer(ms)
+    for (const id of ['p1', 'p2', 'p3', 'p4']) {
+      const summed = ms
+        .map((m) => outcomeOf(ms, m.id))
+        .reduce(
+          (n, o) => n + (o?.impacts.find((i) => i.playerId === id)?.delta ?? 0),
+          0,
+        )
+      expect(summed, `${id} 逐场累加和总分对不上`).toBe(total.get(id)!.mmr)
+    }
+  })
+
+  it('还没打完的、没分出胜负的、友谊赛，都没有账', () => {
+    const queued: Match = { ...match('m1', ['p1'], ['p2'], 'A'), status: 'queued' }
+    expect(outcomeOf([queued], 'm1')).toBeNull()
+
+    const drawn: Match = {
+      ...match('m2', ['p1'], ['p2'], 'A'),
+      games: [{ a: 21, b: 21, points: null, serveInit: null }],
+    }
+    expect(outcomeOf([drawn], 'm2')).toBeNull()
+
+    const friendly: Match = { ...match('m3', ['p1'], ['p2'], 'A'), friendly: true }
+    expect(outcomeOf([friendly], 'm3')).toBeNull()
   })
 })

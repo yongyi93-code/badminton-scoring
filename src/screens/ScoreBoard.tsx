@@ -237,6 +237,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const players = useApp((s) => s.players)
   const updateMatch = useApp((s) => s.updateMatch)
   const back = useNav((s) => s.back)
+  const replace = useNav((s) => s.replace)
 
   const [directOpen, setDirectOpen] = useState(false)
   const [directA, setDirectA] = useState('')
@@ -410,7 +411,12 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const finishMatch = () => {
     updateMatch(match.id, { status: 'done', endedAt: Date.now() })
     autoArrangeNext()
-    back()
+    /*
+     * 打完先看一眼这一场值多少分，再回看板。
+     * 用 replace 不用 push —— 记分屏已经翻篇了，
+     * 从结算页按返回该回到看板，而不是回到一场打完的比赛。
+     */
+    replace({ name: 'result', matchId: match.id })
   }
 
   const startNextGame = () => {
@@ -615,9 +621,10 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
 
               {winner ? (
                 <Button variant="primary" size="lg" block onClick={() => setConfirmEnd(true)}>
+                  {/* 结束之后先去赛后结算页，别再写「回到看板」 */}
                   {kingNext?.pairing || formatOf(session) === 'rotation'
                     ? t('结束比赛，排下一场', 'Finish and set up the next')
-                    : t('结束比赛，回到看板', 'Finish and go back')}
+                    : t('结束比赛', 'Finish the match')}
                 </Button>
               ) : (
                 <Button variant="primary" size="lg" block onClick={startNextGame}>
