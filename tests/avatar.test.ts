@@ -14,6 +14,7 @@ import {
   STARTER_IDS,
   outfitValue,
   outcomeOf,
+  mmrTimeline,
   retireOldGear,
   SLOT_LABELS,
   PET_LEVELS,
@@ -589,5 +590,59 @@ describe('单场的账（赛后结算页用的）', () => {
 
     const friendly: Match = { ...match('m3', ['p1'], ['p2'], 'A'), friendly: true }
     expect(outcomeOf([friendly], 'm3')).toBeNull()
+  })
+})
+
+describe('MMR 走势', () => {
+  it('第一项是起点，之后每场一个点', () => {
+    const ms = [
+      match('m1', ['p1'], ['p2'], 'A', 1),
+      match('m2', ['p1'], ['p2'], 'B', 2),
+      match('m3', ['p1'], ['p2'], 'A', 3),
+    ]
+    const line = mmrTimeline(ms, 'p1')
+    // 3 场 + 1 个起点
+    expect(line).toHaveLength(4)
+    expect(line[0]).toMatchObject({ mmr: 0, delta: 0, matchId: '' })
+    // 第三场 p1(0 分) 赢 p2(10 分) 是爆冷，所以是 +20 不是 +10
+    expect(line.map((p) => p.mmr)).toEqual([0, 10, 0, 20])
+    expect(line.map((p) => p.delta)).toEqual([0, 10, -10, 20])
+  })
+
+  it('只算自己打过的场，别人的场不进这条线', () => {
+    const ms = [
+      match('m1', ['p1'], ['p2'], 'A', 1),
+      match('m2', ['p3'], ['p4'], 'A', 2), // 与 p1 无关
+      match('m3', ['p1'], ['p2'], 'A', 3),
+    ]
+    const line = mmrTimeline(ms, 'p1')
+    expect(line.map((p) => p.matchId)).toEqual(['', 'm1', 'm3'])
+  })
+
+  it('走势最后一格必然等于总 MMR', () => {
+    const ms = [
+      match('m1', ['p1', 'p2'], ['p3', 'p4'], 'A', 1),
+      match('m2', ['p1', 'p3'], ['p2', 'p4'], 'B', 2),
+      match('m3', ['p1', 'p4'], ['p2', 'p3'], 'A', 3),
+    ]
+    for (const id of ['p1', 'p2', 'p3', 'p4']) {
+      const line = mmrTimeline(ms, id)
+      expect(line[line.length - 1].mmr, `${id} 走势末端和总分对不上`).toBe(
+        progressOf(id, ms).mmr,
+      )
+    }
+  })
+
+  it('没打过球的人拿到空数组，画不出线也不会炸', () => {
+    expect(mmrTimeline([], 'p1')).toEqual([])
+    expect(mmrTimeline([match('m1', ['p2'], ['p3'], 'A', 1)], 'p1')).toEqual([])
+  })
+
+  it('时间顺序按打完的时刻，不按数组顺序', () => {
+    const ms = [
+      match('m2', ['p1'], ['p2'], 'B', 20),
+      match('m1', ['p1'], ['p2'], 'A', 10),
+    ]
+    expect(mmrTimeline(ms, 'p1').map((p) => p.matchId)).toEqual(['', 'm1', 'm2'])
   })
 })

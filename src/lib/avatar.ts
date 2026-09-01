@@ -514,6 +514,41 @@ export const outcomeOf = (
   matchId: string,
 ): MatchOutcome | null => replayMatches(matches).outcomes.get(matchId) ?? null
 
+/** MMR 走势上的一个点 */
+export type MmrPoint = {
+  /** 这一场打完的时间；起点那一项跟第一场同时 */
+  at: number
+  /** 起点那一项没有对应的比赛，是空串 */
+  matchId: string
+  mmr: number
+  /** 这一场的增减，起点是 0 */
+  delta: number
+}
+
+/**
+ * 某个人的 MMR 走势，按时间顺序，第一项是他打第一场之前的起点。
+ *
+ * 横轴故意用「第几场」而不是日期：羽球是一晚上打六场、然后隔一周再打，
+ * 按日期铺开的话所有起伏都挤成几根竖线，中间全是空白。
+ * 而且大家自己也是按场数记的（「我最近十场」），不是按天。
+ */
+export function mmrTimeline(matches: Match[], playerId: string): MmrPoint[] {
+  const { outcomes } = replayMatches(matches)
+  const endedAt = new Map(matches.map((m) => [m.id, m.endedAt ?? m.startedAt ?? 0]))
+  const out: MmrPoint[] = []
+  // outcomes 是重放时按时间顺序塞进去的，Map 保持插入顺序
+  for (const [id, o] of outcomes) {
+    const mine = o.impacts.find((i) => i.playerId === playerId)
+    if (!mine) continue
+    const at = endedAt.get(id) ?? 0
+    if (out.length === 0) {
+      out.push({ at, matchId: '', mmr: mine.mmrBefore, delta: 0 })
+    }
+    out.push({ at, matchId: id, mmr: mine.mmrAfter, delta: mine.delta })
+  }
+  return out
+}
+
 export const progressOf = (playerId: string, matches: Match[]): Progress =>
   progressByPlayer(matches).get(playerId) ?? emptyProgress()
 
