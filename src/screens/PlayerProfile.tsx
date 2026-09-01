@@ -28,6 +28,7 @@ import { AvatarView } from '@/components/Avatar'
 import { stageOf } from '@/lib/avatarArt'
 import { RankChip } from '@/components/RankMedal'
 import { balanceOf, progressOf, WIN_POINTS } from '@/lib/avatar'
+import { useT } from '@/lib/i18n'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -40,6 +41,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 export function PlayerProfile({ playerId }: { playerId: string }) {
+  const t = useT()
   const { players, sessions, matches, avatars } = useApp()
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
@@ -65,15 +67,15 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
 
   const venueOf = (sessionId: string) => {
     const s = sessions.find((x) => x.id === sessionId)
-    return s ? `${s.venue || '球局'} · ${formatDate(s.date)}` : ''
+    return s ? `${s.venue || t('球局', 'Session')} · ${formatDate(s.date)}` : ''
   }
 
   if (!player) {
     return (
       <Screen>
-        <TopBar title="球员不存在" onBack={back} />
+        <TopBar title={t('球员不存在', 'Player not found')} onBack={back} />
         <Body>
-          <EmptyState title="找不到这个球员" />
+          <EmptyState title={t('找不到这个球员', 'No such player')} />
         </Body>
       </Screen>
     )
@@ -132,15 +134,18 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <RankChip level={level} />
                   <span className="tnum text-sm text-ink-500">
-                    MMR {avatarProgress.mmr} · 金币{' '}
+                    MMR {avatarProgress.mmr} · {t('金币', 'Coins')}{' '}
                     {balanceOf(avatar, avatarProgress.coins)}
                   </span>
                 </div>
               ) : (
                 <>
-                  <p className="text-lg font-semibold">还没有角色</p>
+                  <p className="text-lg font-semibold">{t('还没有角色', 'No character yet')}</p>
                   <p className="text-sm text-ink-500">
-                    选个角色，赢一场得 {WIN_POINTS} 金币买装备
+                    {t(
+                    `选个角色，赢一场得 ${WIN_POINTS} 金币买装备`,
+                    `Pick a character — every win earns ${WIN_POINTS} coins for gear`,
+                  )}
                   </p>
                 </>
               )}
@@ -150,59 +155,73 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
         </Card>
 
         {stats.games === 0 ? (
-          <EmptyState icon="🏸" title="还没有比赛记录" hint="打完一场就会出现在这里" />
+          <EmptyState
+            icon="🏸"
+            title={t('还没有比赛记录', 'No matches yet')}
+            hint={t('打完一场就会出现在这里', 'Play one and it shows up here')}
+          />
         ) : (
           <>
             <div className="grid grid-cols-2 gap-2">
-              <Stat label="总场数" value={String(stats.games)} hint={`${stats.wins}胜 ${stats.losses}负`} />
-              <Stat label="胜率" value={percent(stats.winRate)} />
               <Stat
-                label="净分差"
+            label={t('总场数', 'Matches')}
+            value={String(stats.games)}
+            hint={t(`${stats.wins}胜 ${stats.losses}负`, `${stats.wins}W ${stats.losses}L`)}
+          />
+              <Stat label={t('胜率', 'Win rate')} value={percent(stats.winRate)} />
+              <Stat
+                label={t('净分差', 'Point diff')}
                 value={signed(stats.diff)}
-                hint={`得 ${stats.pointsFor} · 失 ${stats.pointsAgainst}`}
+                hint={t(`得 ${stats.pointsFor} · 失 ${stats.pointsAgainst}`, `for ${stats.pointsFor} · against ${stats.pointsAgainst}`)}
               />
-              <Stat label="最长连胜" value={`${best} 场`} />
+              <Stat label={t('最长连胜', 'Best streak')} value={t(`${best} 场`, `${best} wins`)} />
             </div>
 
-            <SectionTitle>搭档与对手</SectionTitle>
+            <SectionTitle>{t('搭档与对手', 'Partners and rivals')}</SectionTitle>
             <div className="space-y-2">
               <Card>
-                <p className="text-xs text-ink-500">最佳搭档</p>
+                <p className="text-xs text-ink-500">{t('最佳搭档', 'Best partner')}</p>
                 {partner ? (
                   <>
                     <p className="mt-1 text-lg font-semibold">
-                      {names.get(partner.partnerId)?.name ?? '已删除的球员'}
+                      {names.get(partner.partnerId)?.name ?? t('已删除的球员', 'Deleted player')}
                     </p>
                     <p className="tnum text-sm text-ink-500">
-                      同队 {partner.games} 场，赢 {partner.wins} 场（
+                      {t(
+                  `同队 ${partner.games} 场，赢 ${partner.wins} 场（`,
+                  `${partner.games} together, ${partner.wins} won (`,
+                )}
                       {percent(partner.winRate)}）
                     </p>
                   </>
                 ) : (
                   <p className="mt-1 text-sm text-ink-500">
-                    还没有和同一个人搭档满 3 场
+                    {t('还没有和同一个人搭档满 3 场', 'No partner has reached 3 matches with you yet')}
                   </p>
                 )}
               </Card>
 
               <Card>
-                <p className="text-xs text-ink-500">苦主</p>
+                <p className="text-xs text-ink-500">{t('苦主', 'Nemesis')}</p>
                 {foe ? (
                   <>
                     <p className="mt-1 text-lg font-semibold">
-                      {names.get(foe.opponentId)?.name ?? '已删除的球员'}
+                      {names.get(foe.opponentId)?.name ?? t('已删除的球员', 'Deleted player')}
                     </p>
                     <p className="tnum text-sm text-ink-500">
-                      交手 {foe.games} 场，输了 {foe.losses} 场
+                      {t(
+                  `交手 ${foe.games} 场，输了 ${foe.losses} 场`,
+                  `${foe.games} meetings, ${foe.losses} lost`,
+                )}
                     </p>
                   </>
                 ) : (
-                  <p className="mt-1 text-sm text-ink-500">还没输过球，暂无苦主</p>
+                  <p className="mt-1 text-sm text-ink-500">{t('还没输过球，暂无苦主', 'Unbeaten so far — no nemesis')}</p>
                 )}
               </Card>
             </div>
 
-            <SectionTitle>最近比赛</SectionTitle>
+            <SectionTitle>{t('最近比赛', 'Recent matches')}</SectionTitle>
             <div className="space-y-2">
               {chronological(mine)
                 .reverse()
@@ -221,10 +240,11 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                           <p className="text-sm">
                             {mates.length > 0 && (
                               <span className="text-ink-500">
-                                搭 {mates.map((id) => names.get(id)?.name).join('/')}{' '}
+                                {t('搭 ', 'with ')}
+                  {mates.map((id) => names.get(id)?.name).join('/')}{' '}
                               </span>
                             )}
-                            <span className="text-ink-500">对 </span>
+                            <span className="text-ink-500">{t('对 ', 'vs ')}</span>
                             <span>{foes.map((id) => names.get(id)?.name).join('/')}</span>
                           </p>
                           <p className="mt-0.5 truncate text-xs text-ink-500">
@@ -238,7 +258,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                               won ? 'text-brand-600' : 'text-ink-500',
                             )}
                           >
-                            {won ? '胜' : '负'}
+                            {won ? t('胜', 'W') : t('负', 'L')}
                           </span>
                           <p className="tnum text-xs text-ink-500">
                             {side === 'A'
@@ -260,7 +280,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
           onClick={() => push({ name: 'leaderboard' })}
           className="w-full py-4 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
         >
-          看累计排行榜
+          {t('看累计排行榜', 'Open leaderboard')}
         </button>
       </Body>
     </Screen>

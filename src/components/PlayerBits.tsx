@@ -6,6 +6,7 @@ import { stageOf } from '@/lib/avatarArt'
 import { useProgress } from '@/store/progress'
 import { RankChip } from './RankMedal'
 import { cx } from './ui'
+import { pick } from '@/lib/i18n'
 
 const isCJK = (s: string) => /[㐀-鿿]/.test(s)
 
@@ -123,7 +124,7 @@ export function TitleTag({ avatar }: { avatar?: AvatarProfile }) {
 
 export function LevelDots({ level }: { level: Level }) {
   return (
-    <span className="inline-flex items-center gap-0.5" title={`水平 ${level} 星`}>
+    <span className="inline-flex items-center gap-0.5" title={pick(`水平 ${level} 星`, `Level ${level}`)}>
       {[1, 2, 3, 4, 5].map((i) => (
         <span
           key={i}
@@ -146,7 +147,7 @@ export function GenderTag({ gender }: { gender: Gender }) {
         gender === 'M' ? 'text-male' : 'text-female',
       )}
     >
-      {gender === 'M' ? '男' : '女'}
+      {gender === 'M' ? pick('男', 'M') : pick('女', 'F')}
     </span>
   )
 }

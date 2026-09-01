@@ -128,10 +128,10 @@ export function computeStats(
 
 export type Period = 'all' | 'month' | 'quarter'
 
-export const PERIOD_LABELS: Record<Period, string> = {
-  all: '总榜',
-  month: '本月',
-  quarter: '本季',
+export const PERIOD_LABELS: Record<Period, [string, string]> = {
+  all: ['总榜', 'All time'],
+  month: ['本月', 'This month'],
+  quarter: ['本季', 'This quarter'],
 }
 
 /**
