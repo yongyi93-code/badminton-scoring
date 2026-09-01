@@ -40,6 +40,24 @@ export function buildStamp(): string {
  * 而且删缓存本来也没必要：注销之后就没人读那些缓存了，
  * 新装上的 Service Worker 会自己建一套新的。
  */
+/**
+ * 把「检查更新」留在地址栏上的 ?_v=… 抹掉。
+ *
+ * 它的作用只是那一次重载时绕过缓存，之后就是个多余的尾巴 ——
+ * 留着的话，任何会去解析 URL 的东西（比如 supabase 找登录令牌）
+ * 都可能被它绊一下。用 replaceState 换掉，不产生新的历史记录。
+ */
+export function clearUpdateMarker(): void {
+  try {
+    const url = new URL(location.href)
+    if (!url.searchParams.has('_v')) return
+    url.searchParams.delete('_v')
+    history.replaceState(history.state, '', url.toString())
+  } catch {
+    /* 抹不掉也不影响用，忽略 */
+  }
+}
+
 export async function forceUpdate(): Promise<void> {
   try {
     if ('serviceWorker' in navigator) {
