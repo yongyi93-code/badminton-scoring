@@ -25,8 +25,18 @@ export const supabase: SupabaseClient | null =
         auth: {
           persistSession: true,
           autoRefreshToken: true,
-          // 邮件链接点回来时，token 在 URL 里，交给客户端自己捞
-          detectSessionInUrl: true,
+          /*
+           * 关掉。
+           *
+           * 这个开关让 supabase 在启动时去 URL 里找登录令牌 —— 那是给
+           * 邮件魔术链接和 OAuth 回调用的。我们用的是邮箱 + 密码，
+           * URL 里永远不会有令牌，所以它只可能帮倒忙：
+           *
+           * 「检查更新」重载时会往地址上加一个 ?_v=… 绕过缓存，
+           * 它把那个当成一次没认出来的登录回调，顺手就把存着的会话清了 ——
+           * 表现就是点完更新发现自己被登出了。
+           */
+          detectSessionInUrl: false,
         },
       })
     : null

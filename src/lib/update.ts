@@ -24,26 +24,55 @@ export function buildStamp(): string {
 }
 
 /**
- * 把 Service Worker 连同它的缓存全部清掉再重载，下次进来必定拉最新的。
+ * 注销 Service Worker 再重载，下次进来必定拉最新的。
  *
- * 只动 Service Worker 和 Cache Storage，绝对不碰 localStorage ——
- * 球员、球局、比赛、宠物全存在那里，清掉就等于把大家的战绩删了。
+ * 只动 Service Worker，绝对不碰 localStorage ——
+ * 球员、球局、比赛、角色全存在那里，清掉就等于把大家的战绩删了。
+ *
+ * 为什么不再顺手清 Cache Storage：
+ *
+ * 注销之前，当前这个页面仍然被旧的 Service Worker 接管着（注销要等
+ * 页面卸载才真正生效）。在那个窗口里把它的缓存删掉，等于让一个还在
+ * 干活的 Service Worker 突然找不到自己预缓存的东西 —— 它接下来怎么
+ * 响应资源请求就说不准了，各家浏览器还不一样。曾经有人点完更新
+ * 拿到一个没有样式的白板页面。
+ *
+ * 而且删缓存本来也没必要：注销之后就没人读那些缓存了，
+ * 新装上的 Service Worker 会自己建一套新的。
  */
+/**
+ * 把「检查更新」留在地址栏上的 ?_v=… 抹掉。
+ *
+ * 它的作用只是那一次重载时绕过缓存，之后就是个多余的尾巴 ——
+ * 留着的话，任何会去解析 URL 的东西（比如 supabase 找登录令牌）
+ * 都可能被它绊一下。用 replaceState 换掉，不产生新的历史记录。
+ */
+export function clearUpdateMarker(): void {
+  try {
+    const url = new URL(location.href)
+    if (!url.searchParams.has('_v')) return
+    url.searchParams.delete('_v')
+    history.replaceState(history.state, '', url.toString())
+  } catch {
+    /* 抹不掉也不影响用，忽略 */
+  }
+}
+
 export async function forceUpdate(): Promise<void> {
   try {
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations()
       await Promise.all(regs.map((r) => r.unregister()))
     }
-    if ('caches' in window) {
-      const keys = await caches.keys()
-      await Promise.all(keys.map((k) => caches.delete(k)))
-    }
   } catch {
-    // 清不掉也没关系，下面照样重载，最差就是还得再点一次
+    // 注销不掉也没关系，下面照样重载，最差就是还得再点一次
   }
-  // 带上时间戳，绕开浏览器自己那层 HTTP 缓存
+  /*
+   * 带上时间戳绕开浏览器那层 HTTP 缓存。
+   * 用 assign 不用 replace：万一新版本有问题，用户还能靠返回键
+   * 退回上一个能用的页面，不至于卡在原地。
+   */
   const url = new URL(location.href)
   url.searchParams.set('_v', String(Date.now()))
-  location.replace(url.toString())
+  location.assign(url.toString())
 }
