@@ -48,6 +48,22 @@ export function isGamePoint(
   return null
 }
 
+/**
+ * 平分时该提醒什么。没什么可说的就返回 null。
+ *
+ * 20 平之后规则会变（要净胜 2 分），29 平之后又变一次（下一分直接定胜负）——
+ * 这两处是场上最容易吵起来的地方，与其让人去记，不如比分到了就写在屏幕上。
+ * 不打净胜 2 分的球局没有这回事，直接返回 null。
+ */
+export function deuceNote(a: number, b: number, rules: Rules): string | null {
+  if (!rules.winBy2) return null
+  if (a !== b) return null
+  const cap = effectiveCap(rules)
+  if (a === cap - 1) return '下一分决胜'
+  if (a >= rules.pointsToWin - 1) return `${a} 平 · 要领先 2 分才算赢`
+  return null
+}
+
 /* ------------------------------------------------------------------ *
  * 整场的胜负判定（一局定胜负 / 三局两胜）
  * ------------------------------------------------------------------ */
@@ -172,6 +188,39 @@ export function deriveServe(match: Match, gameIndex: number): ServeState | null 
     serveCourt,
     positions,
   }
+}
+
+/**
+ * 改开局的发球人（双打还能一起改开局接发人），返回新的 serveInit。
+ *
+ * 改的是「开局设定」而不是「从现在起换人发」—— 后者会让前面已经记下的
+ * 每一分和站位对不上。改完 deriveServe 会拿着同一份逐分记录整局重推，
+ * 比分一分不动，站位和发球人全部跟着改正。
+ *
+ * 开局是 0:0，偶数分从右区发，所以「开局发球人」就等于发球方站右区的那个，
+ * 「开局接发人」就等于接发方站右区的那个 —— 两个选择正好落在 rightA / rightB 上。
+ */
+export function withOpeningServe(
+  match: Match,
+  init: ServeInit,
+  serverId: string,
+  receiverId?: string,
+): ServeInit {
+  const servingTeam: TeamSide = match.teamA.includes(serverId) ? 'A' : 'B'
+  const next: ServeInit = { ...init, servingTeam }
+
+  if (servingTeam === 'A') next.rightA = serverId
+  else next.rightB = serverId
+
+  // 接发人得真是对面的人，随手传个自己人不该把站位搅乱
+  if (receiverId) {
+    const foes = servingTeam === 'A' ? match.teamB : match.teamA
+    if (foes.includes(receiverId)) {
+      if (servingTeam === 'A') next.rightB = receiverId
+      else next.rightA = receiverId
+    }
+  }
+  return next
 }
 
 /* ------------------------------------------------------------------ *

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pickNextMatch, playerLoads } from '@/lib/rotation'
+import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
 import type {
   Gender,
   Level,
@@ -484,5 +484,53 @@ describe('友谊赛：两个俱乐部对打', () => {
     })
     expect(pairing).toBeNull()
     expect(reason).toContain('客队 1 人')
+  })
+})
+
+describe('配对理由', () => {
+  const load = (playerId: string, restRounds: number) => [
+    playerId,
+    { playerId, games: 0, restRounds, lastSeq: 0 },
+  ] as const
+  const name = (id: string) => ({ a: '阿伟', b: '小林', c: 'Yy', d: 'Kelly' })[id] ?? id
+
+  it('先说两队差多少 MMR，再说谁歇得最久', () => {
+    const mmr = (id: string) => ({ a: 100, b: 60, c: 50, d: 50 })[id] ?? 0
+    const loads = new Map([load('a', 0), load('b', 1), load('c', 3), load('d', 0)])
+    expect(pairingNotes(['a', 'b'], ['c', 'd'], mmr, loads, name)).toEqual([
+      '两队平均 MMR 差 30',
+      'Yy 已经歇了 3 轮',
+    ])
+  })
+
+  it('两边一样重时说「一样」，不说「差 0」', () => {
+    const mmr = () => 50
+    const loads = new Map([load('a', 0), load('b', 0), load('c', 0), load('d', 0)])
+    expect(pairingNotes(['a', 'b'], ['c', 'd'], mmr, loads, name)).toEqual([
+      '两队平均 MMR 一样',
+    ])
+  })
+
+  it('没人歇过就只有一条，不硬凑第二条', () => {
+    const mmr = (id: string) => (id === 'a' ? 80 : 40)
+    const loads = new Map([load('a', 0), load('b', 0), load('c', 0), load('d', 0)])
+    expect(pairingNotes(['a', 'b'], ['c', 'd'], mmr, loads, name)).toEqual([
+      '两队平均 MMR 差 20',
+    ])
+  })
+
+  it('最多两条 —— 再多就没人读了', () => {
+    const mmr = (id: string) => (id === 'a' ? 90 : 10)
+    const loads = new Map([load('a', 5), load('b', 4), load('c', 3), load('d', 2)])
+    expect(pairingNotes(['a', 'b'], ['c', 'd'], mmr, loads, name)).toHaveLength(2)
+  })
+
+  it('单打也算得出来', () => {
+    const mmr = (id: string) => (id === 'a' ? 70 : 30)
+    const loads = new Map([load('a', 0), load('c', 2)])
+    expect(pairingNotes(['a'], ['c'], mmr, loads, name)).toEqual([
+      '两队平均 MMR 差 40',
+      'Yy 已经歇了 2 轮',
+    ])
   })
 })

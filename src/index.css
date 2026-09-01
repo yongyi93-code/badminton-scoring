@@ -1,41 +1,202 @@
 @import 'tailwindcss';
 
+/* ------------------------------------------------------------------ *
+ * 主题变量
+ *
+ * 组件里一律只写语义名（surface / line / ink-700 / brand-600 …），
+ * 不出现十六进制，也不出现「现在是亮还是暗」的判断。
+ * 换肤 = 换下面这一组值，别的地方一个字都不用改。
+ * ------------------------------------------------------------------ */
+
+:root {
+  /* 品牌青 —— 只用来表示「主操作、焦点、进行中」，不铺满屏幕 */
+  --t-brand-700: #07817d;
+  --t-brand-600: #0a9f9a;
+  --t-brand-500: #16b8b2;
+  --t-brand-100: #ddf8f5;
+  --t-brand-50: #f1fcfb;
+
+  /* 文字。900 最重（标题/数字），300 最轻（禁用） */
+  --t-ink-900: #102a35;
+  --t-ink-700: #33505a;
+  --t-ink-500: #69808a;
+  --t-ink-300: #b8c7cc;
+
+  --t-canvas: #f6fafa; /* 页面底 */
+  --t-surface: #ffffff; /* 卡片、弹层 */
+  --t-fill: #eff5f5; /* 输入框、分段轨道、次要按钮 */
+  --t-fill-strong: #e4eded; /* 次要按钮按下、禁用底 */
+  --t-line: #e1ecec;
+
+  --t-success-600: #168a61;
+  --t-success-50: #e9f8f1;
+  --t-warning-600: #b96e10;
+  --t-warning-50: #fff5e5;
+  --t-danger-600: #c43e4b;
+  --t-danger-50: #fff0f2;
+
+  /*
+   * 实心按钮的底 + 配套的字色，必须成对。
+   * brand-600 / danger-600 是给「文字和描边」用的，深色下它们会被提亮，
+   * 拿去当实心底再压白字就只剩 2:1 —— 所以实心按钮走这四个。
+   */
+  --t-brand-solid: #0a9f9a;
+  --t-brand-solid-press: #07817d;
+  --t-on-brand: #ffffff;
+  --t-danger-solid: #c43e4b;
+  --t-on-danger: #ffffff;
+
+  --t-team-a: #1189c9;
+  --t-team-b: #ef7b45;
+  --t-male: #1670a8;
+  --t-female: #c04a80;
+
+  --t-scrim: rgb(16 42 53 / 0.45);
+  --t-shadow-card: 0 6px 20px rgb(16 42 53 / 0.06);
+  --t-shadow-pop: 0 12px 32px rgb(16 42 53 / 0.14);
+}
+
+/*
+ * 深色不是把浅色反过来 —— 底不用纯黑，品牌色要提亮，
+ * 否则青色压在深底上对比度掉到 3:1 以下。
+ */
+:root[data-theme='dark'] {
+  --t-brand-700: #7ee9e2;
+  --t-brand-600: #4ddbd3;
+  --t-brand-500: #35c8c0;
+  --t-brand-100: #17434a;
+  --t-brand-50: #10333b;
+
+  --t-ink-900: #ecf7f7;
+  --t-ink-700: #b7cbd2;
+  --t-ink-500: #8ba3ac;
+  --t-ink-300: #54707b;
+
+  --t-canvas: #0d1d24;
+  --t-surface: #132933;
+  --t-fill: #1b3742;
+  --t-fill-strong: #24434f;
+  --t-line: #28424b;
+
+  --t-success-600: #4fcc97;
+  --t-success-50: #123729;
+  --t-warning-600: #eaa551;
+  --t-warning-50: #3a2a12;
+  --t-danger-600: #f4909a;
+  --t-danger-50: #3b1a20;
+
+  /* 深色下实心底提亮，字反过来压深色 —— 白字压亮青只有 2:1，读不了 */
+  --t-brand-solid: #35c8c0;
+  --t-brand-solid-press: #4ddbd3;
+  --t-on-brand: #05262a;
+  --t-danger-solid: #e4707d;
+  --t-on-danger: #3b1219;
+
+  --t-team-a: #58b8ec;
+  --t-team-b: #ff9f6b;
+  --t-male: #6ab8e8;
+  --t-female: #f08bb8;
+
+  --t-scrim: rgb(3 10 14 / 0.62);
+  --t-shadow-card: 0 6px 20px rgb(0 0 0 / 0.32);
+  --t-shadow-pop: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+
+/*
+ * inline 让工具类直接引用上面的 --t-*，而不是复制一份值。
+ * 少了这个 inline，深色那组就换不动。
+ */
+@theme inline {
+  --color-brand-700: var(--t-brand-700);
+  --color-brand-600: var(--t-brand-600);
+  --color-brand-500: var(--t-brand-500);
+  --color-brand-100: var(--t-brand-100);
+  --color-brand-50: var(--t-brand-50);
+
+  --color-ink-900: var(--t-ink-900);
+  --color-ink-700: var(--t-ink-700);
+  --color-ink-500: var(--t-ink-500);
+  --color-ink-300: var(--t-ink-300);
+
+  --color-canvas: var(--t-canvas);
+  --color-surface: var(--t-surface);
+  --color-fill: var(--t-fill);
+  --color-fill-strong: var(--t-fill-strong);
+  --color-line: var(--t-line);
+  --color-scrim: var(--t-scrim);
+
+  --color-success-600: var(--t-success-600);
+  --color-success-50: var(--t-success-50);
+  --color-warning-600: var(--t-warning-600);
+  --color-warning-50: var(--t-warning-50);
+  --color-danger-600: var(--t-danger-600);
+  --color-danger-50: var(--t-danger-50);
+
+  --color-brand-solid: var(--t-brand-solid);
+  --color-brand-solid-press: var(--t-brand-solid-press);
+  --color-on-brand: var(--t-on-brand);
+  --color-danger-solid: var(--t-danger-solid);
+  --color-on-danger: var(--t-on-danger);
+
+  --color-team-a: var(--t-team-a);
+  --color-team-b: var(--t-team-b);
+  --color-male: var(--t-male);
+  --color-female: var(--t-female);
+
+  --shadow-card: var(--t-shadow-card);
+  --shadow-pop: var(--t-shadow-pop);
+}
+
 @theme {
-  /* 深色球馆配色：深海军蓝底 + 羽球荧光绿点睛 */
-  --color-ink-950: #070d18;
-  --color-ink-900: #0b1220;
-  --color-ink-850: #101a2b;
-  --color-ink-800: #16223a;
-  --color-ink-700: #1f2d4a;
-  --color-ink-600: #2c3d61;
-  --color-ink-400: #6b7ea3;
-  --color-ink-300: #96a6c4;
-  --color-ink-100: #e6ecf7;
-
-  --color-lime-glow: #c9f94a;
-  --color-lime-deep: #8fbe17;
-
-  --color-teamA: #38bdf8;
-  --color-teamB: #fb923c;
-
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', 'Noto Sans SC', sans-serif;
 
-  --radius-card: 1rem;
+  /* 规格里的七级字阶。写 text-title 之类，别再各自拍脑袋定字号 */
+  --text-display: 2.5rem;
+  --text-display--line-height: 3rem;
+  --text-display--font-weight: 700;
+  --text-h1: 1.75rem;
+  --text-h1--line-height: 2.25rem;
+  --text-h1--font-weight: 700;
+  --text-h2: 1.375rem;
+  --text-h2--line-height: 1.875rem;
+  --text-h2--font-weight: 700;
+  --text-title: 1.0625rem;
+  --text-title--line-height: 1.5rem;
+  --text-title--font-weight: 600;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.375rem;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.125rem;
+  --text-label--font-weight: 500;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-caption--font-weight: 500;
+
+  --radius-card: 1rem; /* 卡片 16 */
+  --radius-btn: 0.875rem; /* 按钮 14 */
 }
 
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+    /* 让原生控件（滚动条、日期选择器）跟着走 */
+    color-scheme: light;
+  }
+
+  html[data-theme='dark'] {
+    color-scheme: dark;
   }
 
   body {
     margin: 0;
-    background-color: var(--color-ink-900);
-    color: var(--color-ink-100);
+    background-color: var(--color-canvas);
+    color: var(--color-ink-900);
     font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
     overscroll-behavior-y: contain;
   }
 
@@ -58,4 +219,9 @@
 
 @utility safe-top {
   padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+/* 底部导航占位：页面内容不要被那条 72pt 的栏压住 */
+@utility pad-nav {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
 }

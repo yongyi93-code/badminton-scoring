@@ -37,12 +37,12 @@ export function RankRow({
       className={cx(
         'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left',
         highlight
-          ? 'border-lime-glow/50 bg-lime-glow/10'
-          : 'border-ink-700/70 bg-ink-850 active:bg-ink-800',
+          ? 'border-brand-500 bg-brand-100'
+          : 'border-line bg-surface active:bg-fill',
         !stats.qualified && 'opacity-70',
       )}
     >
-      <span className="tnum w-7 shrink-0 text-center text-sm font-semibold text-ink-400">
+      <span className="tnum w-7 shrink-0 text-center text-sm font-semibold text-ink-500">
         {rank === 0 ? '–' : (medal(rank) ?? rank)}
       </span>
       <Avatar name={player?.name ?? '?'} avatar={avatar} />
@@ -57,7 +57,7 @@ export function RankRow({
           <span className="truncate font-medium">{player?.name ?? '已删除的球员'}</span>
           <TitleTag avatar={avatar} />
           {streak && (
-            <Pill tone={stats.streak > 0 ? 'lime' : 'neutral'}>{streak}</Pill>
+            <Pill tone={stats.streak > 0 ? 'success' : 'danger'}>{streak}</Pill>
           )}
         </span>
         {level && (
@@ -67,18 +67,18 @@ export function RankRow({
               {level.star !== null && ` ${level.star}★`}
             </span>
             {mmr !== undefined && (
-              <span className="tnum text-ink-400">MMR {mmr}</span>
+              <span className="tnum text-ink-500">MMR {mmr}</span>
             )}
           </span>
         )}
-        <span className="tnum mt-0.5 block text-xs text-ink-400">
+        <span className="tnum mt-0.5 block text-xs text-ink-500">
           {stats.wins}胜{stats.losses}负 · 净分 {signed(stats.diff)}
           {!stats.qualified && ' · 场次不足'}
         </span>
       </span>
       <span className="tnum shrink-0 text-right">
         <span className="block text-lg font-bold">{percent(stats.winRate)}</span>
-        <span className="block text-xs text-ink-400">{stats.games} 场</span>
+        <span className="block text-xs text-ink-500">{stats.games} 场</span>
       </span>
     </button>
   )
@@ -122,7 +122,7 @@ export function RankTable({
 
       {rest.length > 0 && (
         <>
-          <p className="pt-2 text-xs text-ink-400">
+          <p className="pt-2 text-xs text-ink-500">
             以下球员不足 {minGames} 场，不参与排名
           </p>
           {rest.map((s) => (

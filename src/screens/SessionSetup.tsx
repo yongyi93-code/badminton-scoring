@@ -3,6 +3,7 @@ import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Body,
+  BottomBar,
   Button,
   Card,
   Field,
@@ -200,7 +201,7 @@ export function SessionSetup() {
   return (
     <Screen>
       <TopBar title="开新球局" onBack={back} />
-      <Body className="pb-40">
+      <Body>
         <Card className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Field label="日期">
@@ -234,8 +235,8 @@ export function SessionSetup() {
                     onClick={() => setVenue(v)}
                     className={
                       venueKey(venue) === venueKey(v)
-                        ? "rounded-full border border-lime-glow bg-lime-glow/15 px-3 py-1.5 text-xs text-lime-glow"
-                        : "rounded-full border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-ink-300 active:bg-ink-800"
+                        ? "rounded-full border border-brand-600 bg-brand-100 px-3 py-1.5 text-xs text-brand-600"
+                        : "rounded-full border border-line bg-surface px-3 py-1.5 text-xs text-ink-700 active:bg-fill"
                     }
                   >
                     {v}
@@ -287,13 +288,13 @@ export function SessionSetup() {
 
           <button
             onClick={() => setShowRules((v) => !v)}
-            className="text-sm text-ink-400 underline decoration-ink-700 underline-offset-4"
+            className="text-sm text-ink-500 underline decoration-line underline-offset-4"
           >
             {showRules ? '收起更多规则' : `更多规则：${winBy2 ? '净胜2' : '不用净胜2'}${bestOf === 3 ? '·三局两胜' : '·一局定胜负'}`}
           </button>
 
           {showRules && (
-            <div className="space-y-4 rounded-xl border border-ink-700 bg-ink-800/50 p-3">
+            <div className="space-y-4 rounded-xl border border-line bg-fill/50 p-3">
               <Toggle
                 checked={winBy2}
                 onChange={setWinBy2}
@@ -327,7 +328,7 @@ export function SessionSetup() {
             />
           </Field>
 
-          <p className="text-sm leading-relaxed text-ink-400">
+          <p className="text-sm leading-relaxed text-ink-500">
             {format === 'free' &&
               '照顾公平自动配对，边打边排。想打多久打多久，也可以在下面设个上限。'}
             {format === 'king' &&
@@ -395,7 +396,7 @@ export function SessionSetup() {
                           setAwayPlayers((xs) => xs.filter((_, j) => j !== i))
                         }
                         aria-label="删掉这个客队球员"
-                        className="shrink-0 rounded-lg border border-ink-700 px-2.5 py-2 text-ink-400 active:bg-ink-800"
+                        className="shrink-0 rounded-lg border border-line px-2.5 py-2 text-ink-500 active:bg-fill"
                       >
                         ✕
                       </button>
@@ -451,18 +452,18 @@ export function SessionSetup() {
                   suffix="场"
                 />
               </Field>
-              <div className="rounded-xl border border-ink-700 bg-ink-800/50 px-3.5 py-3">
+              <div className="rounded-xl border border-line bg-fill/50 px-3.5 py-3">
                 {preview && preview.pairings.length > 0 ? (
                   <>
                     <p className="text-sm">
-                      <span className="text-ink-300">
+                      <span className="text-ink-700">
                         {selected.length} 人 · {courtCount} 片场 ·{' '}
                       </span>
-                      <span className="font-semibold text-lime-glow">
+                      <span className="font-semibold text-brand-600">
                         共 {preview.pairings.length} 场
                       </span>
                     </p>
-                    <p className="mt-1 text-xs text-ink-400">
+                    <p className="mt-1 text-xs text-ink-500">
                       {preview.perPlayerMin === preview.perPlayerMax
                         ? `每人正好 ${preview.perPlayerMin} 场`
                         : `每人 ${preview.perPlayerMin}–${preview.perPlayerMax} 场`}
@@ -471,7 +472,7 @@ export function SessionSetup() {
                     </p>
                   </>
                 ) : (
-                  <p className="text-sm text-ink-400">
+                  <p className="text-sm text-ink-500">
                     {preview?.reason ?? '先在下面勾选今晚到场的人'}
                   </p>
                 )}
@@ -479,10 +480,10 @@ export function SessionSetup() {
             </>
           )}
 
-          <div className="space-y-3 border-t border-ink-800 pt-3">
-            <p className="text-sm text-ink-300">
+          <div className="space-y-3 border-t border-line pt-3">
+            <p className="text-sm text-ink-700">
               结束条件
-              <span className="ml-1 text-xs text-ink-400">
+              <span className="ml-1 text-xs text-ink-500">
                 （留 0 = 不限；到点只提示，不会自动结束）
               </span>
             </p>
@@ -523,7 +524,7 @@ export function SessionSetup() {
           right={
             <div className="flex gap-3 text-xs">
               <button
-                className="text-lime-glow"
+                className="text-brand-600"
                 onClick={() =>
                   setSelected(
                     selected.length === roster.length ? [] : roster.map((p) => p.id),
@@ -532,7 +533,7 @@ export function SessionSetup() {
               >
                 {selected.length === roster.length ? '全不选' : '全选'}
               </button>
-              <button className="text-lime-glow" onClick={() => setAddOpen(true)}>
+              <button className="text-brand-600" onClick={() => setAddOpen(true)}>
                 + 新球员
               </button>
             </div>
@@ -543,7 +544,7 @@ export function SessionSetup() {
 
         {roster.length === 0 ? (
           <Card className="text-center">
-            <p className="text-ink-300">球员库还是空的</p>
+            <p className="text-ink-700">球员库还是空的</p>
             <Button
               variant="primary"
               className="mt-3"
@@ -569,8 +570,8 @@ export function SessionSetup() {
                     <span
                       className={`flex size-6 items-center justify-center rounded-full border text-xs ${
                         selected.includes(p.id)
-                          ? 'border-lime-glow bg-lime-glow text-ink-950'
-                          : 'border-ink-600 text-transparent'
+                          ? 'border-brand-solid bg-brand-solid text-on-brand'
+                          : 'border-ink-300 text-transparent'
                       }`}
                     >
                       ✓
@@ -583,16 +584,14 @@ export function SessionSetup() {
         )}
       </Body>
 
-      <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-ink-800 bg-ink-900/95 px-4 pt-3 backdrop-blur">
-        <div className="mx-auto max-w-2xl">
-          {genderWarning && (
-            <p className="mb-2 text-center text-xs text-amber-300">{genderWarning}</p>
-          )}
-          <Button variant="primary" size="lg" block disabled={!enough} onClick={start}>
-            {startHint}
-          </Button>
-        </div>
-      </div>
+      <BottomBar>
+        {genderWarning && (
+          <p className="text-warning-600 mb-2 text-center text-caption">{genderWarning}</p>
+        )}
+        <Button variant="primary" size="lg" block disabled={!enough} onClick={start}>
+          {startHint}
+        </Button>
+      </BottomBar>
 
       <PlayerEditor open={addOpen} onClose={() => setAddOpen(false)} player={null} />
     </Screen>

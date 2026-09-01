@@ -241,20 +241,27 @@ export const IMMORTAL_STEP = 100
  * 段位照搬 Dota 那一套八段，一段不少。
  *
  * 门槛看 MMR：赢一场 +10（爆冷 +20），输一场 −10 但扣到 0 就打住。
- * 顺风局大致换算成净胜场：卫士 +10、中军 +20、统帅 +30、传奇 +50、
- * 万古 +70、超凡 +85、冠绝 +100；爆冷赢得多的话会快不少。
+ * 顺风局大致换算成净胜场：卫士 +5、中军 +10、统帅 +15、传奇 +30、
+ * 万古 +40、超凡 +50、冠绝 +70；爆冷赢得多的话会快不少。
  *
  * 到了冠绝还能继续往上，每 100 分加一级，显示成「Immortal 1」。
+ *
+ * 各段跨度不是递增的：先锋／卫士／中军各 50，统帅 150，传奇／万古各 100，
+ * 超凡 200。也就是说统帅那一段比后面的传奇、万古都更难熬 —— 这是特意的，
+ * 前三段快速过掉给新人正反馈，统帅是第一道真正的坎。
+ *
+ * 门槛是纯常量，MMR 又是每次从整份比赛记录现算的（不落库），
+ * 所以改这张表会把所有人的段位一起重算，不会留下「老数据按老规则」的烂账。
  */
 export const PET_LEVELS: LevelTier[] = [
   { name: 'Herald', label: '先锋', min: 0, color: '#8fa07d' },
-  { name: 'Guardian', label: '卫士', min: 100, color: '#9fb0bf' },
-  { name: 'Crusader', label: '中军', min: 200, color: '#5fb8a8' },
-  { name: 'Archon', label: '统帅', min: 300, color: '#7fc47f' },
-  { name: 'Legend', label: '传奇', min: 500, color: '#e3b344' },
-  { name: 'Ancient', label: '万古', min: 700, color: '#b98cd8' },
-  { name: 'Divine', label: '超凡', min: 850, color: '#7fb3ff' },
-  { name: 'Immortal', label: '冠绝', min: 1000, color: '#ff8a3d' },
+  { name: 'Guardian', label: '卫士', min: 50, color: '#9fb0bf' },
+  { name: 'Crusader', label: '中军', min: 100, color: '#5fb8a8' },
+  { name: 'Archon', label: '统帅', min: 150, color: '#7fc47f' },
+  { name: 'Legend', label: '传奇', min: 300, color: '#e3b344' },
+  { name: 'Ancient', label: '万古', min: 400, color: '#b98cd8' },
+  { name: 'Divine', label: '超凡', min: 500, color: '#7fb3ff' },
+  { name: 'Immortal', label: '冠绝', min: 700, color: '#ff8a3d' },
 ]
 
 export type LevelInfo = {

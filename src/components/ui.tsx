@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
   parts.filter(Boolean).join(' ')
@@ -9,24 +9,36 @@ export const cx = (...parts: (string | false | null | undefined)[]) =>
  * ------------------------------------------------------------------ */
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'ghost' | 'soft' | 'danger'
+  /**
+   * primary   主操作，一屏只该有一个
+   * ghost     次要确认（白底 + 主色描边）
+   * soft      中性操作，不抢主操作的视线
+   * tertiary  「查看全部 / 编辑」这类文字入口
+   * danger    删除、结束的最终确认
+   * dangerSoft 危险但还没到最终确认那一步的行内操作
+   */
+  variant?: 'primary' | 'ghost' | 'soft' | 'tertiary' | 'danger' | 'dangerSoft'
   size?: 'sm' | 'md' | 'lg'
   block?: boolean
 }
 
+/* 禁用态不靠透明度糊过去 —— 文字仍然读得出来，只是明显不可点 */
+const OFF = 'disabled:bg-fill-strong disabled:text-ink-300 disabled:border-transparent'
+
 const variants: Record<NonNullable<ButtonProps['variant']>, string> = {
-  primary:
-    'bg-lime-glow text-ink-950 font-semibold active:brightness-90 disabled:bg-ink-700 disabled:text-ink-400',
-  ghost:
-    'border border-ink-700 text-ink-100 active:bg-ink-800 disabled:text-ink-400 disabled:border-ink-800',
-  soft: 'bg-ink-800 text-ink-100 active:bg-ink-700 disabled:text-ink-400',
-  danger: 'bg-red-500/15 text-red-300 border border-red-500/30 active:bg-red-500/25',
+  primary: `bg-brand-solid text-on-brand font-semibold active:bg-brand-solid-press ${OFF}`,
+  ghost: `border border-brand-600 bg-surface text-brand-600 font-medium active:bg-brand-50 ${OFF}`,
+  soft: `bg-fill text-ink-900 active:bg-fill-strong ${OFF}`,
+  tertiary: 'bg-transparent text-brand-600 font-medium active:bg-brand-50 disabled:text-ink-300',
+  danger: `bg-danger-solid text-on-danger font-semibold active:brightness-90 ${OFF}`,
+  dangerSoft: `bg-danger-50 text-danger-600 border border-danger-600/30 active:brightness-95 ${OFF}`,
 }
 
+/* 最小触达区 44 —— sm 也要够手指点 */
 const sizes: Record<NonNullable<ButtonProps['size']>, string> = {
-  sm: 'h-9 px-3 text-sm rounded-lg',
-  md: 'h-12 px-4 text-[15px] rounded-xl',
-  lg: 'h-14 px-5 text-base rounded-2xl',
+  sm: 'h-11 px-3 text-label rounded-lg',
+  md: 'h-12 px-4 text-body rounded-btn',
+  lg: 'h-[52px] px-5 text-title rounded-btn',
 }
 
 export function Button({
@@ -40,7 +52,7 @@ export function Button({
     <button
       {...rest}
       className={cx(
-        'inline-flex items-center justify-center gap-2 transition-[filter,background-color] disabled:opacity-70',
+        'inline-flex items-center justify-center gap-2 transition-[filter,background-color]',
         variants[variant],
         sizes[size],
         block && 'w-full',
@@ -68,8 +80,9 @@ export function Card({
     <Tag
       onClick={onClick}
       className={cx(
-        'rounded-card border border-ink-700/70 bg-ink-850 p-4',
-        onClick && 'w-full text-left active:bg-ink-800',
+        // 1px 细线 + 一层很淡的阴影。规格里说这两样不能同时重，所以线不加粗、影不加深
+        'rounded-card border border-line bg-surface p-4 shadow-card',
+        onClick && 'w-full text-left active:bg-fill',
         className,
       )}
     >
@@ -90,13 +103,13 @@ export function TopBar({
   right?: ReactNode
 }) {
   return (
-    <header className="safe-top sticky top-0 z-20 border-b border-ink-800 bg-ink-900/95 px-4 pb-3 backdrop-blur">
+    <header className="safe-top sticky top-0 z-20 border-b border-line bg-surface/95 px-5 pb-3 backdrop-blur">
       <div className="flex items-center gap-3">
         {onBack && (
           <button
             onClick={onBack}
             aria-label="返回"
-            className="-ml-2 flex size-10 shrink-0 items-center justify-center rounded-xl text-ink-300 active:bg-ink-800"
+            className="-ml-2 flex size-10 shrink-0 items-center justify-center rounded-xl text-ink-700 active:bg-fill"
           >
             <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
@@ -106,7 +119,7 @@ export function TopBar({
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-semibold">{title}</h1>
           {subtitle && (
-            <p className="truncate text-xs text-ink-400">{subtitle}</p>
+            <p className="truncate text-xs text-ink-500">{subtitle}</p>
           )}
         </div>
         {right}
@@ -115,13 +128,68 @@ export function TopBar({
   )
 }
 
-export function Screen({ children }: { children: ReactNode }) {
-  return <div className="mx-auto min-h-dvh w-full max-w-2xl">{children}</div>
+/**
+ * tabBar：这一屏底下有主导航条。传了它，内容区就留出 72pt + 安全区的位置，
+ * 否则最后一张卡会被导航条压住 —— 那正好是「结束球局」这类按钮待的地方。
+ */
+export function Screen({
+  children,
+  tabBar,
+}: {
+  children: ReactNode
+  tabBar?: boolean
+}) {
+  return (
+    <div className={cx('mx-auto min-h-dvh w-full max-w-2xl', tabBar && 'pad-nav')}>
+      {children}
+    </div>
+  )
 }
 
+/**
+ * 注意：这里的 safe-bottom 会盖掉从 className 传进来的 pb-*。
+ * 两个都是 padding-bottom，同权重，谁在样式表里靠后谁赢 ——
+ * 而 safe-bottom 是自定义 utility，排在 pb-32 这些后面。
+ * 底部有固定操作条的页面别靠传 pb-* 留位置，用下面的 BottomBar。
+ */
 export function Body({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cx('safe-bottom space-y-4 px-4 pt-4', className)}>{children}</div>
+    <div className={cx('safe-bottom space-y-4 px-5 pt-4', className)}>{children}</div>
+  )
+}
+
+/**
+ * 吸在底部的固定操作条。
+ *
+ * 自己量自己有多高，在文档流里放一块同样高的占位 ——
+ * 不这么做，滚到底时最后一行会被压在条底下，点不到。
+ * 写死一个 padding 不行：这条的高度是会变的（开新球局那条在人数不够时
+ * 多一行提示），写死的数字总有一种状态是错的。
+ */
+export function BottomBar({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState(0)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const sync = () => setHeight(el.offsetHeight)
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <>
+      <div aria-hidden style={{ height }} />
+      <div
+        ref={ref}
+        className="safe-bottom border-line bg-surface/95 fixed inset-x-0 bottom-0 z-30 border-t px-5 pt-3 backdrop-blur"
+      >
+        <div className="mx-auto max-w-2xl">{children}</div>
+      </div>
+    </>
   )
 }
 
@@ -134,7 +202,7 @@ export function SectionTitle({
 }) {
   return (
     <div className="flex items-baseline justify-between">
-      <h2 className="text-xs font-semibold tracking-[0.14em] text-ink-400 uppercase">
+      <h2 className="text-xs font-semibold tracking-[0.14em] text-ink-500 uppercase">
         {children}
       </h2>
       {right}
@@ -152,10 +220,10 @@ export function EmptyState({
   hint?: string
 }) {
   return (
-    <div className="rounded-card border border-dashed border-ink-700 px-6 py-10 text-center">
+    <div className="rounded-card border border-dashed border-line px-6 py-10 text-center">
       <div className="text-3xl">{icon}</div>
-      <p className="mt-3 font-medium text-ink-100">{title}</p>
-      {hint && <p className="mt-1 text-sm text-ink-400">{hint}</p>}
+      <p className="mt-3 font-medium text-ink-900">{title}</p>
+      {hint && <p className="mt-1 text-sm text-ink-500">{hint}</p>}
     </div>
   )
 }
@@ -175,15 +243,15 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm text-ink-300">{label}</span>
+      <span className="mb-1.5 block text-sm text-ink-700">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-ink-400">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-ink-500">{hint}</span>}
     </label>
   )
 }
 
 export const inputClass =
-  'h-12 w-full rounded-xl border border-ink-700 bg-ink-800 px-3.5 text-[15px] text-ink-100 placeholder:text-ink-400 focus:border-lime-glow focus:outline-none'
+  'h-12 w-full rounded-xl border border-line bg-fill px-3.5 text-[15px] text-ink-900 placeholder:text-ink-500 focus:border-brand-600 focus:outline-none'
 
 export function Stepper({
   value,
@@ -219,9 +287,9 @@ export function Stepper({
       >
         <span className="text-xl leading-none">−</span>
       </Button>
-      <div className="tnum h-12 min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-800 text-center text-lg leading-[3rem] font-semibold">
+      <div className="tnum h-12 min-w-0 flex-1 rounded-xl border border-line bg-fill text-center text-lg leading-[3rem] font-semibold">
         {value}
-        {suffix && <span className="ml-1 text-sm text-ink-400">{suffix}</span>}
+        {suffix && <span className="ml-1 text-sm text-ink-500">{suffix}</span>}
       </div>
       <Button
         size="md"
@@ -245,16 +313,17 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void
 }) {
   return (
-    <div className="flex gap-1 rounded-xl border border-ink-700 bg-ink-850 p-1">
+    /* 轨道是浅灰、选中项是白卡 —— 不再整块填主色，那样一屏会有好几团青色在抢焦点 */
+    <div className="flex gap-1 rounded-btn bg-fill p-1">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            'h-10 flex-1 rounded-lg text-sm font-medium transition-colors',
+            'h-10 flex-1 rounded-lg text-label transition-colors',
             value === o.value
-              ? 'bg-lime-glow text-ink-950'
-              : 'text-ink-300 active:bg-ink-800',
+              ? 'bg-surface font-semibold text-ink-900 shadow-card'
+              : 'text-ink-500 active:bg-fill-strong',
           )}
         >
           {o.label}
@@ -278,11 +347,11 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       className="flex w-full items-center justify-between gap-3 py-1 text-left"
     >
-      <span className="text-[15px] text-ink-100">{label}</span>
+      <span className="text-[15px] text-ink-900">{label}</span>
       <span
         className={cx(
           'relative h-7 w-12 shrink-0 rounded-full transition-colors',
-          checked ? 'bg-lime-glow' : 'bg-ink-700',
+          checked ? 'bg-brand-600' : 'bg-ink-300',
         )}
       >
         <span
@@ -322,16 +391,16 @@ export function Sheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div
-        className="absolute inset-0 bg-ink-950/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-scrim backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="safe-bottom relative w-full max-w-md rounded-t-3xl border border-ink-700 bg-ink-850 p-5 sm:rounded-3xl">
+      <div className="safe-bottom shadow-pop relative w-full max-w-md rounded-t-3xl border border-line bg-surface p-5 sm:rounded-3xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold">{title}</h3>
           <button
             onClick={onClose}
             aria-label="关闭"
-            className="-mr-1 flex size-9 items-center justify-center rounded-lg text-ink-400 active:bg-ink-800"
+            className="-mr-1 flex size-9 items-center justify-center rounded-lg text-ink-500 active:bg-fill"
           >
             <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -344,26 +413,73 @@ export function Sheet({
   )
 }
 
+/**
+ * Toast：一句话说清刚刚发生了什么。
+ *
+ * 成功类 2.5 秒自己走，错误类不自动关 —— 场上没看到的那一眼，
+ * 就是后面对着比分吵半天的起点。位置压在底部操作区之上。
+ */
+export function Toast({
+  message,
+  tone = 'info',
+  onClose,
+}: {
+  message: string | null
+  tone?: 'info' | 'error'
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!message || tone === 'error') return
+    const t = setTimeout(onClose, 2500)
+    return () => clearTimeout(t)
+  }, [message, tone, onClose])
+
+  if (!message) return null
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center px-5">
+      <div
+        role="status"
+        className={cx(
+          'shadow-pop pointer-events-auto flex max-w-md items-center gap-2 rounded-btn px-4 py-3 text-label',
+          tone === 'error'
+            ? 'bg-danger-50 text-danger-600 border-danger-600/30 border'
+            : 'bg-ink-900 text-canvas',
+        )}
+      >
+        <span className="min-w-0 flex-1">{message}</span>
+        {tone === 'error' && (
+          <button onClick={onClose} aria-label="关闭" className="shrink-0 px-1">
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function Pill({
   children,
   tone = 'neutral',
   className,
 }: {
   children: ReactNode
-  tone?: 'neutral' | 'lime' | 'teamA' | 'teamB' | 'warn'
+  tone?: 'neutral' | 'brand' | 'teamA' | 'teamB' | 'warn' | 'success' | 'danger'
   className?: string
 }) {
+  /* 每个色都配文案，不靠颜色单独传达含义 —— 色盲和强光下都得读得出来 */
   const tones = {
-    neutral: 'bg-ink-800 text-ink-300',
-    lime: 'bg-lime-glow/15 text-lime-glow',
-    teamA: 'bg-teamA/15 text-teamA',
-    teamB: 'bg-teamB/15 text-teamB',
-    warn: 'bg-amber-400/15 text-amber-300',
+    neutral: 'bg-fill text-ink-700',
+    brand: 'bg-brand-100 text-brand-600',
+    teamA: 'bg-team-a/15 text-team-a',
+    teamB: 'bg-team-b/15 text-team-b',
+    warn: 'bg-warning-50 text-warning-600',
+    success: 'bg-success-50 text-success-600',
+    danger: 'bg-danger-50 text-danger-600',
   }
   return (
     <span
       className={cx(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption',
         tones[tone],
         className,
       )}

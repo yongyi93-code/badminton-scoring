@@ -3,6 +3,7 @@ import {
   activeGameIndex,
   addPoint,
   deriveServe,
+  deuceNote,
   emptyGame,
   gameWinner,
   gamesWon,
@@ -11,6 +12,7 @@ import {
   matchWinner,
   nextGame,
   undoPoint,
+  withOpeningServe,
 } from '@/lib/scoring'
 import { capFor, DEFAULT_RULES, type Match, type Rules, type TeamSide } from '@/types'
 
@@ -280,5 +282,101 @@ describe('加分与撤销', () => {
     const m = doublesMatch()
     const g = emptyGame(m, 'A')
     expect(undoPoint(g)).toBe(g)
+  })
+})
+
+describe('平分提示', () => {
+  it('还没到 20 平不提示', () => {
+    expect(deuceNote(15, 15, rules)).toBeNull()
+    expect(deuceNote(19, 19, rules)).toBeNull()
+  })
+
+  it('比分不相等一律不提示', () => {
+    expect(deuceNote(20, 19, rules)).toBeNull()
+    expect(deuceNote(29, 28, rules)).toBeNull()
+  })
+
+  it('20 平之后提醒要净胜 2 分，并且带上当前比分', () => {
+    expect(deuceNote(20, 20, rules)).toBe('20 平 · 要领先 2 分才算赢')
+    expect(deuceNote(24, 24, rules)).toBe('24 平 · 要领先 2 分才算赢')
+  })
+
+  it('封顶前一分改成「下一分决胜」', () => {
+    expect(deuceNote(29, 29, rules)).toBe('下一分决胜')
+  })
+
+  it('11 分制跟着自己的封顶走，不套 21 分制的数字', () => {
+    const r11: Rules = { ...DEFAULT_RULES, pointsToWin: 11, cap: capFor(11) }
+    expect(deuceNote(9, 9, r11)).toBeNull()
+    expect(deuceNote(10, 10, r11)).toBe('10 平 · 要领先 2 分才算赢')
+    expect(deuceNote(14, 14, r11)).toBe('下一分决胜')
+  })
+
+  it('不打净胜 2 分的球局没有平分这回事', () => {
+    expect(deuceNote(20, 20, noWinBy2)).toBeNull()
+  })
+})
+
+describe('改开局发球人', () => {
+  const init = { servingTeam: 'A' as TeamSide, rightA: 'a1', rightB: 'b1' }
+
+  it('挑谁发球，发球方就跟着走', () => {
+    const m = doublesMatch()
+    expect(withOpeningServe(m, init, 'b2')).toEqual({
+      servingTeam: 'B',
+      rightA: 'a1',
+      rightB: 'b2',
+    })
+  })
+
+  it('同队里换个人发，队伍不变，只换站右区的那个', () => {
+    const m = doublesMatch()
+    expect(withOpeningServe(m, init, 'a2')).toEqual({
+      servingTeam: 'A',
+      rightA: 'a2',
+      rightB: 'b1',
+    })
+  })
+
+  it('顺手改开局接发人', () => {
+    const m = doublesMatch()
+    expect(withOpeningServe(m, init, 'a2', 'b2')).toEqual({
+      servingTeam: 'A',
+      rightA: 'a2',
+      rightB: 'b2',
+    })
+  })
+
+  it('接发人传了个自己人就不理它，别把站位搅乱', () => {
+    const m = doublesMatch()
+    expect(withOpeningServe(m, init, 'a1', 'a2')).toEqual(init)
+  })
+
+  it('改完整局重推：比分一分不动，发球人变成挑的那个', () => {
+    // A 拿 3 分 B 拿 2 分，开局设成 a1 发
+    const m = withPoints(doublesMatch(), ['A', 'B', 'A', 'B', 'A'], 'A')
+    const before = deriveServe(m, 0)!
+    expect(before.scoreA).toBe(3)
+    expect(before.scoreB).toBe(2)
+
+    const fixed = {
+      ...m,
+      games: [{ ...m.games[0], serveInit: withOpeningServe(m, m.games[0].serveInit!, 'b1') }],
+    }
+    const after = deriveServe(fixed, 0)!
+    // 比分不动
+    expect(after.scoreA).toBe(3)
+    expect(after.scoreB).toBe(2)
+    // 站位重推过了，和原来不是同一套
+    expect(after.serverId).not.toBe(before.serverId)
+    // 不变式仍然成立：发球者就是发球方此刻站在发球区的人
+    expect(after.serverId).toBe(after.positions[after.servingTeam][after.serveCourt])
+  })
+
+  it('单打只认发球方，rightA / rightB 就是那两个人', () => {
+    const m = singlesMatch()
+    const out = withOpeningServe(m, { servingTeam: 'A', rightA: 'a1', rightB: 'b1' }, 'b1')
+    expect(out.servingTeam).toBe('B')
+    expect(out.rightB).toBe('b1')
   })
 })

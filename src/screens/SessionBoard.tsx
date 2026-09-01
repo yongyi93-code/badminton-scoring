@@ -4,6 +4,7 @@ import { useNav } from '@/store/useNav'
 import { matchWinnerBySets } from '@/lib/ranking'
 import {
   Body,
+  BottomBar,
   Button,
   Card,
   EmptyState,
@@ -17,7 +18,8 @@ import {
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
-import { pickNextMatch, playerLoads } from '@/lib/rotation'
+import { duration } from '@/lib/format'
+import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
 import { progressByPlayer } from '@/lib/avatar'
 import {
   buildSchedule,
@@ -65,7 +67,7 @@ function TeamLine({
       <span
         className={cx(
           'h-8 w-1 shrink-0 rounded-full',
-          tone === 'teamA' ? 'bg-teamA' : 'bg-teamB',
+          tone === 'teamA' ? 'bg-team-a' : 'bg-team-b',
         )}
       />
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -84,7 +86,7 @@ function TeamLine({
         <span
           className={cx(
             'tnum shrink-0 text-2xl font-bold',
-            leading ? 'text-ink-100' : 'text-ink-400',
+            leading ? 'text-ink-900' : 'text-ink-500',
           )}
         >
           {score}
@@ -128,21 +130,21 @@ function ProgressStrip({ progress }: { progress: SessionProgress }) {
       {bars.map((b) => (
         <div key={b.label}>
           <div className="mb-1 flex items-baseline justify-between text-xs">
-            <span className="text-ink-400">{b.label}</span>
-            <span className="tnum text-ink-300">{b.text}</span>
+            <span className="text-ink-500">{b.label}</span>
+            <span className="tnum text-ink-700">{b.text}</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-ink-800">
+          <div className="h-1.5 overflow-hidden rounded-full bg-fill">
             <div
-              className="h-full rounded-full bg-lime-glow transition-[width]"
+              className="h-full rounded-full bg-brand-600 transition-[width]"
               style={{ width: `${Math.min(100, Math.max(0, b.ratio * 100))}%` }}
             />
           </div>
         </div>
       ))}
       {progress.estimatedMatchesLeft !== undefined && !progress.shouldWrapUp && (
-        <p className="text-xs text-ink-400">
+        <p className="text-xs text-ink-500">
           按目前节奏，剩下的时间还够打{' '}
-          <span className="font-semibold text-lime-glow">
+          <span className="font-semibold text-brand-600">
             {progress.estimatedMatchesLeft} 场
           </span>
         </p>
@@ -171,30 +173,40 @@ function FinishedRow({
     <span
       className={cx(
         'min-w-0 flex-1 truncate text-sm',
-        winner === team ? 'font-semibold text-lime-glow' : 'text-ink-300',
+        winner === team ? 'font-semibold text-brand-600' : 'text-ink-700',
       )}
     >
       {ids.map((id) => names.get(id)?.name ?? '?').join(' / ')}
     </span>
   )
   return (
-    <div className="rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5">
+    <div className="rounded-xl border border-line bg-surface px-3 py-2.5">
       <div className="flex items-center gap-2">
         <span className="tnum shrink-0 text-xs text-ink-500">#{match.seq}</span>
         {side(match.teamA, 'A')}
-        <span className="tnum shrink-0 text-sm text-ink-200">
+        <span className="tnum shrink-0 text-sm text-ink-700">
           {match.games.map((g) => `${g.a}-${g.b}`).join(' ')}
         </span>
         {side(match.teamB, 'B')}
       </div>
       <button
-        className="mt-1.5 text-xs text-lime-glow"
+        className="mt-1.5 text-xs text-brand-600"
         onClick={onReopen}
       >
         记错了，退回去改 ›
       </button>
     </div>
   )
+}
+
+/** 已打了多久。一分钟走一次就够，别为了秒针每秒重渲染整块看板 */
+function Elapsed({ since }: { since: number }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 30_000)
+    return () => clearInterval(t)
+  }, [])
+  return <>已打 {duration(Date.now() - since)}</>
 }
 
 function CourtCard({
@@ -221,17 +233,21 @@ function CourtCard({
   holder?: { ids: string[]; streak: number } | null
 }) {
   if (!match) {
+    /* 空场是这一屏上最要紧的一件事，按钮就该是大号的 */
     return (
       <Card className="border-dashed">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-ink-300">{index + 1} 号场</p>
-            <p className="text-xs text-ink-400">空场</p>
-          </div>
-          <Button variant="primary" onClick={onArrange} disabled={arranging}>
-            排下一场
-          </Button>
-        </div>
+        <p className="text-ink-700 text-title">{index + 1} 号场</p>
+        <p className="text-ink-500 mt-0.5 text-label">空着，等下一场</p>
+        <Button
+          variant="primary"
+          size="lg"
+          block
+          className="mt-3"
+          onClick={onArrange}
+          disabled={arranging}
+        >
+          安排下一场
+        </Button>
       </Card>
     )
   }
@@ -243,21 +259,29 @@ function CourtCard({
   return (
     <Card>
       <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-sm font-semibold text-lime-glow">{index + 1} 号场</span>
+        <span className="text-brand-600 flex items-baseline gap-2 text-title">
+          {index + 1} 号场
+          {/* 已打时长：场地按小时算钱，「这场打多久了」是每晚都要问的 */}
+          {match.startedAt && (
+            <span className="tnum text-ink-500 text-caption font-normal">
+              <Elapsed since={match.startedAt} />
+            </span>
+          )}
+        </span>
         <div className="flex items-center gap-2">
           {holder && holder.streak > 0 && (
-            <Pill tone="lime">守场 {holder.streak} 连胜</Pill>
+            <Pill tone="brand">守场 {holder.streak} 连胜</Pill>
           )}
           {session.rules.bestOf === 3 && (
             <Pill>
               第 {gi + 1} 局 · {sets.A}:{sets.B}
             </Pill>
           )}
-          <Pill tone="lime">进行中</Pill>
+          <Pill tone="brand">进行中</Pill>
           <button
             onClick={onManage}
             aria-label="调整这一场"
-            className="-mr-1 flex size-8 items-center justify-center rounded-lg text-ink-400 active:bg-ink-800"
+            className="-mr-1 flex size-8 items-center justify-center rounded-lg text-ink-500 active:bg-fill"
           >
             ⋯
           </button>
@@ -339,6 +363,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const [showAllSchedule, setShowAllSchedule] = useState(false)
   const [showAllFinished, setShowAllFinished] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [pairOpen, setPairOpen] = useState(false)
 
   // 名册要带上友谊赛的客队 —— 他们不在正式球员名单里，但看板得叫得出名字
   const names = useMemo(
@@ -417,6 +442,16 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   const loads = playerLoads(attending, matches)
   const loadById = new Map(loads.map((l) => [l.playerId, l]))
+
+  /** 这一场凭什么是这四个人 */
+  const notesFor = (m: Match) =>
+    pairingNotes(
+      m.teamA,
+      m.teamB,
+      (id) => mmrById.get(id) ?? 0,
+      loadById,
+      (id) => names.get(id)?.name ?? '?',
+    )
 
   // 车轮赛的等待区就是排队顺序（最久没上场的在前），不是按已打场数排
   const waiting =
@@ -766,12 +801,12 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         }
       />
 
-      <Body className="pb-32">
+      <Body>
         {progress.shouldWrapUp && (
-          <div className="rounded-card border border-lime-glow/40 bg-lime-glow/10 px-4 py-3.5">
-            <p className="font-semibold text-lime-glow">{progress.wrapUpReason}</p>
+          <div className="rounded-card border border-brand-500 bg-brand-100 px-4 py-3.5">
+            <p className="font-semibold text-brand-600">{progress.wrapUpReason}</p>
             {progress.unmetFloor && (
-              <p className="mt-1 text-sm text-amber-300">{progress.unmetFloor}</p>
+              <p className="mt-1 text-sm text-warning-600">{progress.unmetFloor}</p>
             )}
             <div className="mt-3 flex gap-2">
               <Button
@@ -795,27 +830,27 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         )}
 
         {notice && (
-          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3.5 py-2.5 text-sm text-amber-200">
+          <div className="rounded-xl border border-warning-600/30 bg-warning-50 px-3.5 py-2.5 text-sm text-warning-600">
             {notice}
           </div>
         )}
 
         {/* 友谊赛的实时总比分：打的时候两边最想知道的就是现在几比几 */}
         {session.friendly && (
-          <div className="flex items-center justify-center gap-4 rounded-xl border border-ink-700/70 bg-ink-850 px-3 py-2.5">
-            <span className="min-w-0 flex-1 truncate text-right text-sm text-ink-300">
+          <div className="flex items-center justify-center gap-4 rounded-xl border border-line bg-surface px-3 py-2.5">
+            <span className="min-w-0 flex-1 truncate text-right text-sm text-ink-700">
               {session.friendly.homeName}
             </span>
             <span className="tnum shrink-0 text-2xl font-bold">
-              <span className={clubScore.home >= clubScore.away ? 'text-lime-glow' : ''}>
+              <span className={clubScore.home >= clubScore.away ? 'text-brand-600' : ''}>
                 {clubScore.home}
               </span>
               <span className="mx-1.5 text-ink-500">:</span>
-              <span className={clubScore.away >= clubScore.home ? 'text-lime-glow' : ''}>
+              <span className={clubScore.away >= clubScore.home ? 'text-brand-600' : ''}>
                 {clubScore.away}
               </span>
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm text-ink-300">
+            <span className="min-w-0 flex-1 truncate text-sm text-ink-700">
               {session.friendly.awayName}
             </span>
           </div>
@@ -844,12 +879,12 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         <SectionTitle
           right={
             format === 'rotation' ? (
-              <button className="text-xs text-lime-glow" onClick={regenerateSchedule}>
+              <button className="text-xs text-brand-600" onClick={regenerateSchedule}>
                 按现在的人重排
               </button>
             ) : format === 'king' ? null : (
               <button
-                className="text-xs text-lime-glow disabled:text-ink-500"
+                className="text-xs text-brand-600 disabled:text-ink-500"
                 onClick={() => arrange('queue')}
               >
                 + 预排一场
@@ -863,7 +898,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         </SectionTitle>
 
         {queued.length === 0 ? (
-          <p className="text-sm text-ink-400">
+          <p className="text-sm text-ink-500">
             {format === 'rotation'
               ? '赛程都打完了。可以「再排 4 场」加时，或者去结算。'
               : format === 'king'
@@ -899,12 +934,19 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                   <TeamLine ids={m.teamA} names={names} tone="teamA" />
                   <TeamLine ids={m.teamB} names={names} tone="teamB" />
                 </div>
+                {/*
+                  凭什么是这四个人。规格 §D 要求配对结果可解释 ——
+                  写不出理由的自动配对，人只会绕过它自己点。
+                */}
+                <p className="text-ink-500 mt-2 text-caption">
+                  {notesFor(m).join(' · ')}
+                </p>
               </Card>
             ))}
             {format === 'rotation' && queued.length > 3 && (
               <button
                 onClick={() => setShowAllSchedule((v) => !v)}
-                className="w-full py-2 text-center text-sm text-lime-glow"
+                className="w-full py-2 text-center text-sm text-brand-600"
               >
                 {showAllSchedule
                   ? '收起'
@@ -915,29 +957,20 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         )}
 
         {/*
-          配对模式放在等待区上面：这里正是「下一场谁跟谁」发生的地方，
-          觉得排得不对的人第一眼就能看到这个开关，不用翻回设置页。
+          规格 §D：配对设置收进底部 Sheet，不再占着主页面一整块。
+          但入口留在等待区上面 —— 这里正是「下一场谁跟谁」发生的地方，
+          觉得排得不对的人第一眼就该看得见它。
         */}
-        <SectionTitle>怎么配对</SectionTitle>
-        <div className="space-y-1.5">
-          <Segmented
-            value={pairingMode}
-            onChange={(m: PairingMode) => updateSession(sessionId, { pairingMode: m })}
-            options={(Object.keys(PAIRING_MODE_LABELS) as PairingMode[]).map((m) => ({
-              value: m,
-              label: PAIRING_MODE_LABELS[m],
-            }))}
-          />
-          <p className="text-xs text-ink-400">
-            {PAIRING_MODE_HINTS[pairingMode]}。已排好的场不动，之后排的按新口径来。
-          </p>
-        </div>
-
         <SectionTitle
           right={
-            <button className="text-xs text-lime-glow" onClick={() => setAdding(true)}>
-              + 加人
-            </button>
+            <div className="flex items-center gap-3">
+              <button className="text-brand-600 text-caption" onClick={() => setPairOpen(true)}>
+                配对设置
+              </button>
+              <button className="text-brand-600 text-caption" onClick={() => setAdding(true)}>
+                + 加人
+              </button>
+            </div>
           }
         >
           {format === 'king'
@@ -946,7 +979,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         </SectionTitle>
 
         {format === 'king' && (
-          <p className="text-sm text-ink-400">
+          <p className="text-sm text-ink-500">
             队头两人下一场上。赢的留场
             {(session.kingStreakCap ?? 0) > 0
               ? `，连赢 ${session.kingStreakCap} 场强制下场休息`
@@ -957,7 +990,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
         {format !== 'rotation' && (
           <div>
-            <p className="mb-1.5 text-xs text-ink-400">下一场排什么</p>
+            <p className="mb-1.5 text-xs text-ink-500">下一场排什么</p>
             <Segmented
               value={type}
               onChange={(v) => setNextType(v)}
@@ -981,22 +1014,22 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 className={cx(
                   'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left',
                   must
-                    ? 'border-lime-glow/60 bg-lime-glow/10'
-                    : 'border-ink-700/70 bg-ink-850 active:bg-ink-800',
+                    ? 'border-brand-500 bg-brand-100'
+                    : 'border-line bg-surface active:bg-fill',
                 )}
               >
-                <span className="tnum w-5 shrink-0 text-center text-sm text-ink-400">
+                <span className="tnum w-5 shrink-0 text-center text-sm text-ink-500">
                   {idx + 1}
                 </span>
                 <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
-                  <span className="text-xs text-ink-400">
+                  <span className="text-xs text-ink-500">
                     已打 {l.games} 场
                     {l.restRounds > 0 && ` · 休息 ${l.restRounds} 轮`}
                   </span>
                 </span>
-                {must && <Pill tone="lime">下一场必上</Pill>}
+                {must && <Pill tone="brand">下一场必上</Pill>}
               </button>
             )
           })}
@@ -1008,13 +1041,13 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             return (
               <div
                 key={l.playerId}
-                className="flex w-full items-center gap-3 rounded-xl border border-ink-800 bg-ink-900/60 px-3 py-2.5 opacity-60"
+                className="flex w-full items-center gap-3 rounded-xl border border-line bg-fill/60 px-3 py-2.5 opacity-60"
               >
                 <span className="w-5 shrink-0" />
                 <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
-                  <span className="text-xs text-ink-400">已打 {l.games} 场</span>
+                  <span className="text-xs text-ink-500">已打 {l.games} 场</span>
                 </span>
                 <Pill>场上</Pill>
               </div>
@@ -1023,13 +1056,13 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
           {restingIds.length > 0 && (
             <div className="pt-1">
-              <p className="mb-2 text-xs text-ink-400">休息中（不参与排场）</p>
+              <p className="mb-2 text-xs text-ink-500">休息中（不参与排场）</p>
               <div className="flex flex-wrap gap-2">
                 {restingIds.map((id) => (
                   <button
                     key={id}
                     onClick={() => toggleResting(id)}
-                    className="flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850 px-2.5 py-1.5 text-sm text-ink-300"
+                    className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1.5 text-sm text-ink-700"
                   >
                     <Avatar
                     name={names.get(id)?.name ?? '?'}
@@ -1045,7 +1078,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           )}
 
           {waiting.length === 0 && onCourtLoads.length === 0 && restingIds.length === 0 && (
-            <p className="text-sm text-ink-400">这一局还没有人。</p>
+            <p className="text-sm text-ink-500">这一局还没有人。</p>
           )}
         </div>
 
@@ -1071,7 +1104,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 ))}
               {finished.length > 3 && (
                 <button
-                  className="w-full py-1 text-xs text-lime-glow"
+                  className="w-full py-1 text-xs text-brand-600"
                   onClick={() => setShowAllFinished((v) => !v)}
                 >
                   {showAllFinished ? '收起' : `展开全部 ${finished.length} 场`}
@@ -1082,8 +1115,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         )}
       </Body>
 
-      <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-ink-800 bg-ink-900/95 px-4 pt-3 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl gap-2">
+      <BottomBar>
+        <div className="flex gap-2">
           <Button
             variant="ghost"
             className="flex-1"
@@ -1099,7 +1132,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             {courts.some((i) => !onCourt.has(i)) ? '排下一场' : '预排下一场'}
           </Button>
         </div>
-      </div>
+      </BottomBar>
 
       {/* 调整某一场 */}
       <Sheet
@@ -1109,7 +1142,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       >
         {managing && (
           <div className="space-y-3">
-            <p className="text-sm text-ink-300">
+            <p className="text-sm text-ink-700">
               点某个球员可以换人，换人或重排都会把比分清零。
               打得最多的那个标出来了，换他下去最公平。
             </p>
@@ -1127,10 +1160,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                       key={id}
                       onClick={() => setSwapping({ match: managing, playerId: id })}
                       className={cx(
-                        'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left active:bg-ink-800',
+                        'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left active:bg-fill',
                         games === most && most > 0
-                          ? 'border-amber-400/40 bg-amber-400/10'
-                          : 'border-ink-700 bg-ink-850',
+                          ? 'border-warning-600/40 bg-warning-50'
+                          : 'border-line bg-surface',
                       )}
                     >
                       <Avatar
@@ -1140,12 +1173,12 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{names.get(id)?.name}</span>
-                        <span className="text-xs text-ink-400">已打 {games} 场</span>
+                        <span className="text-xs text-ink-500">已打 {games} 场</span>
                       </span>
                       {games === most && most > 0 && (
-                        <span className="shrink-0 text-xs text-amber-300">打得最多</span>
+                        <span className="shrink-0 text-xs text-warning-600">打得最多</span>
                       )}
-                      <span className="shrink-0 text-xs text-ink-400">换人 ›</span>
+                      <span className="shrink-0 text-xs text-ink-500">换人 ›</span>
                     </button>
                   )
                 })
@@ -1169,26 +1202,43 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       </Sheet>
 
       {/* 中途加人 */}
+      <Sheet open={pairOpen} onClose={() => setPairOpen(false)} title="怎么配对">
+        <Segmented
+          value={pairingMode}
+          onChange={(m: PairingMode) => updateSession(sessionId, { pairingMode: m })}
+          options={(Object.keys(PAIRING_MODE_LABELS) as PairingMode[]).map((m) => ({
+            value: m,
+            label: PAIRING_MODE_LABELS[m],
+          }))}
+        />
+        <p className="text-ink-500 mt-2 text-label">
+          {PAIRING_MODE_HINTS[pairingMode]}。已排好的场不动，之后排的按新口径来。
+        </p>
+        <Button block variant="soft" className="mt-4" onClick={() => setPairOpen(false)}>
+          知道了
+        </Button>
+      </Sheet>
+
       <Sheet open={adding} onClose={() => setAdding(false)} title="加人进这一局">
         <div className="space-y-2">
           {addable.length === 0 ? (
-            <p className="text-sm text-ink-400">
+            <p className="text-sm text-ink-500">
               所有球员都已经在这一局里了。新面孔要先去「球员」里建一个。
             </p>
           ) : (
             <>
-              <p className="text-sm text-ink-300">
+              <p className="text-sm text-ink-700">
                 迟到的人来了就加进来，已打场数从 0 算起，下一场会优先排到他。
               </p>
               {addable.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => addToSession(p.id)}
-                  className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-left active:bg-ink-800"
+                  className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 text-left active:bg-fill"
                 >
                   <Avatar name={p.name} avatar={avatarsById.get(p.id)} size="sm" />
                   <span className="flex-1 truncate">{p.name}</span>
-                  <span className="text-xs text-lime-glow">加进来 ›</span>
+                  <span className="text-xs text-brand-600">加进来 ›</span>
                 </button>
               ))}
             </>
@@ -1201,7 +1251,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         {swapping && (
           <div className="space-y-2">
             {waiting.length === 0 ? (
-              <p className="text-sm text-ink-400">等待区没人了。</p>
+              <p className="text-sm text-ink-500">等待区没人了。</p>
             ) : (
               <>
                 {/*
@@ -1209,7 +1259,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                   在这里一点都不管用，全凭你点谁。所以把「该轮到谁」直接标出来，
                   不然谁被晾着只能自己数。列表本来就按该上场的顺序排。
                 */}
-                <p className="text-sm text-ink-300">
+                <p className="text-sm text-ink-700">
                   按「该轮到谁」排的，最上面的等最久、打得最少。
                 </p>
                 {waiting.map((l) => (
@@ -1217,10 +1267,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                     key={l.playerId}
                     onClick={() => swapPlayer(swapping.match, swapping.playerId, l.playerId)}
                     className={cx(
-                      'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left active:bg-ink-800',
+                      'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left active:bg-fill',
                       l.games === waiting[0].games
-                        ? 'border-lime-glow/50 bg-lime-glow/10'
-                        : 'border-ink-700 bg-ink-850',
+                        ? 'border-brand-500 bg-brand-100'
+                        : 'border-line bg-surface',
                     )}
                   >
                     <Avatar
@@ -1230,12 +1280,12 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{names.get(l.playerId)?.name}</span>
-                      <span className="text-xs text-ink-400">
+                      <span className="text-xs text-ink-500">
                         已打 {l.games} 场
                         {l.restRounds > 0 && ` · 休息 ${l.restRounds} 轮`}
                       </span>
                     </span>
-                    {l.games === waiting[0].games && <Pill tone="lime">该轮到</Pill>}
+                    {l.games === waiting[0].games && <Pill tone="brand">该轮到</Pill>}
                   </button>
                 ))}
               </>
@@ -1281,10 +1331,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
       {/* 结束球局 */}
       <Sheet open={endOpen} onClose={() => setEndOpen(false)} title="结束今晚球局">
-        <p className="text-sm text-ink-300">
+        <p className="text-sm text-ink-700">
           结束后会算出今晚排名、MVP 和 AA 费用。
           {live.length > 0 && (
-            <span className="mt-2 block text-amber-300">
+            <span className="mt-2 block text-warning-600">
               还有 {live.length} 场在打，结束后这些比分不会计入排名。
             </span>
           )}

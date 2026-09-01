@@ -71,6 +71,18 @@ type AppState = {
   matches: Match[]
   avatars: AvatarProfile[]
 
+  /**
+   * 这台手机是谁在用 —— 「我的」那一页要显示谁的战绩、首页要跟谁打招呼。
+   *
+   * 只是本机的一个绑定，不是账号：数据还是整份存在这台手机上，
+   * 谁拿到这台手机都能改任何人的分。真正的登录要等云端那一步。
+   * 也正因为只属于这台手机，它不进备份 —— 备份恢复到别人手机上，
+   * 不该顺手把「我是谁」也带过去。
+   */
+  meId: string | null
+
+  setMeId: (playerId: string | null) => void
+
   addPlayer: (name: string, gender: Gender) => Player
   updatePlayer: (id: string, patch: Partial<Omit<Player, 'id'>>) => void
   setPlayerArchived: (id: string, archived: boolean) => void
@@ -108,6 +120,11 @@ export const useApp = create<AppState>()(
       sessions: [],
       matches: [],
       avatars: [],
+      meId: null,
+
+      setMeId(playerId) {
+        set({ meId: playerId })
+      },
 
       addPlayer(name, gender) {
         const player: Player = {
@@ -332,7 +349,7 @@ export const useApp = create<AppState>()(
       },
 
       resetAll() {
-        set({ players: [], sessions: [], matches: [], avatars: [] })
+        set({ players: [], sessions: [], matches: [], avatars: [], meId: null })
       },
     }),
     {
@@ -365,6 +382,7 @@ export const useApp = create<AppState>()(
         sessions: s.sessions,
         matches: s.matches,
         avatars: s.avatars,
+        meId: s.meId,
       }),
     },
   ),
