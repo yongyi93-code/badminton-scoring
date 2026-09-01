@@ -517,6 +517,20 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
               </button>
             )}
 
+            {/* 人就在这个馆里，顺手能看这个馆的全部战绩。
+                没填球馆的不给这个入口 —— 「看未填球馆的全部战绩」读着莫名其妙 */}
+            {session.venue.trim() && (
+            <button
+              onClick={() => push({ name: 'venue', venue: session.venue })}
+              className="text-brand-600 self-start text-sm underline decoration-line underline-offset-4"
+            >
+              {t(
+                `看 ${venueLabel(session.venue)} 的全部战绩 ›`,
+                `All records at ${venueLabel(session.venue)} ›`,
+              )}
+            </button>
+            )}
+
             <p className="text-sm text-ink-500">
               {t(...FORMAT_LABELS[formatOf(session)])}
               {session.rotationPerPlayer

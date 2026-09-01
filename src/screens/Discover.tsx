@@ -105,7 +105,7 @@ export function Discover() {
         ) : (
           <div className="space-y-3">
             {venues.map((v) => (
-              <Card key={v.key} onClick={() => push({ name: 'leaderboard' })}>
+              <Card key={v.key} onClick={() => push({ name: 'venue', venue: v.label })}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-title">{v.label}</p>
