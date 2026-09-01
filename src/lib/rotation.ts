@@ -155,6 +155,36 @@ type PairCounts = {
 const bump = (map: Map<string, number>, key: string) =>
   map.set(key, (map.get(key) ?? 0) + 1)
 
+/**
+ * 一场排出来之后，用一两句话说清它凭什么是这四个人。
+ *
+ * 描述的是排出来的结果，不是算法内部的打分过程 —— 后者拆开来说没人看，
+ * 而「两队差 4 MMR」「阿伟已经歇了 2 轮」这两件事是大家真会争的。
+ * 规格 §D 要求最多两条，多了就变成没人读的说明书。
+ */
+export function pairingNotes(
+  teamA: string[],
+  teamB: string[],
+  mmrOf: (playerId: string) => number,
+  loads: Map<string, PlayerLoad>,
+  nameOf: (playerId: string) => string,
+): string[] {
+  const notes: string[] = []
+  const avg = (ids: string[]) =>
+    ids.length ? ids.reduce((n, id) => n + mmrOf(id), 0) / ids.length : 0
+  const gap = Math.round(Math.abs(avg(teamA) - avg(teamB)))
+  notes.push(gap === 0 ? '两队平均 MMR 一样' : `两队平均 MMR 差 ${gap}`)
+
+  // 歇得最久的那个人。他上场是这一场存在的主要理由
+  const rested = [...teamA, ...teamB]
+    .map((id) => ({ id, r: loads.get(id)?.restRounds ?? 0 }))
+    .sort((a, b) => b.r - a.r)[0]
+  if (rested && rested.r > 0) {
+    notes.push(`${nameOf(rested.id)} 已经歇了 ${rested.r} 轮`)
+  }
+  return notes.slice(0, 2)
+}
+
 export function pairCounts(matches: Match[], lookback: number): PairCounts {
   const counts: PairCounts = {
     recentPartner: new Map(),

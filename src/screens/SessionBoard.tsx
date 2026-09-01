@@ -17,7 +17,8 @@ import {
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
-import { pickNextMatch, playerLoads } from '@/lib/rotation'
+import { duration } from '@/lib/format'
+import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
 import { progressByPlayer } from '@/lib/avatar'
 import {
   buildSchedule,
@@ -197,6 +198,16 @@ function FinishedRow({
   )
 }
 
+/** 已打了多久。一分钟走一次就够，别为了秒针每秒重渲染整块看板 */
+function Elapsed({ since }: { since: number }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 30_000)
+    return () => clearInterval(t)
+  }, [])
+  return <>已打 {duration(Date.now() - since)}</>
+}
+
 function CourtCard({
   index,
   match,
@@ -221,17 +232,21 @@ function CourtCard({
   holder?: { ids: string[]; streak: number } | null
 }) {
   if (!match) {
+    /* 空场是这一屏上最要紧的一件事，按钮就该是大号的 */
     return (
       <Card className="border-dashed">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-ink-700">{index + 1} 号场</p>
-            <p className="text-xs text-ink-500">空场</p>
-          </div>
-          <Button variant="primary" onClick={onArrange} disabled={arranging}>
-            排下一场
-          </Button>
-        </div>
+        <p className="text-ink-700 text-title">{index + 1} 号场</p>
+        <p className="text-ink-500 mt-0.5 text-label">空着，等下一场</p>
+        <Button
+          variant="primary"
+          size="lg"
+          block
+          className="mt-3"
+          onClick={onArrange}
+          disabled={arranging}
+        >
+          安排下一场
+        </Button>
       </Card>
     )
   }
@@ -243,7 +258,15 @@ function CourtCard({
   return (
     <Card>
       <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-sm font-semibold text-brand-600">{index + 1} 号场</span>
+        <span className="text-brand-600 flex items-baseline gap-2 text-title">
+          {index + 1} 号场
+          {/* 已打时长：场地按小时算钱，「这场打多久了」是每晚都要问的 */}
+          {match.startedAt && (
+            <span className="tnum text-ink-500 text-caption font-normal">
+              <Elapsed since={match.startedAt} />
+            </span>
+          )}
+        </span>
         <div className="flex items-center gap-2">
           {holder && holder.streak > 0 && (
             <Pill tone="brand">守场 {holder.streak} 连胜</Pill>
@@ -339,6 +362,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const [showAllSchedule, setShowAllSchedule] = useState(false)
   const [showAllFinished, setShowAllFinished] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [pairOpen, setPairOpen] = useState(false)
 
   // 名册要带上友谊赛的客队 —— 他们不在正式球员名单里，但看板得叫得出名字
   const names = useMemo(
@@ -417,6 +441,16 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   const loads = playerLoads(attending, matches)
   const loadById = new Map(loads.map((l) => [l.playerId, l]))
+
+  /** 这一场凭什么是这四个人 */
+  const notesFor = (m: Match) =>
+    pairingNotes(
+      m.teamA,
+      m.teamB,
+      (id) => mmrById.get(id) ?? 0,
+      loadById,
+      (id) => names.get(id)?.name ?? '?',
+    )
 
   // 车轮赛的等待区就是排队顺序（最久没上场的在前），不是按已打场数排
   const waiting =
@@ -899,6 +933,13 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                   <TeamLine ids={m.teamA} names={names} tone="teamA" />
                   <TeamLine ids={m.teamB} names={names} tone="teamB" />
                 </div>
+                {/*
+                  凭什么是这四个人。规格 §D 要求配对结果可解释 ——
+                  写不出理由的自动配对，人只会绕过它自己点。
+                */}
+                <p className="text-ink-500 mt-2 text-caption">
+                  {notesFor(m).join(' · ')}
+                </p>
               </Card>
             ))}
             {format === 'rotation' && queued.length > 3 && (
@@ -915,29 +956,20 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         )}
 
         {/*
-          配对模式放在等待区上面：这里正是「下一场谁跟谁」发生的地方，
-          觉得排得不对的人第一眼就能看到这个开关，不用翻回设置页。
+          规格 §D：配对设置收进底部 Sheet，不再占着主页面一整块。
+          但入口留在等待区上面 —— 这里正是「下一场谁跟谁」发生的地方，
+          觉得排得不对的人第一眼就该看得见它。
         */}
-        <SectionTitle>怎么配对</SectionTitle>
-        <div className="space-y-1.5">
-          <Segmented
-            value={pairingMode}
-            onChange={(m: PairingMode) => updateSession(sessionId, { pairingMode: m })}
-            options={(Object.keys(PAIRING_MODE_LABELS) as PairingMode[]).map((m) => ({
-              value: m,
-              label: PAIRING_MODE_LABELS[m],
-            }))}
-          />
-          <p className="text-xs text-ink-500">
-            {PAIRING_MODE_HINTS[pairingMode]}。已排好的场不动，之后排的按新口径来。
-          </p>
-        </div>
-
         <SectionTitle
           right={
-            <button className="text-xs text-brand-600" onClick={() => setAdding(true)}>
-              + 加人
-            </button>
+            <div className="flex items-center gap-3">
+              <button className="text-brand-600 text-caption" onClick={() => setPairOpen(true)}>
+                配对设置
+              </button>
+              <button className="text-brand-600 text-caption" onClick={() => setAdding(true)}>
+                + 加人
+              </button>
+            </div>
           }
         >
           {format === 'king'
@@ -1169,6 +1201,23 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       </Sheet>
 
       {/* 中途加人 */}
+      <Sheet open={pairOpen} onClose={() => setPairOpen(false)} title="怎么配对">
+        <Segmented
+          value={pairingMode}
+          onChange={(m: PairingMode) => updateSession(sessionId, { pairingMode: m })}
+          options={(Object.keys(PAIRING_MODE_LABELS) as PairingMode[]).map((m) => ({
+            value: m,
+            label: PAIRING_MODE_LABELS[m],
+          }))}
+        />
+        <p className="text-ink-500 mt-2 text-label">
+          {PAIRING_MODE_HINTS[pairingMode]}。已排好的场不动，之后排的按新口径来。
+        </p>
+        <Button block variant="soft" className="mt-4" onClick={() => setPairOpen(false)}>
+          知道了
+        </Button>
+      </Sheet>
+
       <Sheet open={adding} onClose={() => setAdding(false)} title="加人进这一局">
         <div className="space-y-2">
           {addable.length === 0 ? (
