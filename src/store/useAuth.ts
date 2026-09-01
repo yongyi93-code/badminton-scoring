@@ -1,0 +1,139 @@
+import { useSyncExternalStore } from 'react'
+import type { Session } from '@supabase/supabase-js'
+import { pick } from '@/lib/i18n'
+import { supabase } from '@/lib/supabase'
+
+/* ------------------------------------------------------------------ *
+ * 登录状态
+ *
+ * 只管「是谁登录了」，不管数据同步 —— 那是下一步的事。
+ *
+ * 没接云端（supabase 是 null）时，这里一切照旧返回未登录，
+ * 整个 App 照常跑。离线可用是底线，不能因为云端没接上就起不来。
+ *
+ * 用邮箱 + 密码，而不是邮件魔术链接：Supabase 免费版自带的邮件服务
+ * 有频率限制，而这个 App 的注册高峰恰恰是「一队人同一晚上一起注册」——
+ * 正好撞在限流上。密码注册一封邮件都不发（前提是后台把
+ * Confirm email 关掉），八个人一起注册也不会卡。
+ * ------------------------------------------------------------------ */
+
+export type AuthState = {
+  /** null = 未登录；undefined = 还在问 Supabase，别急着画界面 */
+  session: Session | null | undefined
+}
+
+let current: AuthState = { session: supabase ? undefined : null }
+const listeners = new Set<() => void>()
+
+const emit = () => listeners.forEach((fn) => fn())
+
+const set = (next: AuthState) => {
+  current = next
+  emit()
+}
+
+/* 启动时先问一次现有会话，之后交给 onAuthStateChange */
+if (supabase) {
+  supabase.auth
+    .getSession()
+    .then(({ data }) => set({ session: data.session }))
+    .catch(() => set({ session: null }))
+
+  supabase.auth.onAuthStateChange((_event, session) => set({ session }))
+}
+
+const subscribe = (fn: () => void) => {
+  listeners.add(fn)
+  return () => void listeners.delete(fn)
+}
+
+/** 组件里用这个，登录状态一变就重渲染 */
+export function useAuth() {
+  return useSyncExternalStore(
+    subscribe,
+    () => current,
+    () => ({ session: null }) as AuthState,
+  )
+}
+
+/** 当前登录的邮箱，没登录返回 null */
+export const currentEmail = (): string | null =>
+  current.session?.user.email ?? null
+
+/**
+ * 把 Supabase 的报错翻译成人话。
+ *
+ * 原样把英文错误抛给用户是最省事也最没用的做法 —— 「Invalid login
+ * credentials」对着一个只想记分的人说不出任何有用的信息。
+ * 认不出来的才退回原文，至少还能搜。
+ */
+function readableError(message: string): string {
+  const m = message.toLowerCase()
+  if (m.includes('invalid login credentials')) {
+    return pick('邮箱或密码不对', 'Wrong email or password')
+  }
+  if (m.includes('user already registered') || m.includes('already been registered')) {
+    return pick('这个邮箱已经注册过了，直接登录就行', 'That email is already registered — just sign in')
+  }
+  if (m.includes('password should be at least')) {
+    return pick('密码太短了，至少 6 位', 'Password is too short — at least 6 characters')
+  }
+  if (m.includes('unable to validate email') || m.includes('invalid email')) {
+    return pick('邮箱格式不对', 'That email does not look right')
+  }
+  if (m.includes('email not confirmed')) {
+    return pick(
+      '这个邮箱还没验证。去 Supabase 后台把 Confirm email 关掉，或者点邮件里的链接',
+      'Email not confirmed. Turn off "Confirm email" in Supabase, or click the link in the email',
+    )
+  }
+  if (m.includes('rate limit') || m.includes('too many requests')) {
+    return pick('太频繁了，等一会儿再试', 'Too many attempts — wait a bit')
+  }
+  if (m.includes('failed to fetch') || m.includes('network')) {
+    return pick('连不上服务器，检查一下网络', 'Cannot reach the server — check your connection')
+  }
+  return message
+}
+
+/** 云端没接上时统一给这句，省得每个入口各写一遍 */
+const noCloud = () =>
+  pick('还没接云端', 'Cloud sync is not set up')
+
+export type AuthResult = { ok: true } | { ok: false; error: string }
+
+export async function signIn(email: string, password: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  })
+  return error ? { ok: false, error: readableError(error.message) } : { ok: true }
+}
+
+export async function signUp(email: string, password: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+  const { data, error } = await supabase.auth.signUp({
+    email: email.trim(),
+    password,
+  })
+  if (error) return { ok: false, error: readableError(error.message) }
+  /*
+   * 后台还开着 Confirm email 时，signUp 会成功但不给 session ——
+   * 界面上得说清楚，否则用户看到「成功」却没登录进去，一头雾水。
+   */
+  if (!data.session) {
+    return {
+      ok: false,
+      error: pick(
+        '注册成功了，但这个项目还要求验证邮箱。去收件箱点一下链接，或者在 Supabase 后台把 Confirm email 关掉',
+        'Signed up, but this project still requires email confirmation. Click the link in your inbox, or turn off "Confirm email" in Supabase',
+      ),
+    }
+  }
+  return { ok: true }
+}
+
+export async function signOut(): Promise<void> {
+  await supabase?.auth.signOut()
+}
