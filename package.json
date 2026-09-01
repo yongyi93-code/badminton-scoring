@@ -14,6 +14,7 @@
   },
   "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "html-to-image": "^1.11.13",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

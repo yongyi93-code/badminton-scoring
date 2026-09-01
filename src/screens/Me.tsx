@@ -8,10 +8,13 @@ import {
   Button,
   Card,
   EmptyState,
+  Field,
   Pill,
   Screen,
   SectionTitle,
+  Segmented,
   Sheet,
+  inputClass,
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { RankChip } from '@/components/RankMedal'
@@ -23,6 +26,8 @@ import { formatDate, percent, streakLabel } from '@/lib/format'
 import { venueLabel } from '@/lib/venues'
 import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
+import { cloudReady } from '@/lib/supabase'
+import { signIn, signOut, signUp, useAuth } from '@/store/useAuth'
 
 const ARROW = (
   <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
@@ -30,6 +35,111 @@ const ARROW = (
     <path d="m9 6 6 6-6 6" />
   </svg>
 )
+
+/* ------------------------------------------------------------------ *
+ * 登录 / 注册
+ *
+ * 同一个弹层两用，靠一个 Segmented 切 —— 分成两屏的话，
+ * 「我到底注册过没有」这个最常见的困惑还得让人自己退出去重选。
+ * ------------------------------------------------------------------ */
+
+function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useT()
+  const [mode, setMode] = useState<'in' | 'up'>('in')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async () => {
+    setBusy(true)
+    setError(null)
+    const run = mode === 'in' ? signIn : signUp
+    const res = await run(email, password)
+    setBusy(false)
+    if (res.ok) {
+      setPassword('')
+      onClose()
+    } else {
+      setError(res.error)
+    }
+  }
+
+  const ready = email.trim().length > 3 && password.length >= 6
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={mode === 'in' ? t('登录', 'Sign in') : t('注册', 'Create an account')}
+    >
+      <div className="space-y-4">
+        <Segmented
+          value={mode}
+          onChange={(v: 'in' | 'up') => {
+            setMode(v)
+            setError(null)
+          }}
+          options={[
+            { value: 'in', label: t('登录', 'Sign in') },
+            { value: 'up', label: t('注册', 'Sign up') },
+          ]}
+        />
+
+        <Field label={t('邮箱', 'Email')}>
+          <input
+            className={inputClass}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+        </Field>
+
+        <Field
+          label={t('密码', 'Password')}
+          hint={mode === 'up' ? t('至少 6 位', 'At least 6 characters') : undefined}
+        >
+          <input
+            className={inputClass}
+            type="password"
+            /* 注册和登录用不同的 autocomplete，密码管理器才知道是存还是填 */
+            autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && ready && !busy && void submit()}
+          />
+        </Field>
+
+        {error && <p className="text-danger-600 text-label">{error}</p>}
+
+        <Button
+          variant="primary"
+          size="lg"
+          block
+          disabled={!ready || busy}
+          onClick={() => void submit()}
+        >
+          {busy
+            ? t('稍等…', 'Working…')
+            : mode === 'in'
+              ? t('登录', 'Sign in')
+              : t('注册并登录', 'Create account')}
+        </Button>
+
+        <p className="text-ink-500 text-caption">
+          {t(
+            '密码只用来登录同步，和球局数据没关系。忘了密码可以换个邮箱重新注册，本机数据不会丢。',
+            'This password is only for syncing. Forget it and you can sign up with another email — nothing on this phone is lost.',
+          )}
+        </p>
+      </div>
+    </Sheet>
+  )
+}
 
 function MenuRow({
   title,
@@ -71,6 +181,8 @@ export function Me() {
   const { theme, setTheme } = useTheme()
 
   const [picking, setPicking] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
+  const { session } = useAuth()
   const [backupOpen, setBackupOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -291,6 +403,46 @@ export function Me() {
           </Card>
         )}
 
+        {/*
+          云同步。没接云端（.env 里没配）时整块不显示 ——
+          与其摆一个点了没反应的入口，不如干脆不出现。
+        */}
+        {cloudReady && (
+          <>
+            <SectionTitle>{t('云同步', 'Cloud sync')}</SectionTitle>
+            <div className="border-line rounded-card overflow-hidden border">
+              {session === undefined ? (
+                <MenuRow title={t('正在检查登录状态…', 'Checking sign-in…')} />
+              ) : session ? (
+                <MenuRow
+                  title={t('已登录', 'Signed in')}
+                  hint={session.user.email ?? undefined}
+                  right={
+                    <Button size="sm" variant="soft" onClick={() => void signOut()}>
+                      {t('退出', 'Sign out')}
+                    </Button>
+                  }
+                />
+              ) : (
+                <MenuRow
+                  title={t('登录', 'Sign in')}
+                  hint={t(
+                    '登录之后，数据就能在几台手机之间同步',
+                    'Sign in to sync your data across devices',
+                  )}
+                  onClick={() => setAuthOpen(true)}
+                />
+              )}
+            </div>
+            <p className="text-ink-500 px-1 text-caption">
+              {t(
+                '同步还在做，现在登录只是先把身份认下来 —— 数据仍然存在这台手机上。',
+                'Syncing is still being built. Signing in only claims your identity for now — data still lives on this phone.',
+              )}
+            </p>
+          </>
+        )}
+
         <SectionTitle>{t('设置', 'Settings')}</SectionTitle>
         <div className="border-line rounded-card overflow-hidden border">
           <MenuRow
@@ -397,6 +549,8 @@ export function Me() {
           </Button>
         )}
       </Sheet>
+
+      <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
 
       <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title={t('数据备份', 'Backup')}>
         <p className="text-ink-700 text-label">
