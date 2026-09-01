@@ -14,6 +14,7 @@ import {
   Stepper,
   Toggle,
   TopBar,
+  cx,
   inputClass,
 } from '@/components/ui'
 import { PlayerRow } from '@/components/PlayerBits'
@@ -38,6 +39,23 @@ import {
   PAIRING_MODE_LABELS,
   type PairingMode,
 } from '@/types'
+
+/*
+ * 开局分四步（规格 §C）。
+ *
+ * 原来是一长条表单，一屏塞满日期、球馆、赛制、配对、分数、打法、
+ * 结束条件、选人 —— 每次开局都要从头滚到尾，而实际上除了「谁来了」，
+ * 其余大多沿用上次。拆成四步之后每一步只问一件事，
+ * 想改哪一步就点哪一步，不用一路滚过去。
+ */
+const STEPS: { key: string; label: [string, string] }[] = [
+  { key: 'where', label: ['在哪打', 'Where'] },
+  { key: 'how', label: ['怎么打', 'How'] },
+  { key: 'rules', label: ['规矩', 'Rules'] },
+  { key: 'who', label: ['谁来了', 'Who'] },
+]
+
+const LAST_STEP = STEPS.length - 1
 
 export function SessionSetup() {
   const t = useT()
@@ -64,6 +82,7 @@ export function SessionSetup() {
   const [showRules, setShowRules] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [addOpen, setAddOpen] = useState(false)
+  const [step, setStep] = useState(0)
 
   const [format, setFormat] = useState<SessionFormat>('free')
   const [homeName, setHomeName] = useState('')
@@ -93,6 +112,11 @@ export function SessionSetup() {
       return missing.length ? [...s, ...missing] : s
     })
   }, [players])
+
+  /* 换一步就回到顶上，不然新的一步一进来是停在上一步滚到的位置 */
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [step])
 
   const toggle = (id: string) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
@@ -202,8 +226,39 @@ export function SessionSetup() {
 
   return (
     <Screen>
-      <TopBar title={t('开新球局', 'New session')} onBack={back} />
+      <TopBar
+        title={t('开新球局', 'New session')}
+        subtitle={t(
+          `第 ${step + 1} 步，共 ${STEPS.length} 步 · ${t(...STEPS[step].label)}`,
+          `Step ${step + 1} of ${STEPS.length} · ${t(...STEPS[step].label)}`,
+        )}
+        /* 返回先退一步，退到头了才离开这个流程 */
+        onBack={step > 0 ? () => setStep(step - 1) : back}
+      />
+
+      {/* 四步都点得动 —— 只想改个场地数的时候不用一路「下一步」过去 */}
+      <nav aria-label={t('开局步骤', 'Setup steps')} className="flex gap-1.5 px-5 pb-3">
+        {STEPS.map((s, i) => (
+          <button
+            key={s.key}
+            onClick={() => setStep(i)}
+            aria-current={i === step ? 'step' : undefined}
+            className={cx(
+              'flex-1 rounded-lg border py-1.5 text-caption transition-colors',
+              i === step
+                ? 'border-brand-solid bg-brand-solid text-on-brand font-semibold'
+                : i < step
+                  ? 'border-brand-500/40 bg-brand-50 text-brand-600'
+                  : 'border-line bg-surface text-ink-500',
+            )}
+          >
+            {t(...s.label)}
+          </button>
+        ))}
+      </nav>
+
       <Body>
+        {step === 0 && (
         <Card className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Field label={t('日期', 'Date')}>
@@ -247,7 +302,11 @@ export function SessionSetup() {
               </div>
             )}
           </Field>
+        </Card>
+        )}
 
+        {step === 2 && (
+        <Card className="space-y-4">
           <Field label={t('默认赛制', 'Default format')} hint={t('自动排场时用这个，单场也可以临时改', 'Used when auto-arranging; a single match can still be changed')}>
             <Segmented
               value={defaultType}
@@ -315,7 +374,9 @@ export function SessionSetup() {
             </div>
           )}
         </Card>
+        )}
 
+        {step === 1 && (
         <Card className="space-y-4">
           <Field label={t('打法模式', 'Play mode')}>
             <Segmented
@@ -454,31 +515,6 @@ export function SessionSetup() {
                   suffix={t('场', 'matches')}
                 />
               </Field>
-              <div className="rounded-xl border border-line bg-fill/50 px-3.5 py-3">
-                {preview && preview.pairings.length > 0 ? (
-                  <>
-                    <p className="text-sm">
-                      <span className="text-ink-700">
-                        {t(`${selected.length} 人 · ${courtCount} 片场 · `, `${selected.length} players · ${courtCount} courts · `)}
-                      </span>
-                      <span className="font-semibold text-brand-600">
-                        {t(`共 ${preview.pairings.length} 场`, `${preview.pairings.length} matches`)}
-                      </span>
-                    </p>
-                    <p className="mt-1 text-xs text-ink-500">
-                      {preview.perPlayerMin === preview.perPlayerMax
-                        ? t(`每人正好 ${preview.perPlayerMin} 场`, `exactly ${preview.perPlayerMin} each`)
-                        : t(`每人 ${preview.perPlayerMin}–${preview.perPlayerMax} 场`, `${preview.perPlayerMin}–${preview.perPlayerMax} each`)}
-                      {preview.matchesPerRound > 1 &&
-                        t(` · 每轮同时开 ${preview.matchesPerRound} 片场`, ` · ${preview.matchesPerRound} courts per round`)}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-sm text-ink-500">
-                    {preview?.reason ?? t('先在下面勾选今晚到场的人', 'Tick who is here, below')}
-                  </p>
-                )}
-              </div>
             </>
           )}
 
@@ -521,6 +557,42 @@ export function SessionSetup() {
             </Field>
           </div>
         </Card>
+        )}
+
+        {step === LAST_STEP && (
+        <>
+        {/*
+          赛程预览挪到这一步来了 —— 它算的是「这些人 × 这些场地要打几场」，
+          放在选人的旁边才会随着勾选实时变。留在「怎么打」那一步的话，
+          人还没选，它永远是一句「先去勾人」。
+        */}
+        {format === 'rotation' && (
+          <div className="rounded-xl border border-line bg-fill/50 px-3.5 py-3">
+            {preview && preview.pairings.length > 0 ? (
+              <>
+                <p className="text-sm">
+                  <span className="text-ink-700">
+                    {t(`${selected.length} 人 · ${courtCount} 片场 · `, `${selected.length} players · ${courtCount} courts · `)}
+                  </span>
+                  <span className="font-semibold text-brand-600">
+                    {t(`共 ${preview.pairings.length} 场`, `${preview.pairings.length} matches`)}
+                  </span>
+                </p>
+                <p className="mt-1 text-xs text-ink-500">
+                  {preview.perPlayerMin === preview.perPlayerMax
+                    ? t(`每人正好 ${preview.perPlayerMin} 场`, `exactly ${preview.perPlayerMin} each`)
+                    : t(`每人 ${preview.perPlayerMin}–${preview.perPlayerMax} 场`, `${preview.perPlayerMin}–${preview.perPlayerMax} each`)}
+                  {preview.matchesPerRound > 1 &&
+                    t(` · 每轮同时开 ${preview.matchesPerRound} 片场`, ` · ${preview.matchesPerRound} courts per round`)}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-ink-500">
+                {preview?.reason ?? t('勾上今晚到场的人，这里就会算出要打几场', 'Tick who is here and the schedule shows up')}
+              </p>
+            )}
+          </div>
+        )}
 
         <SectionTitle
           right={
@@ -584,15 +656,30 @@ export function SessionSetup() {
             ))}
           </div>
         )}
+        </>
+        )}
       </Body>
 
       <BottomBar>
-        {genderWarning && (
-          <p className="text-warning-600 mb-2 text-center text-caption">{genderWarning}</p>
+        {step === LAST_STEP ? (
+          <>
+            {genderWarning && (
+              <p className="text-warning-600 mb-2 text-center text-caption">{genderWarning}</p>
+            )}
+            <Button variant="primary" size="lg" block disabled={!enough} onClick={start}>
+              {startHint}
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="primary"
+            size="lg"
+            block
+            onClick={() => setStep(step + 1)}
+          >
+            {t(`下一步：${t(...STEPS[step + 1].label)}`, `Next: ${t(...STEPS[step + 1].label)}`)}
+          </Button>
         )}
-        <Button variant="primary" size="lg" block disabled={!enough} onClick={start}>
-          {startHint}
-        </Button>
       </BottomBar>
 
       <PlayerEditor open={addOpen} onClose={() => setAddOpen(false)} player={null} />

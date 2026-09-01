@@ -9,6 +9,8 @@ export type Route =
   | { name: 'setup' }
   | { name: 'board'; sessionId: string }
   | { name: 'score'; matchId: string }
+  /** 赛后结算：这一场谁赢了、每个人 MMR 变了多少 */
+  | { name: 'result'; matchId: string }
   | { name: 'leaderboard'; sessionId?: string }
   | { name: 'summary'; sessionId: string }
   | { name: 'profile'; playerId: string }

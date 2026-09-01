@@ -8,7 +8,7 @@ import {
   dressStartersFor,
   dressUpFor,
 } from './dressup'
-import type { Match } from '@/types'
+import type { Match, TeamSide } from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 角色养成
@@ -390,8 +390,34 @@ export const emptyProgress = (): Progress => ({
   level: levelOf(0),
 })
 
+/** 一场比赛落到某个人头上的结果。重放算出来的，不落库 */
+export type MatchImpact = {
+  playerId: string
+  won: boolean
+  /**
+   * 这一场 MMR 的增减。
+   * 输球扣到 0 就打住，所以负的那一侧可能比 LOSS_POINTS 小，甚至是 0 ——
+   * 赛后页面要显示的是真实发生的变化，不是规则上的名义值。
+   */
+  delta: number
+  mmrBefore: number
+  mmrAfter: number
+  /** 这一场赚到的金币，输球为 0 */
+  coins: number
+}
+
+/** 一场比赛的完整账：谁赢、算不算爆冷、每个人各自变了多少 */
+export type MatchOutcome = {
+  matchId: string
+  winner: TeamSide
+  /** 赢的这队打之前平均 MMR 更低 —— 这一场算爆冷，赢家拿双倍 */
+  upset: boolean
+  impacts: MatchImpact[]
+}
+
 /**
- * 按时间顺序重放所有比赛，算出每个人的 MMR、金币和战绩。
+ * 按时间顺序重放所有比赛，算出每个人的 MMR、金币和战绩，
+ * 同时把每一场各自的增减记下来。
  *
  * 为什么必须一场一场推，不能用「胜场×10 − 负场×10」这个公式：
  *
@@ -400,10 +426,18 @@ export const emptyProgress = (): Progress => ({
  * 2. 爆冷加倍要看「打这场的当下双方 MMR 谁高」，那是个随时间变的量，
  *    只有重放才知道。
  *
+ * 每场的增减和总进度是同一次重放的两个产物，故意不拆成两个函数 ——
+ * 拆开就是两份 MMR 规则，改一处漏一处的时候，赛后页面显示的
+ * 「+20」和排行榜上实际涨的分就对不上了。
+ *
  * 代价是 O(比赛数 × 每场人数)，几千场也就几万次运算，无所谓。
  */
-export function progressByPlayer(matches: Match[]): Map<string, Progress> {
+export function replayMatches(matches: Match[]): {
+  progress: Map<string, Progress>
+  outcomes: Map<string, MatchOutcome>
+} {
   const out = new Map<string, Progress>()
+  const outcomes = new Map<string, MatchOutcome>()
   const get = (id: string) => {
     let p = out.get(id)
     if (!p) {
@@ -424,23 +458,94 @@ export function progressByPlayer(matches: Match[]): Map<string, Progress> {
     // 爆冷：赢的这队打这场之前平均 MMR 更低
     const upset = avgMmr(winners) < avgMmr(losers)
     const gain = upset ? WIN_POINTS * UPSET_MULTIPLIER : WIN_POINTS
+    const impacts: MatchImpact[] = []
 
     for (const id of winners) {
       const p = get(id)
+      const before = p.mmr
       p.wins += 1
       p.mmr += gain
       // 金币不跟着爆冷翻倍：那是买装备的钱，只按「赢了几场」算，规则越简单越好
       p.coins += WIN_POINTS
+      impacts.push({
+        playerId: id,
+        won: true,
+        delta: p.mmr - before,
+        mmrBefore: before,
+        mmrAfter: p.mmr,
+        coins: WIN_POINTS,
+      })
     }
     for (const id of losers) {
       const p = get(id)
+      const before = p.mmr
       p.losses += 1
       // 输球扣分，但扣到 0 就打住，不做负分
       p.mmr = Math.max(0, p.mmr - LOSS_POINTS)
+      impacts.push({
+        playerId: id,
+        won: false,
+        delta: p.mmr - before,
+        mmrBefore: before,
+        mmrAfter: p.mmr,
+        coins: 0,
+      })
     }
+
+    outcomes.set(m.id, { matchId: m.id, winner: winnerSide, upset, impacts })
   }
 
   for (const p of out.values()) p.level = levelOf(p.mmr)
+  return { progress: out, outcomes }
+}
+
+export function progressByPlayer(matches: Match[]): Map<string, Progress> {
+  return replayMatches(matches).progress
+}
+
+/**
+ * 某一场比赛的账。
+ *
+ * 友谊赛和还没打完的场次没有账（它们本来就不进 MMR），返回 null，
+ * 由调用方决定怎么说 —— 赛后页面会明写「这场不算 MMR」。
+ */
+export const outcomeOf = (
+  matches: Match[],
+  matchId: string,
+): MatchOutcome | null => replayMatches(matches).outcomes.get(matchId) ?? null
+
+/** MMR 走势上的一个点 */
+export type MmrPoint = {
+  /** 这一场打完的时间；起点那一项跟第一场同时 */
+  at: number
+  /** 起点那一项没有对应的比赛，是空串 */
+  matchId: string
+  mmr: number
+  /** 这一场的增减，起点是 0 */
+  delta: number
+}
+
+/**
+ * 某个人的 MMR 走势，按时间顺序，第一项是他打第一场之前的起点。
+ *
+ * 横轴故意用「第几场」而不是日期：羽球是一晚上打六场、然后隔一周再打，
+ * 按日期铺开的话所有起伏都挤成几根竖线，中间全是空白。
+ * 而且大家自己也是按场数记的（「我最近十场」），不是按天。
+ */
+export function mmrTimeline(matches: Match[], playerId: string): MmrPoint[] {
+  const { outcomes } = replayMatches(matches)
+  const endedAt = new Map(matches.map((m) => [m.id, m.endedAt ?? m.startedAt ?? 0]))
+  const out: MmrPoint[] = []
+  // outcomes 是重放时按时间顺序塞进去的，Map 保持插入顺序
+  for (const [id, o] of outcomes) {
+    const mine = o.impacts.find((i) => i.playerId === playerId)
+    if (!mine) continue
+    const at = endedAt.get(id) ?? 0
+    if (out.length === 0) {
+      out.push({ at, matchId: '', mmr: mine.mmrBefore, delta: 0 })
+    }
+    out.push({ at, matchId: id, mmr: mine.mmrAfter, delta: mine.delta })
+  }
   return out
 }
 

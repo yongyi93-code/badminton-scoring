@@ -28,7 +28,8 @@ import { scoreLine } from '@/lib/scoring'
 import { AvatarView } from '@/components/Avatar'
 import { stageOf } from '@/lib/avatarArt'
 import { RankChip } from '@/components/RankMedal'
-import { balanceOf, progressOf, WIN_POINTS } from '@/lib/avatar'
+import { MmrTrend } from '@/components/MmrTrend'
+import { balanceOf, mmrTimeline, progressOf, WIN_POINTS } from '@/lib/avatar'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -61,6 +62,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
     [matches, playerId],
   )
   const stats = useMemo(() => computeStats(matches, [playerId])[0], [matches, playerId])
+  const timeline = useMemo(() => mmrTimeline(matches, playerId), [matches, playerId])
   const partner = useMemo(() => bestPartner(playerId, matches), [matches, playerId])
   const foe = useMemo(() => nemesis(playerId, matches), [matches, playerId])
   const best = useMemo(() => longestWinStreak(playerId, matches), [matches, playerId])
@@ -108,6 +110,12 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
               )}
             </div>
           </div>
+        </Card>
+
+        {/* MMR 走势：段位是个结果，这条线才看得出是在往上还是往下 */}
+        <Card>
+          <p className="text-ink-500 mb-2 text-label">{t('MMR 走势', 'MMR trend')}</p>
+          <MmrTrend points={timeline} />
         </Card>
 
         {/* 角色入口：养成的东西要一眼看得见，才有人想去赢球赚金币 */}
