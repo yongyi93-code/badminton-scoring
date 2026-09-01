@@ -9,6 +9,7 @@ import { SessionSetup } from '@/screens/SessionSetup'
 import { SessionBoard } from '@/screens/SessionBoard'
 import { ScoreBoard } from '@/screens/ScoreBoard'
 import { MatchResult } from '@/screens/MatchResult'
+import { VenueDetail } from '@/screens/VenueDetail'
 import { Leaderboard } from '@/screens/Leaderboard'
 import { SessionSummary } from '@/screens/SessionSummary'
 import { PlayerProfile } from '@/screens/PlayerProfile'
@@ -66,6 +67,8 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <MatchResult matchId={route.matchId} />
     case 'leaderboard':
       return <Leaderboard sessionId={route.sessionId} />
+    case 'venue':
+      return <VenueDetail venue={route.venue} />
     case 'summary':
       return <SessionSummary sessionId={route.sessionId} />
     case 'profile':

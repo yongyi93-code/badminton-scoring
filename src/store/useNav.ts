@@ -12,6 +12,8 @@ export type Route =
   /** 赛后结算：这一场谁赢了、每个人 MMR 变了多少 */
   | { name: 'result'; matchId: string }
   | { name: 'leaderboard'; sessionId?: string }
+  /** 球馆详情。venue 是球局上那段自由文本，归组交给 venueKey */
+  | { name: 'venue'; venue: string }
   | { name: 'summary'; sessionId: string }
   | { name: 'profile'; playerId: string }
   | { name: 'avatar'; playerId: string }
