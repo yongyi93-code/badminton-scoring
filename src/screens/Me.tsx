@@ -28,7 +28,7 @@ import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
 import { cloudReady } from '@/lib/supabase'
 import { signIn, signOut, signUp, useAuth } from '@/store/useAuth'
-import { downloadAll, peekCloud, totalOf, uploadAll, type Counts } from '@/lib/cloud'
+import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
 
 const ARROW = (
   <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
@@ -143,11 +143,12 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 /* ------------------------------------------------------------------ *
- * 云端备份与恢复
+ * 云同步
  *
- * 两个方向都是覆盖性的，所以都不给「一按就走」：
- * 上传前说清楚会推上去多少条，下载前先去云端数一遍再让人确认。
- * 这一屏最不该发生的事是「我只是好奇点一下，数据没了」。
+ * 云端为准：那张表是唯一的一份历史，这台手机是它的缓存。
+ * 所以这一屏不再是「上传 / 下载」两个方向让人选 —— 平时它自己跑，
+ * 这里只负责三件事：说清楚现在同步到哪了、卡住时能手动重来一次、
+ * 以及全队重新开始时把东西清干净。
  * ------------------------------------------------------------------ */
 
 function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -155,127 +156,126 @@ function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const players = useApp((s) => s.players)
   const sessions = useApp((s) => s.sessions)
   const matches = useApp((s) => s.matches)
-  const [busy, setBusy] = useState<'up' | 'down' | 'peek' | null>(null)
+  const resetAll = useApp((s) => s.resetAll)
+  const status = useSyncStatus()
+  const [busy, setBusy] = useState<'pull' | 'push' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  /** 数过云端之后才给「确认恢复」，没数过不给按 */
-  const [remote, setRemote] = useState<Counts | null>(null)
+  const [confirmWipe, setConfirmWipe] = useState(false)
 
-  const summary = (c: Counts) =>
-    t(
-      `${c.players} 位球员 · ${c.sessions} 场球局 · ${c.matches} 场比赛`,
-      `${c.players} players · ${c.sessions} sessions · ${c.matches} matches`,
-    )
+  const local = t(
+    `${players.length} 位球员 · ${sessions.length} 场球局 · ${matches.length} 场比赛`,
+    `${players.length} players · ${sessions.length} sessions · ${matches.length} matches`,
+  )
 
-  const reset = () => {
+  const line =
+    status.state === 'syncing'
+      ? t('同步中…', 'Syncing…')
+      : status.state === 'error'
+        ? status.message
+        : status.state === 'idle'
+          ? status.pending > 0
+            ? t(`还有 ${status.pending} 条没推上去`, `${status.pending} changes still to push`)
+            : t('已经和云端一致', 'Up to date with the cloud')
+          : t('没在同步', 'Not syncing')
+
+  const doPull = async () => {
     setMessage(null)
-    setError(null)
-  }
-
-  const doUpload = async () => {
-    reset()
-    setBusy('up')
-    const res = await uploadAll()
+    setBusy('pull')
+    const res = await pullAll()
     setBusy(null)
-    if (res.ok) {
-      setMessage(t(`已推上去：${summary(res.counts)}`, `Pushed: ${summary(res.counts)}`))
-      setRemote(res.counts)
-    } else setError(res.error)
+    if (!res.ok) setMessage(res.error)
+    else if (res.empty)
+      setMessage(t('云端还是空的', 'The cloud is still empty'))
+    else setMessage(t('已经从云端刷新', 'Refreshed from the cloud'))
   }
 
-  const doPeek = async () => {
-    reset()
-    setBusy('peek')
-    const res = await peekCloud()
+  const doPush = async () => {
+    setMessage(null)
+    setBusy('push')
+    const res = await pushAll()
     setBusy(null)
-    if (res.ok) {
-      setRemote(res.counts)
-      if (totalOf(res.counts) === 0) {
-        setError(
-          t(
-            '云端还是空的。先按上面那个「备份到云端」',
-            'The cloud is still empty — press “Back up” above first',
-          ),
-        )
-      }
-    } else setError(res.error)
-  }
-
-  const doDownload = async () => {
-    reset()
-    setBusy('down')
-    const res = await downloadAll()
-    setBusy(null)
-    if (res.ok) setMessage(t(`已拿回来：${summary(res.counts)}`, `Restored: ${summary(res.counts)}`))
-    else setError(res.error)
-  }
-
-  const local: Counts = {
-    players: players.length,
-    sessions: sessions.length,
-    matches: matches.length,
-    avatars: 0,
+    setMessage(
+      res.ok
+        ? t(`已推上去 ${res.count} 条`, `Pushed ${res.count} rows`)
+        : res.error,
+    )
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title={t('云端备份与恢复', 'Back up and restore')}>
+    <Sheet open={open} onClose={onClose} title={t('云同步', 'Cloud sync')}>
       <div className="space-y-4">
         <div className="bg-fill rounded-xl px-4 py-3">
-          <p className="text-ink-500 text-caption">{t('这台手机上', 'On this phone')}</p>
-          <p className="mt-0.5 font-semibold">{summary(local)}</p>
-        </div>
-
-        <div className="space-y-2">
-          <Button
-            variant="primary"
-            size="lg"
-            block
-            disabled={busy !== null}
-            onClick={() => void doUpload()}
+          <p className="font-semibold">{local}</p>
+          <p
+            className={
+              status.state === 'error'
+                ? 'text-danger-600 mt-1 text-caption'
+                : 'text-ink-500 mt-1 text-caption'
+            }
           >
-            {busy === 'up' ? t('上传中…', 'Uploading…') : t('备份到云端', 'Back up to the cloud')}
-          </Button>
-          <p className="text-ink-500 text-caption">
-            {t(
-              '把这台手机的数据整份推上去，让云端和这台手机一模一样 —— 云端多出来的会被删掉。所以别拿一台数据少的手机备份。',
-              'Pushes this phone up so the cloud matches it exactly — anything extra in the cloud is removed. So do not back up from a phone with less data.',
-            )}
+            {line}
           </p>
         </div>
 
+        <p className="text-ink-500 text-caption">
+          {t(
+            '平时不用管它：记完分自己就推上去了，别人记的分也会自己出现。下面两个是卡住时才用的。',
+            'It runs on its own — your scores go up and other people’s come down. The two below are only for when it gets stuck.',
+          )}
+        </p>
+
+        <div className="space-y-2">
+          <Button block variant="soft" disabled={busy !== null} onClick={() => void doPull()}>
+            {busy === 'pull' ? t('刷新中…', 'Refreshing…') : t('从云端刷新一次', 'Refresh from the cloud')}
+          </Button>
+          <Button block variant="soft" disabled={busy !== null} onClick={() => void doPush()}>
+            {busy === 'push' ? t('推送中…', 'Pushing…') : t('把这台手机的推上去', 'Push this phone up')}
+          </Button>
+        </div>
+
+        {message && <p className="text-brand-600 text-label">{message}</p>}
+
+        {/* 全队重新开始时用的。放在最下面，而且要点两下 */}
         <div className="border-line space-y-2 border-t pt-4">
-          {remote === null ? (
-            <Button block variant="soft" disabled={busy !== null} onClick={() => void doPeek()}>
-              {busy === 'peek' ? t('查看中…', 'Checking…') : t('看看云端有什么', 'See what is in the cloud')}
-            </Button>
+          {confirmWipe ? (
+            <>
+              <p className="text-danger-600 text-label">
+                {t(
+                  '这会清掉所有球员、球局和比赛 —— 而且因为云端跟着这台手机走，云端那份也会一起没。每个人的手机都会变空。确定吗？',
+                  'This clears every player, session and match — and because the cloud follows this phone, it goes too. Everyone’s phone ends up empty. Sure?',
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  onClick={() => {
+                    resetAll()
+                    setConfirmWipe(false)
+                    setMessage(t('已经清空，可以重新开始了', 'Cleared — fresh start'))
+                  }}
+                >
+                  {t('确定清空', 'Clear it all')}
+                </Button>
+                <Button variant="ghost" className="flex-1" onClick={() => setConfirmWipe(false)}>
+                  {t('算了', 'Never mind')}
+                </Button>
+              </div>
+            </>
           ) : (
             <>
-              <div className="bg-fill rounded-xl px-4 py-3">
-                <p className="text-ink-500 text-caption">{t('云端现在有', 'In the cloud')}</p>
-                <p className="mt-0.5 font-semibold">{summary(remote)}</p>
-              </div>
-              <Button
-                block
-                variant="danger"
-                disabled={busy !== null || totalOf(remote) === 0}
-                onClick={() => void doDownload()}
-              >
-                {busy === 'down'
-                  ? t('恢复中…', 'Restoring…')
-                  : t('用云端的覆盖这台手机', 'Overwrite this phone with the cloud')}
+              <Button block variant="dangerSoft" onClick={() => setConfirmWipe(true)}>
+                {t('全部清空，重新开始', 'Clear everything and start over')}
               </Button>
-              <p className="text-warning-600 text-caption">
+              <p className="text-ink-500 text-caption">
                 {t(
-                  '这会抹掉这台手机上云端没有的东西。不确定的话，先去下面「数据备份与恢复」导一份文件。',
-                  'This wipes anything on this phone that is not in the cloud. Unsure? Export a file first, below.',
+                  '清之前先去下面「数据备份与恢复」导一份文件 —— 那是唯一能把历史找回来的东西。',
+                  'Export a file under “Backup” below first — that is the only way to get the history back.',
                 )}
               </p>
             </>
           )}
         </div>
-
-        {message && <p className="text-brand-600 text-label">{message}</p>}
-        {error && <p className="text-danger-600 text-label">{error}</p>}
       </div>
     </Sheet>
   )
@@ -323,6 +323,15 @@ export function Me() {
   const [picking, setPicking] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const [cloudOpen, setCloudOpen] = useState(false)
+  const sync = useSyncStatus()
+  const syncHint =
+    sync.state === 'syncing'
+      ? t('同步中…', 'Syncing…')
+      : sync.state === 'error'
+        ? sync.message
+        : sync.state === 'idle' && sync.pending > 0
+          ? t(`还有 ${sync.pending} 条没推上去`, `${sync.pending} still to push`)
+          : t('已经和云端一致', 'Up to date')
   const { session } = useAuth()
   const [backupOpen, setBackupOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
@@ -576,16 +585,16 @@ export function Me() {
               )}
               {session && (
                 <MenuRow
-                  title={t('备份与恢复', 'Back up and restore')}
-                  hint={t('把这台手机的数据推上去，或者从云端拿回来', 'Push this phone up, or pull the cloud down')}
+                  title={t('同步状态', 'Sync')}
+                  hint={syncHint}
                   onClick={() => setCloudOpen(true)}
                 />
               )}
             </div>
             <p className="text-ink-500 px-1 text-caption">
               {t(
-                '现在是手动的：你按一下才动，方向自己选。自动双向同步等这一版验稳了再做。',
-                'Manual for now — it only moves when you press a button, and you pick the direction. Automatic two-way sync comes once this is proven.',
+                '登录之后自动同步：你记的分会推上去，别人记的会自己出现。',
+                'Once signed in it syncs on its own — your scores go up, other people’s come down.',
               )}
             </p>
           </>
