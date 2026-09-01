@@ -2,12 +2,12 @@ import { LANG_LABELS, type Lang, useLang, useT } from '@/lib/i18n'
 import { useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { avatarOf, playerMap, useApp, type Backup } from '@/store/useApp'
+import type { Gender } from '@/types'
 import { useNav } from '@/store/useNav'
 import {
   Body,
   Button,
   Card,
-  EmptyState,
   Field,
   Pill,
   Screen,
@@ -28,6 +28,7 @@ import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
 import { cloudReady } from '@/lib/supabase'
 import { signIn, signOut, signUp, useAuth } from '@/store/useAuth'
+import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
 
 const ARROW = (
   <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
@@ -141,6 +142,145 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   )
 }
 
+/* ------------------------------------------------------------------ *
+ * 云同步
+ *
+ * 云端为准：那张表是唯一的一份历史，这台手机是它的缓存。
+ * 所以这一屏不再是「上传 / 下载」两个方向让人选 —— 平时它自己跑，
+ * 这里只负责三件事：说清楚现在同步到哪了、卡住时能手动重来一次、
+ * 以及全队重新开始时把东西清干净。
+ * ------------------------------------------------------------------ */
+
+function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useT()
+  const players = useApp((s) => s.players)
+  const sessions = useApp((s) => s.sessions)
+  const matches = useApp((s) => s.matches)
+  const resetAll = useApp((s) => s.resetAll)
+  const status = useSyncStatus()
+  const [busy, setBusy] = useState<'pull' | 'push' | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [confirmWipe, setConfirmWipe] = useState(false)
+
+  const local = t(
+    `${players.length} 位球员 · ${sessions.length} 场球局 · ${matches.length} 场比赛`,
+    `${players.length} players · ${sessions.length} sessions · ${matches.length} matches`,
+  )
+
+  const line =
+    status.state === 'syncing'
+      ? t('同步中…', 'Syncing…')
+      : status.state === 'error'
+        ? status.message
+        : status.state === 'idle'
+          ? status.pending > 0
+            ? t(`还有 ${status.pending} 条没推上去`, `${status.pending} changes still to push`)
+            : t('已经和云端一致', 'Up to date with the cloud')
+          : t('没在同步', 'Not syncing')
+
+  const doPull = async () => {
+    setMessage(null)
+    setBusy('pull')
+    const res = await pullAll()
+    setBusy(null)
+    if (!res.ok) setMessage(res.error)
+    else if (res.empty)
+      setMessage(t('云端还是空的', 'The cloud is still empty'))
+    else setMessage(t('已经从云端刷新', 'Refreshed from the cloud'))
+  }
+
+  const doPush = async () => {
+    setMessage(null)
+    setBusy('push')
+    const res = await pushAll()
+    setBusy(null)
+    setMessage(
+      res.ok
+        ? t(`已推上去 ${res.count} 条`, `Pushed ${res.count} rows`)
+        : res.error,
+    )
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title={t('云同步', 'Cloud sync')}>
+      <div className="space-y-4">
+        <div className="bg-fill rounded-xl px-4 py-3">
+          <p className="font-semibold">{local}</p>
+          <p
+            className={
+              status.state === 'error'
+                ? 'text-danger-600 mt-1 text-caption'
+                : 'text-ink-500 mt-1 text-caption'
+            }
+          >
+            {line}
+          </p>
+        </div>
+
+        <p className="text-ink-500 text-caption">
+          {t(
+            '平时不用管它：记完分自己就推上去了，别人记的分也会自己出现。下面两个是卡住时才用的。',
+            'It runs on its own — your scores go up and other people’s come down. The two below are only for when it gets stuck.',
+          )}
+        </p>
+
+        <div className="space-y-2">
+          <Button block variant="soft" disabled={busy !== null} onClick={() => void doPull()}>
+            {busy === 'pull' ? t('刷新中…', 'Refreshing…') : t('从云端刷新一次', 'Refresh from the cloud')}
+          </Button>
+          <Button block variant="soft" disabled={busy !== null} onClick={() => void doPush()}>
+            {busy === 'push' ? t('推送中…', 'Pushing…') : t('把这台手机的推上去', 'Push this phone up')}
+          </Button>
+        </div>
+
+        {message && <p className="text-brand-600 text-label">{message}</p>}
+
+        {/* 全队重新开始时用的。放在最下面，而且要点两下 */}
+        <div className="border-line space-y-2 border-t pt-4">
+          {confirmWipe ? (
+            <>
+              <p className="text-danger-600 text-label">
+                {t(
+                  '这会清掉所有球员、球局和比赛 —— 而且因为云端跟着这台手机走，云端那份也会一起没。每个人的手机都会变空。确定吗？',
+                  'This clears every player, session and match — and because the cloud follows this phone, it goes too. Everyone’s phone ends up empty. Sure?',
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  onClick={() => {
+                    resetAll()
+                    setConfirmWipe(false)
+                    setMessage(t('已经清空，可以重新开始了', 'Cleared — fresh start'))
+                  }}
+                >
+                  {t('确定清空', 'Clear it all')}
+                </Button>
+                <Button variant="ghost" className="flex-1" onClick={() => setConfirmWipe(false)}>
+                  {t('算了', 'Never mind')}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Button block variant="dangerSoft" onClick={() => setConfirmWipe(true)}>
+                {t('全部清空，重新开始', 'Clear everything and start over')}
+              </Button>
+              <p className="text-ink-500 text-caption">
+                {t(
+                  '清之前先去下面「数据备份与恢复」导一份文件 —— 那是唯一能把历史找回来的东西。',
+                  'Export a file under “Backup” below first — that is the only way to get the history back.',
+                )}
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </Sheet>
+  )
+}
+
 function MenuRow({
   title,
   hint,
@@ -181,8 +321,26 @@ export function Me() {
   const { theme, setTheme } = useTheme()
 
   const [picking, setPicking] = useState(false)
+  const [newSelf, setNewSelf] = useState(false)
+  const [selfName, setSelfName] = useState('')
+  const [selfGender, setSelfGender] = useState<Gender>('-')
+  const addPlayer = useApp((s) => s.addPlayer)
+  const claimPlayer = useApp((s) => s.claimPlayer)
+  const releasePlayer = useApp((s) => s.releasePlayer)
   const [authOpen, setAuthOpen] = useState(false)
+  const [cloudOpen, setCloudOpen] = useState(false)
+  const sync = useSyncStatus()
+  const syncHint =
+    sync.state === 'syncing'
+      ? t('同步中…', 'Syncing…')
+      : sync.state === 'error'
+        ? sync.message
+        : sync.state === 'idle' && sync.pending > 0
+          ? t(`还有 ${sync.pending} 条没推上去`, `${sync.pending} still to push`)
+          : t('已经和云端一致', 'Up to date')
   const { session } = useAuth()
+  /** 登录账号 id。没登录就是 null，那时选人只是本机标记 */
+  const uid = session?.user.id ?? null
   const [backupOpen, setBackupOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -389,16 +547,17 @@ export function Me() {
                 'Pick a player to link to this phone and this page will show your own rank, record and character. It is just a marker on this device, not an account — all the data still lives on this phone.',
               )}
             </p>
+            {/*
+              球员库空着的时候也走同一个入口。原来这里是「先去添加球员」，
+              把人丢到球员库自己想办法 —— 而一个刚注册的新人第一件该做的事
+              是把自己建出来，不是去管理一份名单。
+            */}
             <div className="mt-4">
-              {roster.length === 0 ? (
-                <Button block variant="primary" onClick={() => push({ name: 'players' })}>
-                  {t('先去添加球员', 'Add players first')}
-                </Button>
-              ) : (
-                <Button block variant="primary" onClick={() => setPicking(true)}>
-                  {t('选一个', 'Pick one')}
-                </Button>
-              )}
+              <Button block variant="primary" onClick={() => setPicking(true)}>
+                {roster.length === 0
+                  ? t('先建一个「我」', 'Create yourself first')
+                  : t('选一个', 'Pick one')}
+              </Button>
             </div>
           </Card>
         )}
@@ -427,17 +586,24 @@ export function Me() {
                 <MenuRow
                   title={t('登录', 'Sign in')}
                   hint={t(
-                    '登录之后，数据就能在几台手机之间同步',
-                    'Sign in to sync your data across devices',
+                    '登录之后，数据就能备份到云端、换手机也拿得回来',
+                    'Sign in to back your data up and get it back on another phone',
                   )}
                   onClick={() => setAuthOpen(true)}
+                />
+              )}
+              {session && (
+                <MenuRow
+                  title={t('同步状态', 'Sync')}
+                  hint={syncHint}
+                  onClick={() => setCloudOpen(true)}
                 />
               )}
             </div>
             <p className="text-ink-500 px-1 text-caption">
               {t(
-                '同步还在做，现在登录只是先把身份认下来 —— 数据仍然存在这台手机上。',
-                'Syncing is still being built. Signing in only claims your identity for now — data still lives on this phone.',
+                '登录之后自动同步：你记的分会推上去，别人记的会自己出现。',
+                'Once signed in it syncs on its own — your scores go up, other people’s come down.',
               )}
             </p>
           </>
@@ -478,10 +644,12 @@ export function Me() {
           />
           <MenuRow
             title={t('数据备份与恢复', 'Backup and restore')}
-            hint={t(
-              '数据只存在这台手机上，每次打完球导一次',
-              'Data lives only on this phone — export after every session',
-            )}
+            /* 登录之后数据不再只在这台手机上了，这句话得跟着变 */
+            hint={
+              session
+                ? t('导一份文件留底，清空重来之前尤其要导', 'Export a file to keep — especially before clearing everything')
+                : t('数据只存在这台手机上，每次打完球导一次', 'Data lives only on this phone — export after every session')
+            }
             onClick={() => setBackupOpen(true)}
           />
           <MenuRow
@@ -513,44 +681,130 @@ export function Me() {
       </Body>
 
       <Sheet open={picking} onClose={() => setPicking(false)} title={t('你是哪一位？', 'Which one are you?')}>
-        {roster.length === 0 ? (
-          <EmptyState
-            title={t('球员库是空的', 'No players yet')}
-            hint={t('先去球员库添加人', 'Add someone in the players list first')}
-          />
+        {/*
+          登录之后这一步不只是本机标记了，而是「认领」：
+          账号会写进球员本身、跟着同步出去，别人手机上就知道
+          那个人是有主的，不会再建一个重名的。
+        */}
+        {uid && (
+          <p className="text-ink-500 mb-3 text-caption">
+            {t(
+              '认领之后，别人手机上也能看到这个球员是你，不会再有人重复建一个。',
+              'Once claimed, everyone else sees that this player is you — nobody creates a duplicate.',
+            )}
+          </p>
+        )}
+
+        {newSelf ? (
+          <div className="space-y-4">
+            <Field label={t('你的名字', 'Your name')}>
+              <input
+                className={inputClass}
+                value={selfName}
+                onChange={(e) => setSelfName(e.target.value)}
+                placeholder={t('例如 阿明', 'e.g. Alvin')}
+                autoFocus
+              />
+            </Field>
+            <Field label={t('性别', 'Gender')}>
+              <Segmented
+                value={selfGender}
+                onChange={setSelfGender}
+                options={[
+                  { value: 'M', label: t('男', 'Male') },
+                  { value: 'F', label: t('女', 'Female') },
+                  { value: '-', label: t('不填', 'Skip') },
+                ]}
+              />
+            </Field>
+            <Button
+              variant="primary"
+              block
+              disabled={!selfName.trim()}
+              onClick={() => {
+                const created = addPlayer(selfName.trim(), selfGender)
+                if (uid) claimPlayer(created.id, uid)
+                else setMeId(created.id)
+                setSelfName('')
+                setNewSelf(false)
+                setPicking(false)
+              }}
+            >
+              {t('就是我', "That's me")}
+            </Button>
+            <Button block variant="ghost" onClick={() => setNewSelf(false)}>
+              {t('返回列表', 'Back to the list')}
+            </Button>
+          </div>
         ) : (
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-            {roster.map((p) => (
-              <button
-                key={p.id}
+          <>
+            {roster.length > 0 && (
+              <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+                {roster.map((p) => {
+                  /* 已经被别人认领的不给点 —— 点了也只会把人家挤掉 */
+                  const takenByOther = Boolean(p.ownerId) && p.ownerId !== uid
+                  return (
+                    <button
+                      key={p.id}
+                      disabled={takenByOther}
+                      onClick={() => {
+                        if (uid) claimPlayer(p.id, uid)
+                        else setMeId(p.id)
+                        setPicking(false)
+                      }}
+                      className={
+                        p.id === meId
+                          ? 'border-brand-500 bg-brand-100 flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
+                          : takenByOther
+                            ? 'border-line bg-surface flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left opacity-40'
+                            : 'border-line bg-surface active:bg-fill flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
+                      }
+                    >
+                      <Avatar name={p.name} avatar={avatarOf(avatars, p.id)} />
+                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                      {p.id === meId ? (
+                        <Pill tone="brand">{t('就是我', "That's me")}</Pill>
+                      ) : takenByOther ? (
+                        <Pill>{t('别人认领了', 'Taken')}</Pill>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            <Button
+              block
+              variant="primary"
+              className="mt-3"
+              onClick={() => setNewSelf(true)}
+            >
+              {roster.length === 0
+                ? t('建一个球员，就是我', 'Create a player — that is me')
+                : t('都不是，我是新来的', 'None of these — I am new')}
+            </Button>
+
+            {meId && (
+              <Button
+                block
+                variant="soft"
+                className="mt-2"
                 onClick={() => {
-                  setMeId(p.id)
+                  if (uid) releasePlayer(uid)
+                  setMeId(null)
                   setPicking(false)
                 }}
-                className={
-                  p.id === meId
-                    ? 'border-brand-500 bg-brand-100 flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
-                    : 'border-line bg-surface active:bg-fill flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
-                }
               >
-                <Avatar name={p.name} avatar={avatarOf(avatars, p.id)} />
-                <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                {p.id === meId && <Pill tone="brand">{t('就是我', "That's me")}</Pill>}
-              </button>
-            ))}
-          </div>
-        )}
-        {meId && (
-          <Button block variant="soft" className="mt-3" onClick={() => {
-            setMeId(null)
-            setPicking(false)
-          }}>
-            {t('取消绑定', 'Unlink')}
-          </Button>
+                {t('取消绑定', 'Unlink')}
+              </Button>
+            )}
+          </>
         )}
       </Sheet>
 
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
+
+      <CloudSheet open={cloudOpen} onClose={() => setCloudOpen(false)} />
 
       <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title={t('数据备份', 'Backup')}>
         <p className="text-ink-700 text-label">

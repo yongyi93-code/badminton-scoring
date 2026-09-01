@@ -17,6 +17,15 @@ export type Player = {
   /** 退群的人隐藏在选人列表外，但历史战绩保留 */
   archived: boolean
   createdAt: number
+  /**
+   * 认领这个球员的登录账号 id。
+   *
+   * 有主 = 这是某个人自己，他在自己手机上建的或者认领的；
+   * 无主 = 别人代建的（不装 App 的球友、临时来的客人），谁都能帮他记分。
+   *
+   * 可选：本地建的球员在没登录时就是无主的，之后认领才补上。
+   */
+  ownerId?: string | null
 }
 
 export type Rules = {

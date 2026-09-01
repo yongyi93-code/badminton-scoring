@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { pick } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
+import { startSync, stopSync } from '@/lib/sync'
 
 /* ------------------------------------------------------------------ *
  * 登录状态
@@ -32,14 +33,27 @@ const set = (next: AuthState) => {
   emit()
 }
 
+/*
+ * 登录状态一变，同步跟着开或关。
+ *
+ * 放在这里而不是某个组件的 effect 里：同步是整个 App 的事，
+ * 不该跟着某一屏挂载卸载。组件里写还会漏掉「App 一启动就已经登录着」
+ * 这种情况。
+ */
+function follow(session: Session | null) {
+  set({ session })
+  if (session) void startSync()
+  else stopSync()
+}
+
 /* 启动时先问一次现有会话，之后交给 onAuthStateChange */
 if (supabase) {
   supabase.auth
     .getSession()
-    .then(({ data }) => set({ session: data.session }))
+    .then(({ data }) => follow(data.session))
     .catch(() => set({ session: null }))
 
-  supabase.auth.onAuthStateChange((_event, session) => set({ session }))
+  supabase.auth.onAuthStateChange((_event, session) => follow(session))
 }
 
 const subscribe = (fn: () => void) => {

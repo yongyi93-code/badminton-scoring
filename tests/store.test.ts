@@ -76,3 +76,58 @@ describe('本机绑定的「我是谁」', () => {
     expect(useApp.getState().meId).toBeNull()
   })
 })
+
+describe('认领身份', () => {
+  it('认领之后，球员身上记着是谁，meId 也跟着指过去', () => {
+    const s = useApp.getState()
+    const a = s.addPlayer('阿伟', 'M')
+    useApp.getState().claimPlayer(a.id, 'uid-1')
+
+    const after = useApp.getState()
+    expect(after.players.find((p) => p.id === a.id)?.ownerId).toBe('uid-1')
+    expect(after.meId).toBe(a.id)
+  })
+
+  /*
+   * 一个账号只能是一个人。不松开旧的话，同一个账号会同时挂在
+   * 两个球员身上，别人手机上看过去分不出哪个才是他。
+   */
+  it('同一个账号认领第二个人时，第一个自动松开', () => {
+    const s = useApp.getState()
+    const a = s.addPlayer('阿伟', 'M')
+    const b = s.addPlayer('小林', 'M')
+    useApp.getState().claimPlayer(a.id, 'uid-1')
+    useApp.getState().claimPlayer(b.id, 'uid-1')
+
+    const after = useApp.getState()
+    expect(after.players.find((p) => p.id === a.id)?.ownerId).toBeNull()
+    expect(after.players.find((p) => p.id === b.id)?.ownerId).toBe('uid-1')
+    expect(after.meId).toBe(b.id)
+  })
+
+  it('别人认领的不受影响', () => {
+    const s = useApp.getState()
+    const a = s.addPlayer('阿伟', 'M')
+    const b = s.addPlayer('小林', 'M')
+    useApp.getState().claimPlayer(a.id, 'uid-1')
+    useApp.getState().claimPlayer(b.id, 'uid-2')
+
+    const after = useApp.getState()
+    expect(after.players.find((p) => p.id === a.id)?.ownerId).toBe('uid-1')
+    expect(after.players.find((p) => p.id === b.id)?.ownerId).toBe('uid-2')
+  })
+
+  it('松开之后变成无主，别人可以认领', () => {
+    const s = useApp.getState()
+    const a = s.addPlayer('阿伟', 'M')
+    useApp.getState().claimPlayer(a.id, 'uid-1')
+    useApp.getState().releasePlayer('uid-1')
+
+    expect(useApp.getState().players.find((p) => p.id === a.id)?.ownerId).toBeNull()
+  })
+
+  it('代建的球员没有主，谁都能帮他记分', () => {
+    const a = useApp.getState().addPlayer('不装 App 的球友', 'M')
+    expect(useApp.getState().players.find((p) => p.id === a.id)?.ownerId).toBeUndefined()
+  })
+})
