@@ -26,19 +26,18 @@ export function buildStamp(): string {
 /**
  * 注销 Service Worker 再重载，下次进来必定拉最新的。
  *
- * 只动 Service Worker，绝对不碰 localStorage ——
+ * 只动 Service Worker 和它的缓存，绝对不碰 localStorage ——
  * 球员、球局、比赛、角色全存在那里，清掉就等于把大家的战绩删了。
  *
- * 为什么不再顺手清 Cache Storage：
+ * 关于清 Cache Storage：曾经因为怀疑它引起白屏而把这一步拿掉过，
+ * 拿掉之后白屏照旧 —— 那个判断是错的，现在加回来。真正的原因在
+ * 另一头：注销要等页面卸载才生效，那次重载的导航请求仍然可能被旧的
+ * Service Worker 接住，端出它预缓存的旧 index.html。所以两头一起堵：
  *
- * 注销之前，当前这个页面仍然被旧的 Service Worker 接管着（注销要等
- * 页面卸载才真正生效）。在那个窗口里把它的缓存删掉，等于让一个还在
- * 干活的 Service Worker 突然找不到自己预缓存的东西 —— 它接下来怎么
- * 响应资源请求就说不准了，各家浏览器还不一样。曾经有人点完更新
- * 拿到一个没有样式的白板页面。
- *
- * 而且删缓存本来也没必要：注销之后就没人读那些缓存了，
- * 新装上的 Service Worker 会自己建一套新的。
+ *   - 这里把缓存删干净，旧的 Service Worker 就算还在也没东西可端
+ *   - vite.config.ts 里 navigateFallbackDenylist 让带 ?_v= 的导航
+ *     一律走网络（那条只对新装上的 Service Worker 生效）
+ *   - index.html 里还留了一段救急脚本，万一真白了也能自己点出来
  */
 /**
  * 把「检查更新」留在地址栏上的 ?_v=… 抹掉。
@@ -64,8 +63,12 @@ export async function forceUpdate(): Promise<void> {
       const regs = await navigator.serviceWorker.getRegistrations()
       await Promise.all(regs.map((r) => r.unregister()))
     }
+    if (typeof caches !== 'undefined') {
+      const keys = await caches.keys()
+      await Promise.all(keys.map((k) => caches.delete(k)))
+    }
   } catch {
-    // 注销不掉也没关系，下面照样重载，最差就是还得再点一次
+    // 清不干净也没关系，下面照样重载，最差就是还得再点一次
   }
   /*
    * 带上时间戳绕开浏览器那层 HTTP 缓存。

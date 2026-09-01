@@ -72,6 +72,19 @@ export default defineConfig({
       workbox: {
         // webp 是角色立绘 —— 漏了它离线时头像会变成空白
         globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
+        /*
+         * 带 ?_v= 的那次导航一律走网络，不许拿预缓存里的 index.html 应付。
+         *
+         * 「检查更新」的做法是先注销 Service Worker 再重载。但注销要等
+         * 页面卸载才真正生效，那次重载的导航请求仍然可能被旧的 Service
+         * Worker 接住 —— 它照规矩端出自己预缓存的那份 index.html，
+         * 于是「更新完还是旧版本」，而那份旧 HTML 引用的 JS 要是已经被
+         * 系统清掉（手机存储紧张时很常见），拿到的就是一片白。
+         *
+         * ?_v= 是我们自己加的更新标记，只在这一次导航里出现，
+         * 拿它当「这次别用缓存」的信号最准。
+         */
+        navigateFallbackDenylist: [/[?&]_v=/],
         // 十张立绘约 220KB，加上代码离线包到 700KB 上下，默认 2MiB 的上限够用
       },
     }),
