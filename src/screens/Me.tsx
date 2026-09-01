@@ -28,6 +28,7 @@ import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
 import { cloudReady } from '@/lib/supabase'
 import { signIn, signOut, signUp, useAuth } from '@/store/useAuth'
+import { downloadAll, peekCloud, totalOf, uploadAll, type Counts } from '@/lib/cloud'
 
 const ARROW = (
   <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
@@ -141,6 +142,145 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   )
 }
 
+/* ------------------------------------------------------------------ *
+ * 云端备份与恢复
+ *
+ * 两个方向都是覆盖性的，所以都不给「一按就走」：
+ * 上传前说清楚会推上去多少条，下载前先去云端数一遍再让人确认。
+ * 这一屏最不该发生的事是「我只是好奇点一下，数据没了」。
+ * ------------------------------------------------------------------ */
+
+function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useT()
+  const players = useApp((s) => s.players)
+  const sessions = useApp((s) => s.sessions)
+  const matches = useApp((s) => s.matches)
+  const [busy, setBusy] = useState<'up' | 'down' | 'peek' | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  /** 数过云端之后才给「确认恢复」，没数过不给按 */
+  const [remote, setRemote] = useState<Counts | null>(null)
+
+  const summary = (c: Counts) =>
+    t(
+      `${c.players} 位球员 · ${c.sessions} 场球局 · ${c.matches} 场比赛`,
+      `${c.players} players · ${c.sessions} sessions · ${c.matches} matches`,
+    )
+
+  const reset = () => {
+    setMessage(null)
+    setError(null)
+  }
+
+  const doUpload = async () => {
+    reset()
+    setBusy('up')
+    const res = await uploadAll()
+    setBusy(null)
+    if (res.ok) {
+      setMessage(t(`已推上去：${summary(res.counts)}`, `Pushed: ${summary(res.counts)}`))
+      setRemote(res.counts)
+    } else setError(res.error)
+  }
+
+  const doPeek = async () => {
+    reset()
+    setBusy('peek')
+    const res = await peekCloud()
+    setBusy(null)
+    if (res.ok) {
+      setRemote(res.counts)
+      if (totalOf(res.counts) === 0) {
+        setError(
+          t(
+            '云端还是空的。先按上面那个「备份到云端」',
+            'The cloud is still empty — press “Back up” above first',
+          ),
+        )
+      }
+    } else setError(res.error)
+  }
+
+  const doDownload = async () => {
+    reset()
+    setBusy('down')
+    const res = await downloadAll()
+    setBusy(null)
+    if (res.ok) setMessage(t(`已拿回来：${summary(res.counts)}`, `Restored: ${summary(res.counts)}`))
+    else setError(res.error)
+  }
+
+  const local: Counts = {
+    players: players.length,
+    sessions: sessions.length,
+    matches: matches.length,
+    avatars: 0,
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title={t('云端备份与恢复', 'Back up and restore')}>
+      <div className="space-y-4">
+        <div className="bg-fill rounded-xl px-4 py-3">
+          <p className="text-ink-500 text-caption">{t('这台手机上', 'On this phone')}</p>
+          <p className="mt-0.5 font-semibold">{summary(local)}</p>
+        </div>
+
+        <div className="space-y-2">
+          <Button
+            variant="primary"
+            size="lg"
+            block
+            disabled={busy !== null}
+            onClick={() => void doUpload()}
+          >
+            {busy === 'up' ? t('上传中…', 'Uploading…') : t('备份到云端', 'Back up to the cloud')}
+          </Button>
+          <p className="text-ink-500 text-caption">
+            {t(
+              '把这台手机的数据整份推上去，让云端和这台手机一模一样 —— 云端多出来的会被删掉。所以别拿一台数据少的手机备份。',
+              'Pushes this phone up so the cloud matches it exactly — anything extra in the cloud is removed. So do not back up from a phone with less data.',
+            )}
+          </p>
+        </div>
+
+        <div className="border-line space-y-2 border-t pt-4">
+          {remote === null ? (
+            <Button block variant="soft" disabled={busy !== null} onClick={() => void doPeek()}>
+              {busy === 'peek' ? t('查看中…', 'Checking…') : t('看看云端有什么', 'See what is in the cloud')}
+            </Button>
+          ) : (
+            <>
+              <div className="bg-fill rounded-xl px-4 py-3">
+                <p className="text-ink-500 text-caption">{t('云端现在有', 'In the cloud')}</p>
+                <p className="mt-0.5 font-semibold">{summary(remote)}</p>
+              </div>
+              <Button
+                block
+                variant="danger"
+                disabled={busy !== null || totalOf(remote) === 0}
+                onClick={() => void doDownload()}
+              >
+                {busy === 'down'
+                  ? t('恢复中…', 'Restoring…')
+                  : t('用云端的覆盖这台手机', 'Overwrite this phone with the cloud')}
+              </Button>
+              <p className="text-warning-600 text-caption">
+                {t(
+                  '这会抹掉这台手机上云端没有的东西。不确定的话，先去下面「数据备份与恢复」导一份文件。',
+                  'This wipes anything on this phone that is not in the cloud. Unsure? Export a file first, below.',
+                )}
+              </p>
+            </>
+          )}
+        </div>
+
+        {message && <p className="text-brand-600 text-label">{message}</p>}
+        {error && <p className="text-danger-600 text-label">{error}</p>}
+      </div>
+    </Sheet>
+  )
+}
+
 function MenuRow({
   title,
   hint,
@@ -182,6 +322,7 @@ export function Me() {
 
   const [picking, setPicking] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
+  const [cloudOpen, setCloudOpen] = useState(false)
   const { session } = useAuth()
   const [backupOpen, setBackupOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
@@ -427,17 +568,24 @@ export function Me() {
                 <MenuRow
                   title={t('登录', 'Sign in')}
                   hint={t(
-                    '登录之后，数据就能在几台手机之间同步',
-                    'Sign in to sync your data across devices',
+                    '登录之后，数据就能备份到云端、换手机也拿得回来',
+                    'Sign in to back your data up and get it back on another phone',
                   )}
                   onClick={() => setAuthOpen(true)}
+                />
+              )}
+              {session && (
+                <MenuRow
+                  title={t('备份与恢复', 'Back up and restore')}
+                  hint={t('把这台手机的数据推上去，或者从云端拿回来', 'Push this phone up, or pull the cloud down')}
+                  onClick={() => setCloudOpen(true)}
                 />
               )}
             </div>
             <p className="text-ink-500 px-1 text-caption">
               {t(
-                '同步还在做，现在登录只是先把身份认下来 —— 数据仍然存在这台手机上。',
-                'Syncing is still being built. Signing in only claims your identity for now — data still lives on this phone.',
+                '现在是手动的：你按一下才动，方向自己选。自动双向同步等这一版验稳了再做。',
+                'Manual for now — it only moves when you press a button, and you pick the direction. Automatic two-way sync comes once this is proven.',
               )}
             </p>
           </>
@@ -551,6 +699,8 @@ export function Me() {
       </Sheet>
 
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
+
+      <CloudSheet open={cloudOpen} onClose={() => setCloudOpen(false)} />
 
       <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title={t('数据备份', 'Backup')}>
         <p className="text-ink-700 text-label">
