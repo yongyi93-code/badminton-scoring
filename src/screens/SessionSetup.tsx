@@ -37,8 +37,10 @@ import {
   PAIRING_MODE_LABELS,
   type PairingMode,
 } from '@/types'
+import { useT } from '@/lib/i18n'
 
 export function SessionSetup() {
+  const t = useT()
   const players = useApp((s) => s.players)
   const sessions = useApp((s) => s.sessions)
   const matches = useApp((s) => s.matches)
@@ -108,11 +110,11 @@ export function SessionSetup() {
     : selected.length >= needed
   const startHint = isFriendly
     ? enough
-      ? `开始友谊赛（${selected.length} 打 ${namedAway.length}）`
-      : `两队各至少 ${half} 人：主队 ${selected.length}、客队 ${namedAway.length}`
+      ? t(`开始友谊赛（${selected.length} 打 ${namedAway.length}）`, `Start friendly (${selected.length} v ${namedAway.length})`)
+      : t(`两队各至少 ${half} 人：主队 ${selected.length}、客队 ${namedAway.length}`, `Each side needs ${half}: home ${selected.length}, away ${namedAway.length}`)
     : enough
-      ? `开始球局（${selected.length} 人）`
-      : `至少选 ${needed} 人`
+      ? t(`开始球局（${selected.length} 人）`, `Start session (${selected.length} players)`)
+      : t(`至少选 ${needed} 人`, `Pick at least ${needed} players`)
 
   const genderWarning =
     defaultType === 'mixed' &&
@@ -121,8 +123,8 @@ export function SessionSetup() {
       const males = chosen.filter((p) => p.gender === 'M').length
       const females = chosen.filter((p) => p.gender === 'F').length
       const unknown = chosen.filter((p) => p.gender === '-').length
-      if (unknown > 0) return `有 ${unknown} 人没填性别，混双排场会跳过他们`
-      if (males < 2 || females < 2) return '混双需要至少 2 男 2 女'
+      if (unknown > 0) return t(`有 ${unknown} 人没填性别，混双排场会跳过他们`, `${unknown} players have no gender set — mixed doubles will skip them`)
+      if (males < 2 || females < 2) return t('混双需要至少 2 男 2 女', 'Mixed doubles needs at least 2 men and 2 women')
       return null
     })()
 
@@ -170,8 +172,8 @@ export function SessionSetup() {
       pairingMode,
       friendly: isFriendly
         ? {
-            homeName: homeName.trim() || '主队',
-            awayName: awayName.trim() || '客队',
+            homeName: homeName.trim() || t('主队', 'Home'),
+            awayName: awayName.trim() || t('客队', 'Away'),
             // 没填名字的那几行直接丢掉，别把空名字带进球局
             awayPlayers: namedAway.map((g) => ({ ...g, name: g.name.trim() })),
           }
@@ -200,11 +202,11 @@ export function SessionSetup() {
 
   return (
     <Screen>
-      <TopBar title="开新球局" onBack={back} />
+      <TopBar title={t('开新球局', 'New session')} onBack={back} />
       <Body>
         <Card className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="日期">
+            <Field label={t('日期', 'Date')}>
               <input
                 type="date"
                 className={inputClass}
@@ -212,20 +214,20 @@ export function SessionSetup() {
                 onChange={(e) => setDate(e.target.value)}
               />
             </Field>
-            <Field label="场地数">
+            <Field label={t('场地数', 'Courts')}>
               <Stepper value={courtCount} onChange={setCourtCount} min={1} max={8} />
             </Field>
           </div>
 
           <Field
-            label="球馆"
-            hint="排行榜可以按球馆分开看，所以同一个场馆尽量用同一个名字"
+            label={t('球馆', 'Venue')}
+            hint={t('排行榜可以按球馆分开看，所以同一个场馆尽量用同一个名字', 'The leaderboard can be filtered by venue, so spell the same place the same way')}
           >
             <input
               className={inputClass}
               value={venue}
               onChange={(e) => setVenue(e.target.value)}
-              placeholder="例如 城中羽球馆"
+              placeholder={t('例如 城中羽球馆', 'e.g. Twin Ark')}
             />
             {knownVenues.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
@@ -246,34 +248,34 @@ export function SessionSetup() {
             )}
           </Field>
 
-          <Field label="默认赛制" hint="自动排场时用这个，单场也可以临时改">
+          <Field label={t('默认赛制', 'Default format')} hint={t('自动排场时用这个，单场也可以临时改', 'Used when auto-arranging; a single match can still be changed')}>
             <Segmented
               value={defaultType}
               onChange={setDefaultType}
               options={[
-                { value: 'doubles', label: '双打' },
-                { value: 'singles', label: '单打' },
-                { value: 'mixed', label: '混双' },
+                { value: 'doubles', label: t('双打', 'Doubles') },
+                { value: 'singles', label: t('单打', 'Singles') },
+                { value: 'mixed', label: t('混双', 'Mixed') },
               ]}
             />
           </Field>
 
-          <Field label="怎么配对" hint={PAIRING_MODE_HINTS[pairingMode]}>
+          <Field label={t('怎么配对', 'Pairing')} hint={t(...PAIRING_MODE_HINTS[pairingMode])}>
             <Segmented
               value={pairingMode}
               onChange={setPairingMode}
               options={(
                 Object.keys(PAIRING_MODE_LABELS) as PairingMode[]
-              ).map((m) => ({ value: m, label: PAIRING_MODE_LABELS[m] }))}
+              ).map((m) => ({ value: m, label: t(...PAIRING_MODE_LABELS[m]) }))}
             />
           </Field>
 
           <Field
-            label="每局分数"
+            label={t('每局分数', 'Points per game')}
             hint={
               winBy2
-                ? `${pointsToWin - 1} 平后要净胜 2 分，${capFor(pointsToWin)} 分封顶`
-                : `先到 ${pointsToWin} 分即胜`
+                ? t(`${pointsToWin - 1} 平后要净胜 2 分，${capFor(pointsToWin)} 分封顶`, `From ${pointsToWin - 1} all you must lead by 2, capped at ${capFor(pointsToWin)}`)
+                : t(`先到 ${pointsToWin} 分即胜`, `First to ${pointsToWin} wins`)
             }
           >
             <Segmented
@@ -281,7 +283,7 @@ export function SessionSetup() {
               onChange={(v) => setPointsToWin(Number(v))}
               options={POINTS_OPTIONS.map((p) => ({
                 value: String(p),
-                label: `${p} 分`,
+                label: t(`${p} 分`, `${p}`),
               }))}
             />
           </Field>
@@ -290,7 +292,7 @@ export function SessionSetup() {
             onClick={() => setShowRules((v) => !v)}
             className="text-sm text-ink-500 underline decoration-line underline-offset-4"
           >
-            {showRules ? '收起更多规则' : `更多规则：${winBy2 ? '净胜2' : '不用净胜2'}${bestOf === 3 ? '·三局两胜' : '·一局定胜负'}`}
+            {showRules ? t('收起更多规则', 'Hide more rules') : t(`更多规则：${winBy2 ? '净胜2' : '不用净胜2'}${bestOf === 3 ? '·三局两胜' : '·一局定胜负'}`, `More rules: ${winBy2 ? 'win by 2' : 'no win-by-2'} · ${bestOf === 3 ? 'best of 3' : 'single game'}`)}
           </button>
 
           {showRules && (
@@ -298,15 +300,15 @@ export function SessionSetup() {
               <Toggle
                 checked={winBy2}
                 onChange={setWinBy2}
-                label={`打到 ${pointsToWin - 1} 平后要净胜 2 分`}
+                label={t(`打到 ${pointsToWin - 1} 平后要净胜 2 分`, `From ${pointsToWin - 1} all, win by 2`)}
               />
-              <Field label="局数">
+              <Field label={t('局数', 'Games')}>
                 <Segmented
                   value={String(bestOf)}
                   onChange={(v) => setBestOf(Number(v) as 1 | 3)}
                   options={[
-                    { value: '1', label: '一局定胜负' },
-                    { value: '3', label: '三局两胜' },
+                    { value: '1', label: t('一局定胜负', 'Single game') },
+                    { value: '3', label: t('三局两胜', 'Best of 3') },
                   ]}
                 />
               </Field>
@@ -315,54 +317,54 @@ export function SessionSetup() {
         </Card>
 
         <Card className="space-y-4">
-          <Field label="打法模式">
+          <Field label={t('打法模式', 'Play mode')}>
             <Segmented
               value={format}
               onChange={setFormat}
               options={[
-                { value: 'free', label: '自由' },
-                { value: 'king', label: '车轮赛' },
-                { value: 'rotation', label: '轮转赛' },
-                { value: 'friendly', label: '友谊赛' },
+                { value: 'free', label: t('自由', 'Free') },
+                { value: 'king', label: t('车轮赛', 'King') },
+                { value: 'rotation', label: t('轮转赛', 'Robin') },
+                { value: 'friendly', label: t('友谊赛', 'Friendly') },
               ]}
             />
           </Field>
 
           <p className="text-sm leading-relaxed text-ink-500">
             {format === 'free' &&
-              '照顾公平自动配对，边打边排。想打多久打多久，也可以在下面设个上限。'}
+              t('照顾公平自动配对，边打边排。想打多久打多久，也可以在下面设个上限。', 'Fair auto-pairing, arranged as you go. Play as long as you like, or set a limit below.')}
             {format === 'king' &&
-              '打上打落：赢的两人留在场上，输的两人下场排到队尾，队头两人组队上来挑战。'}
+              t('打上打落：赢的两人留在场上，输的两人下场排到队尾，队头两人组队上来挑战。', 'Winners stay on, losers go to the back of the queue, and the next two up take the court.')}
             {format === 'rotation' &&
-              '开局就把整份赛程排好，每人场数均等、搭档尽量不重复，打完自动结算。'}
+              t('开局就把整份赛程排好，每人场数均等、搭档尽量不重复，打完自动结算。', 'The whole schedule is drawn up front — equal matches each, partners rarely repeat, results settle automatically.')}
             {format === 'friendly' &&
-              '两个俱乐部对打：每一场都是主队 vs 客队，客队球员只在这场输名字，不进球员名单。成绩单独记，不算进 MMR 和累计排行榜。'}
+              t('两个俱乐部对打：每一场都是主队 vs 客队，客队球员只在这场输名字，不进球员名单。成绩单独记，不算进 MMR 和累计排行榜。', 'Two clubs play each other. Every match is home vs away; away players are typed in for this session only and never join your roster. Results are kept separately and do not count towards MMR or the all-time leaderboard.')}
           </p>
 
           {format === 'friendly' && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="主队（我们）">
+                <Field label={t('主队（我们）', 'Home (us)')}>
                   <input
                     className={inputClass}
                     value={homeName}
                     onChange={(e) => setHomeName(e.target.value)}
-                    placeholder="例如 城中羽队"
+                    placeholder={t('例如 城中羽队', 'e.g. Twin Ark Club')}
                   />
                 </Field>
-                <Field label="客队（对手）">
+                <Field label={t('客队（对手）', 'Away (them)')}>
                   <input
                     className={inputClass}
                     value={awayName}
                     onChange={(e) => setAwayName(e.target.value)}
-                    placeholder="例如 北区羽会"
+                    placeholder={t('例如 北区羽会', 'e.g. Northside Club')}
                   />
                 </Field>
               </div>
 
               <Field
-                label={`客队球员（${awayPlayers.length} 人）`}
-                hint="打对方球员的名字，一行一个。他们只属于这场球局，不会进你的球员名单，也不会上排行榜"
+                label={t(`客队球员（${awayPlayers.length} 人）`, `Away players (${awayPlayers.length})`)}
+                hint={t('打对方球员的名字，一行一个。他们只属于这场球局，不会进你的球员名单，也不会上排行榜', 'Type their names, one each. They belong to this session only — never added to your roster and never on the leaderboard')}
               >
                 <div className="space-y-2">
                   {awayPlayers.map((g, i) => (
@@ -377,7 +379,7 @@ export function SessionSetup() {
                             ),
                           )
                         }
-                        placeholder={`客队球员 ${i + 1}`}
+                        placeholder={t(`客队球员 ${i + 1}`, `Away player ${i + 1}`)}
                       />
                       <Segmented
                         value={g.gender}
@@ -387,15 +389,15 @@ export function SessionSetup() {
                           )
                         }
                         options={[
-                          { value: 'M', label: '男' },
-                          { value: 'F', label: '女' },
+                          { value: 'M', label: t('男', 'M') },
+                          { value: 'F', label: t('女', 'F') },
                         ]}
                       />
                       <button
                         onClick={() =>
                           setAwayPlayers((xs) => xs.filter((_, j) => j !== i))
                         }
-                        aria-label="删掉这个客队球员"
+                        aria-label={t('删掉这个客队球员', 'Remove this away player')}
                         className="shrink-0 rounded-lg border border-line px-2.5 py-2 text-ink-500 active:bg-fill"
                       >
                         ✕
@@ -415,7 +417,7 @@ export function SessionSetup() {
                       ])
                     }
                   >
-                    + 加一个客队球员
+                    {t('+ 加一个客队球员', '+ Add away player')}
                   </Button>
                 </div>
               </Field>
@@ -424,11 +426,11 @@ export function SessionSetup() {
 
           {format === 'king' && (
             <Field
-              label="连胜上限"
+              label={t('连胜上限', 'Streak cap')}
               hint={
                 streakCap === 0
-                  ? '不限：赢到底才下场。强弱差距大时会有人整晚打不到几场'
-                  : `连赢 ${streakCap} 场就强制下场休息，防止高手组合霸场一整晚`
+                  ? t('不限：赢到底才下场。强弱差距大时会有人整晚打不到几场', 'No cap: winners stay until they lose. With a big skill gap some people barely get on')
+                  : t(`连赢 ${streakCap} 场就强制下场休息，防止高手组合霸场一整晚`, `After ${streakCap} straight wins they must sit out, so one strong pair cannot hog the court all night`)
               }
             >
               <Stepper
@@ -436,20 +438,20 @@ export function SessionSetup() {
                 onChange={setStreakCap}
                 min={0}
                 max={10}
-                suffix={streakCap === 0 ? '（不限）' : '连胜'}
+                suffix={streakCap === 0 ? t('（不限）', '(no cap)') : t('连胜', 'wins')}
               />
             </Field>
           )}
 
           {format === 'rotation' && (
             <>
-              <Field label="每人打几场">
+              <Field label={t('每人打几场', 'Matches each')}>
                 <Stepper
                   value={perPlayer}
                   onChange={setPerPlayer}
                   min={1}
                   max={20}
-                  suffix="场"
+                  suffix={t('场', 'matches')}
                 />
               </Field>
               <div className="rounded-xl border border-line bg-fill/50 px-3.5 py-3">
@@ -457,23 +459,23 @@ export function SessionSetup() {
                   <>
                     <p className="text-sm">
                       <span className="text-ink-700">
-                        {selected.length} 人 · {courtCount} 片场 ·{' '}
+                        {t(`${selected.length} 人 · ${courtCount} 片场 · `, `${selected.length} players · ${courtCount} courts · `)}
                       </span>
                       <span className="font-semibold text-brand-600">
-                        共 {preview.pairings.length} 场
+                        {t(`共 ${preview.pairings.length} 场`, `${preview.pairings.length} matches`)}
                       </span>
                     </p>
                     <p className="mt-1 text-xs text-ink-500">
                       {preview.perPlayerMin === preview.perPlayerMax
-                        ? `每人正好 ${preview.perPlayerMin} 场`
-                        : `每人 ${preview.perPlayerMin}–${preview.perPlayerMax} 场`}
+                        ? t(`每人正好 ${preview.perPlayerMin} 场`, `exactly ${preview.perPlayerMin} each`)
+                        : t(`每人 ${preview.perPlayerMin}–${preview.perPlayerMax} 场`, `${preview.perPlayerMin}–${preview.perPlayerMax} each`)}
                       {preview.matchesPerRound > 1 &&
-                        ` · 每轮同时开 ${preview.matchesPerRound} 片场`}
+                        t(` · 每轮同时开 ${preview.matchesPerRound} 片场`, ` · ${preview.matchesPerRound} courts per round`)}
                     </p>
                   </>
                 ) : (
                   <p className="text-sm text-ink-500">
-                    {preview?.reason ?? '先在下面勾选今晚到场的人'}
+                    {preview?.reason ?? t('先在下面勾选今晚到场的人', 'Tick who is here, below')}
                   </p>
                 )}
               </div>
@@ -482,39 +484,39 @@ export function SessionSetup() {
 
           <div className="space-y-3 border-t border-line pt-3">
             <p className="text-sm text-ink-700">
-              结束条件
+              {t('结束条件', 'When to stop')}
               <span className="ml-1 text-xs text-ink-500">
-                （留 0 = 不限；到点只提示，不会自动结束）
+                {t('（留 0 = 不限；到点只提示，不会自动结束）', '(0 means no limit; you get a nudge, nothing stops by itself)')}
               </span>
             </p>
             {format !== 'rotation' && (
-              <Field label="打满几场">
+              <Field label={t('打满几场', 'Total matches')}>
                 <Stepper
                   value={capMatches}
                   onChange={setCapMatches}
                   min={0}
                   max={60}
-                  suffix={capMatches === 0 ? '（不限）' : '场'}
+                  suffix={capMatches === 0 ? t('（不限）', '(none)') : t('场', 'matches')}
                 />
               </Field>
             )}
-            <Field label="打多久" hint="按小时租场的话填这个，看板会显示还够打几场">
+            <Field label={t('打多久', 'For how long')} hint={t('按小时租场的话填这个，看板会显示还够打几场', 'Fill this if the court is booked by the hour — the board shows how many matches still fit')}>
               <Stepper
                 value={capMinutes}
                 onChange={setCapMinutes}
                 min={0}
                 max={360}
                 step={30}
-                suffix={capMinutes === 0 ? '（不限）' : '分钟'}
+                suffix={capMinutes === 0 ? t('（不限）', '(none)') : t('分钟', 'min')}
               />
             </Field>
-            <Field label="每人至少打">
+            <Field label={t('每人至少打', 'Minimum each')}>
               <Stepper
                 value={floorPerPlayer}
                 onChange={setFloorPerPlayer}
                 min={0}
                 max={20}
-                suffix={floorPerPlayer === 0 ? '（不限）' : '场'}
+                suffix={floorPerPlayer === 0 ? t('（不限）', '(none)') : t('场', 'matches')}
               />
             </Field>
           </div>
@@ -531,26 +533,26 @@ export function SessionSetup() {
                   )
                 }
               >
-                {selected.length === roster.length ? '全不选' : '全选'}
+                {selected.length === roster.length ? t('全不选', 'Clear all') : t('全选', 'Select all')}
               </button>
               <button className="text-brand-600" onClick={() => setAddOpen(true)}>
-                + 新球员
+                {t('+ 新球员', '+ New')}
               </button>
             </div>
           }
         >
-          今晚到场（已选 {selected.length} 人）
+          {t(`今晚到场（已选 ${selected.length} 人）`, `Here tonight (${selected.length} selected)`)}
         </SectionTitle>
 
         {roster.length === 0 ? (
           <Card className="text-center">
-            <p className="text-ink-700">球员库还是空的</p>
+            <p className="text-ink-700">{t('球员库还是空的', 'No players yet')}</p>
             <Button
               variant="primary"
               className="mt-3"
               onClick={() => setAddOpen(true)}
             >
-              加第一个球员
+              {t('加第一个球员', 'Add your first player')}
             </Button>
           </Card>
         ) : (
@@ -564,7 +566,7 @@ export function SessionSetup() {
                 right={
                   <button
                     onClick={() => toggle(p.id)}
-                    aria-label={selected.includes(p.id) ? '取消到场' : '标记到场'}
+                    aria-label={selected.includes(p.id) ? t('取消到场', 'Mark as not here') : t('标记到场', 'Mark as here')}
                     className="flex size-11 shrink-0 items-center justify-center"
                   >
                     <span
