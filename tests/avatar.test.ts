@@ -188,22 +188,33 @@ describe('MMR 与金币', () => {
 })
 
 describe('段位', () => {
-  it('照着给定门槛分段', () => {
-    expect(levelOf(0).tier.name).toBe('Herald')
-    expect(levelOf(99).tier.name).toBe('Herald')
-    expect(levelOf(100).tier.name).toBe('Guardian')
-    expect(levelOf(199).tier.name).toBe('Guardian')
-    expect(levelOf(200).tier.name).toBe('Crusader')
-    expect(levelOf(299).tier.name).toBe('Crusader')
-    expect(levelOf(300).tier.name).toBe('Archon')
-    expect(levelOf(499).tier.name).toBe('Archon')
-    expect(levelOf(500).tier.name).toBe('Legend')
-    expect(levelOf(699).tier.name).toBe('Legend')
-    expect(levelOf(700).tier.name).toBe('Ancient')
-    expect(levelOf(849).tier.name).toBe('Ancient')
-    expect(levelOf(850).tier.name).toBe('Divine')
-    expect(levelOf(999).tier.name).toBe('Divine')
-    expect(levelOf(1000).tier.name).toBe('Immortal')
+  /*
+   * 门槛这张表是会改的（升太慢就往下调），所以下面大部分用例都从
+   * PET_LEVELS 现推，不写死数字 —— 它们测的是分段逻辑，不是某一版的数值。
+   * 数值本身只在「当前这一版的门槛」那一条里钉死，改门槛时只该动那一条。
+   */
+  const GUARDIAN = 1 // 第二段，用来验跨度、星、进度这些和具体数值无关的行为
+
+  it('当前这一版的门槛', () => {
+    expect(PET_LEVELS.map((t) => [t.name, t.min])).toEqual([
+      ['Herald', 0],
+      ['Guardian', 50],
+      ['Crusader', 100],
+      ['Archon', 150],
+      ['Legend', 300],
+      ['Ancient', 400],
+      ['Divine', 500],
+      ['Immortal', 700],
+    ])
+  })
+
+  it('每一段的门槛分刚好进这一段，差一分还留在上一段', () => {
+    PET_LEVELS.forEach((tier, i) => {
+      expect(levelOf(tier.min).tier.name).toBe(tier.name)
+      if (i > 0) {
+        expect(levelOf(tier.min - 1).tier.name).toBe(PET_LEVELS[i - 1].name)
+      }
+    })
   })
 
   it('八段，段位表按门槛严格递增', () => {
@@ -215,32 +226,34 @@ describe('段位', () => {
 
   it('段位只看 MMR，跟金币花掉多少无关', () => {
     const broke = pet({ spent: 250 })
-    // 金币赚了 300 花掉 250 只剩 50，MMR 300 照样是 Archon
+    // 金币赚了 300 花掉 250 只剩 50，MMR 照样按原样分段
     expect(balanceOf(broke, 300)).toBe(50)
-    expect(levelOf(300).tier.name).toBe('Archon')
+    expect(levelOf(300).tier.name).toBe(PET_LEVELS[4].name)
   })
 
   it('进度和距离下一段', () => {
-    // Guardian 100 → Crusader 200，跨度 100，正好走一半
-    const half = levelOf(150)
-    expect(half.tier.name).toBe('Guardian')
-    expect(half.next?.name).toBe('Crusader')
-    expect(half.toNext).toBe(50)
+    const tier = PET_LEVELS[GUARDIAN]
+    const next = PET_LEVELS[GUARDIAN + 1]
+    const span = next.min - tier.min
+    const half = levelOf(tier.min + span / 2)
+    expect(half.tier.name).toBe(tier.name)
+    expect(half.next?.name).toBe(next.name)
+    expect(half.toNext).toBe(span / 2)
     expect(half.progress).toBeCloseTo(0.5)
   })
 
   it('每段 5 颗星，刚进是 1 星，快升段是 5 星', () => {
+    const tier = PET_LEVELS[GUARDIAN]
+    const next = PET_LEVELS[GUARDIAN + 1]
     expect(levelOf(0).star).toBe(1)
-    expect(levelOf(99).star).toBe(5)
-    expect(levelOf(100).star).toBe(1) // 升段后星归位
-    expect(levelOf(199).star).toBe(5)
-    // Guardian 跨度 100，每 20 分一颗星
-    expect(levelOf(120).star).toBe(2)
-    expect(levelOf(180).star).toBe(5)
+    expect(levelOf(tier.min - 1).star).toBe(5)
+    expect(levelOf(tier.min).star).toBe(1) // 升段后星归位
+    expect(levelOf(next.min - 1).star).toBe(5)
   })
 
   it('星数永远落在 1~5', () => {
-    for (let pts = 0; pts < 1000; pts += 7) {
+    const top = PET_LEVELS[PET_LEVELS.length - 1].min
+    for (let pts = 0; pts < top; pts += 7) {
       const star = levelOf(pts).star
       expect(star).not.toBe(null)
       expect(star!).toBeGreaterThanOrEqual(1)
@@ -249,7 +262,8 @@ describe('段位', () => {
   })
 
   it('冠绝之上按编号继续往上，不封顶', () => {
-    const base = levelOf(1000)
+    const top = PET_LEVELS[PET_LEVELS.length - 1].min
+    const base = levelOf(top)
     expect(base.tier.name).toBe('Immortal')
     expect(base.display).toBe('Immortal') // 刚进冠绝不带编号
     expect(base.immortalRank).toBe(0)
@@ -257,25 +271,26 @@ describe('段位', () => {
     expect(base.next).toBe(null)
     expect(base.toNext).toBe(IMMORTAL_STEP)
 
-    expect(levelOf(1000 + IMMORTAL_STEP).display).toBe('Immortal 1')
-    expect(levelOf(1000 + IMMORTAL_STEP * 2).display).toBe('Immortal 2')
-    expect(levelOf(1000 + IMMORTAL_STEP * 2 - 1).display).toBe('Immortal 1')
+    expect(levelOf(top + IMMORTAL_STEP).display).toBe('Immortal 1')
+    expect(levelOf(top + IMMORTAL_STEP * 2).display).toBe('Immortal 2')
+    expect(levelOf(top + IMMORTAL_STEP * 2 - 1).display).toBe('Immortal 1')
     // 分再高也有下一级，永远不会「到顶」
     expect(levelOf(99999).immortalRank).toBeGreaterThan(0)
     expect(levelOf(99999).toNext).toBeGreaterThan(0)
   })
 
   it('没到冠绝时 display 就是段位名，immortalRank 为空', () => {
-    const a = levelOf(300)
-    expect(a.display).toBe('Archon')
+    const a = levelOf(PET_LEVELS[GUARDIAN].min)
+    expect(a.display).toBe(PET_LEVELS[GUARDIAN].name)
     expect(a.immortalRank).toBe(null)
   })
 
   it('星的门槛能反推回分数', () => {
-    // Guardian 第 3 颗星 = 100 + 100*2/5 = 140
-    expect(starThreshold(1, 1)).toBe(100)
-    expect(starThreshold(1, 3)).toBe(140)
-    expect(levelOf(starThreshold(1, 3)).star).toBe(3)
+    const tier = PET_LEVELS[GUARDIAN]
+    const span = PET_LEVELS[GUARDIAN + 1].min - tier.min
+    expect(starThreshold(GUARDIAN, 1)).toBe(tier.min)
+    expect(starThreshold(GUARDIAN, 3)).toBe(tier.min + Math.ceil((span * 2) / 5))
+    expect(levelOf(starThreshold(GUARDIAN, 3)).star).toBe(3)
   })
 
   it('MMR 为负时按 0 处理，落在最低段', () => {

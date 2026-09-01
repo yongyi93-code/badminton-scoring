@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildFeed } from '@/lib/feed'
 import type { Match, Player, Session } from '@/types'
+import { PET_LEVELS, WIN_POINTS } from '@/lib/avatar'
 
 /*
  * 快讯全部从比赛记录现算。最要紧的两条性质：
@@ -101,15 +102,16 @@ describe('首页快讯', () => {
 
   it('升段只认「最近这一局打完升的」', () => {
     /*
-     * 卫士门槛是 100 分，赢一场 +10。
-     * 前一局打 9 场（90 分，还是先锋），最近这一局再赢 2 场跨过 100。
-     * 所以升段消息应该出现，而且指向那个人。
+     * 门槛会改，所以从段位表现推：第二段要多少分、赢一场几分。
+     * 前一局赢到差一场就升段，最近这一局再赢两场跨过去 ——
+     * 升段消息应该出现，而且指向那个人。
      */
-    const first = Array.from({ length: 9 }, (_, i) =>
+    const need = Math.ceil(PET_LEVELS[1].min / WIN_POINTS)
+    const first = Array.from({ length: need - 1 }, (_, i) =>
       match(i + 1, 's1', ['p1'], ['p9'], 'A'),
     )
     const second = Array.from({ length: 2 }, (_, i) =>
-      match(i + 10, 's2', ['p1'], ['p9'], 'A'),
+      match(i + need, 's2', ['p1'], ['p9'], 'A'),
     )
     const feed = buildFeed(
       PLAYERS,
@@ -118,7 +120,7 @@ describe('首页快讯', () => {
     )
     const up = feed.find((f) => f.id.startsWith('rankup-p1'))
     expect(up?.text).toContain('球员1')
-    expect(up?.text).toContain('卫士')
+    expect(up?.text).toContain(PET_LEVELS[1].label)
     expect(up?.link).toEqual({ kind: 'player', playerId: 'p1' })
   })
 
