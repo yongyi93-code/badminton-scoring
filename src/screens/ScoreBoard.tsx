@@ -24,6 +24,7 @@ import {
   matchWinner,
   nextGame,
   undoPoint,
+  withOpeningServe,
   type Court,
   type ServeState,
 } from '@/lib/scoring'
@@ -233,6 +234,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const [directA, setDirectA] = useState('')
   const [directB, setDirectB] = useState('')
   const [moreOpen, setMoreOpen] = useState(false)
+  const [serveOpen, setServeOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   /**
    * 只换屏幕上的左右，不动数据。
@@ -275,6 +277,23 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const gamePoint = isGamePoint(game.a, game.b, rules)
   const isDoubles = match.teamA.length > 1
   const deuce = deuceNote(game.a, game.b, rules)
+
+  /*
+   * 开局站右区的那两个人 —— 0:0 是偶数分，从右区发，所以
+   * 「开局发球人」和「开局接发人」就是 serveInit 里的 rightA / rightB。
+   * 选择器要标的是这两个，不是「此刻谁在发」：打到一半时此刻发球的人
+   * 早就换过了，标它会让人以为自己改的是当前发球权。
+   */
+  const openingServer = game.serveInit
+    ? game.serveInit.servingTeam === 'A'
+      ? game.serveInit.rightA
+      : game.serveInit.rightB
+    : null
+  const openingReceiver = game.serveInit
+    ? game.serveInit.servingTeam === 'A'
+      ? game.serveInit.rightB
+      : game.serveInit.rightA
+    : null
 
   const writeGame = (next: typeof game) => {
     const games = [...match.games]
@@ -388,6 +407,24 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
     updateMatch(match.id, { games: [...match.games, g] })
   }
 
+  /**
+   * 改这一局的开局发球设定，然后整局重推。
+   * 只动当前这一局 —— 三局两胜里前面打完的局各有各的开局设定，不该被连坐。
+   */
+  const fixServe = (serverId: string, receiverId?: string) => {
+    const fresh = useApp.getState().matches.find((m) => m.id === matchId)
+    if (!fresh) return
+    const idx = activeGameIndex(fresh, rules)
+    const cur = fresh.games[idx]
+    if (!cur.serveInit) return
+    const games = [...fresh.games]
+    games[idx] = {
+      ...cur,
+      serveInit: withOpeningServe(fresh, cur.serveInit, serverId, receiverId),
+    }
+    updateMatch(fresh.id, { games })
+  }
+
   const applyDirect = () => {
     const a = Number(directA)
     const b = Number(directB)
@@ -425,25 +462,36 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
         />
 
         {serve && !gameOver && (
-          <div className="px-4 pt-3">
-            <div className="rounded-card border border-line bg-surface p-3">
-              <p className="mb-2.5 text-center text-sm">
-                <span className="font-semibold text-brand-600">
-                  {names.get(serve.serverId)?.name}
+          <div className="px-5 pt-3">
+            <div className="rounded-card border-line bg-surface border p-3">
+              {/*
+                开局发球方是随机定的。要是场上其实是对面先发，这一整条
+                （发球人、发球区、接发人）从头到尾都是错的 —— 所以这行本身
+                就是入口，点一下能改。
+              */}
+              <button
+                onClick={() => setServeOpen(true)}
+                className="active:bg-fill mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg py-1 text-center text-label"
+              >
+                <span>
+                  <span className="text-brand-600 font-semibold">
+                    {names.get(serve.serverId)?.name}
+                  </span>
+                  <span className="text-ink-700"> 发球 · </span>
+                  <span className="font-medium">
+                    {serve.serveCourt === 'right' ? '右发球区' : '左发球区'}
+                  </span>
+                  {isDoubles && (
+                    <>
+                      <span className="text-ink-700"> · 接发 </span>
+                      <span className="font-medium">
+                        {names.get(serve.receiverId)?.name}
+                      </span>
+                    </>
+                  )}
                 </span>
-                <span className="text-ink-700"> 发球 · </span>
-                <span className="font-medium">
-                  {serve.serveCourt === 'right' ? '右发球区' : '左发球区'}
-                </span>
-                {isDoubles && (
-                  <>
-                    <span className="text-ink-700"> · 接发 </span>
-                    <span className="font-medium">
-                      {names.get(serve.receiverId)?.name}
-                    </span>
-                  </>
-                )}
-              </p>
+                <span className="text-ink-500 shrink-0 text-caption">改 ›</span>
+              </button>
               <CourtDiagram serve={serve} names={names} isDoubles={isDoubles} />
             </div>
           </div>
@@ -584,6 +632,66 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
       </div>
 
       <Toast message={toast} onClose={() => setToast(null)} />
+
+      <Sheet open={serveOpen} onClose={() => setServeOpen(false)} title="谁先发球">
+        <p className="text-ink-700 text-label">
+          改的是这一局「开局」谁发球，整局会按新设定重推 ——
+          比分一分不动，发球人、发球区和接发人跟着改正。
+        </p>
+        <div className="mt-4 space-y-4">
+          <div>
+            <p className="text-ink-500 mb-2 text-caption">开局发球</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[...match.teamA, ...match.teamB].map((id) => (
+                <button
+                  key={id}
+                  onClick={() => fixServe(id)}
+                  className={cx(
+                    'rounded-btn h-12 truncate border px-3 text-label',
+                    id === openingServer
+                      ? 'border-brand-500 bg-brand-100 text-brand-600 font-semibold'
+                      : 'border-line bg-surface active:bg-fill',
+                  )}
+                >
+                  <span className={match.teamA.includes(id) ? 'text-team-a' : 'text-team-b'}>
+                    {match.teamA.includes(id) ? 'A ' : 'B '}
+                  </span>
+                  {names.get(id)?.name ?? '?'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isDoubles && openingServer && (
+            <div>
+              <p className="text-ink-500 mb-2 text-caption">
+                开局对面谁接（决定他俩开局谁站右区）
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {(match.teamA.includes(openingServer) ? match.teamB : match.teamA).map(
+                  (id) => (
+                    <button
+                      key={id}
+                      onClick={() => fixServe(openingServer, id)}
+                      className={cx(
+                        'rounded-btn h-12 truncate border px-3 text-label',
+                        id === openingReceiver
+                          ? 'border-brand-500 bg-brand-100 text-brand-600 font-semibold'
+                          : 'border-line bg-surface active:bg-fill',
+                      )}
+                    >
+                      {names.get(id)?.name ?? '?'}
+                    </button>
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+        <Button block variant="soft" className="mt-4" onClick={() => setServeOpen(false)}>
+          完成
+        </Button>
+      </Sheet>
 
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="这一场">
         <div className="space-y-2">

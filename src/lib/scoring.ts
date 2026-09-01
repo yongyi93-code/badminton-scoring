@@ -190,6 +190,39 @@ export function deriveServe(match: Match, gameIndex: number): ServeState | null 
   }
 }
 
+/**
+ * 改开局的发球人（双打还能一起改开局接发人），返回新的 serveInit。
+ *
+ * 改的是「开局设定」而不是「从现在起换人发」—— 后者会让前面已经记下的
+ * 每一分和站位对不上。改完 deriveServe 会拿着同一份逐分记录整局重推，
+ * 比分一分不动，站位和发球人全部跟着改正。
+ *
+ * 开局是 0:0，偶数分从右区发，所以「开局发球人」就等于发球方站右区的那个，
+ * 「开局接发人」就等于接发方站右区的那个 —— 两个选择正好落在 rightA / rightB 上。
+ */
+export function withOpeningServe(
+  match: Match,
+  init: ServeInit,
+  serverId: string,
+  receiverId?: string,
+): ServeInit {
+  const servingTeam: TeamSide = match.teamA.includes(serverId) ? 'A' : 'B'
+  const next: ServeInit = { ...init, servingTeam }
+
+  if (servingTeam === 'A') next.rightA = serverId
+  else next.rightB = serverId
+
+  // 接发人得真是对面的人，随手传个自己人不该把站位搅乱
+  if (receiverId) {
+    const foes = servingTeam === 'A' ? match.teamB : match.teamA
+    if (foes.includes(receiverId)) {
+      if (servingTeam === 'A') next.rightB = receiverId
+      else next.rightA = receiverId
+    }
+  }
+  return next
+}
+
 /* ------------------------------------------------------------------ *
  * 加分 / 撤销
  * ------------------------------------------------------------------ */
