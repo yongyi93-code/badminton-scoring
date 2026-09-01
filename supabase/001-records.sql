@@ -97,3 +97,18 @@ exception
   when duplicate_object then null;  -- 已经加过了，跑第二遍不报错
 end;
 $$;
+
+-- ------------------------------------------------------------------
+-- 跑完对一下账
+--
+-- 上面全是「跑了不报错」的语句，成功和「其实只跑了前半段」在
+-- SQL Editor 里看起来一样。这一句会把结果打出来，照着看一眼就知道
+-- 到底成没成 —— 手机上那条「数据库不让写」的错误，根源多半就是
+-- 只跑了建表、权限那几句没跑到。
+--
+-- 应该看到 4 行：rls 一行 true，policy 三行（读 / 新增 / 修改）。
+-- ------------------------------------------------------------------
+select 'rls' as 项目, relrowsecurity::text as 值
+from pg_class where oid = 'public.records'::regclass
+union all
+select 'policy', polname from pg_policy where polrelid = 'public.records'::regclass;
