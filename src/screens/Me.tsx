@@ -158,6 +158,7 @@ function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const matches = useApp((s) => s.matches)
   const resetAll = useApp((s) => s.resetAll)
   const status = useSyncStatus()
+  const { session } = useAuth()
   const [busy, setBusy] = useState<'pull' | 'push' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [confirmWipe, setConfirmWipe] = useState(false)
@@ -206,6 +207,17 @@ function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
       <div className="space-y-4">
         <div className="bg-fill rounded-xl px-4 py-3">
           <p className="font-semibold">{local}</p>
+          {/*
+            登录没登录得摆在最显眼的地方。同步出问题时第一个要问的就是
+            这个 —— 之前排查一次卡了很久，就是因为界面上看不出来。
+          */}
+          <p className="text-ink-500 mt-1 text-caption">
+            {session
+              ? t(`已登录：${session.user.email ?? ''}`, `Signed in: ${session.user.email ?? ''}`)
+              : session === null
+                ? t('没登录 —— 云端不认这台手机', 'Not signed in — the cloud does not know this phone')
+                : t('正在确认登录状态…', 'Checking sign-in…')}
+          </p>
           <p
             className={
               status.state === 'error'

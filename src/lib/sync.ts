@@ -111,13 +111,48 @@ function withTimeout<T>(work: PromiseLike<T>): Promise<T> {
   ])
 }
 
+/**
+ * 先确认真的登录着，再去碰数据库。
+ *
+ * RLS 只放行 authenticated 这个角色。没登录的时候请求照样发得出去，
+ * 只是带着 anon 身份 —— 数据库拒收，回来的是
+ * 「new row violates row-level security policy」。
+ *
+ * 麻烦在于：这条错误和「策略压根没建好」返回的是同一句话（都是 42501）。
+ * 光看那句话分不出是「你没登录」还是「后台 SQL 没跑完」，
+ * 而这两件事要做的处理完全相反。所以在发请求之前先把「没登录」摘出来，
+ * 剩下那条错误才真的只剩一种解释。
+ */
+async function needsSignIn(): Promise<string | null> {
+  if (!supabase) return null
+  try {
+    const { data } = await supabase.auth.getSession()
+    if (data.session) return null
+  } catch {
+    // 问不出来就别拦着，让请求自己去撞，至少还能拿到真实错误
+    return null
+  }
+  return pick(
+    '还没登录。先在「我的」里登录，云端才认得你',
+    'Not signed in — sign in under “Me” first so the cloud knows you',
+  )
+}
+
 function readable(message: string): string {
   const m = message.toLowerCase()
   if (m.includes('jwt') || m.includes('not authenticated')) {
     return pick('登录过期了，退出重新登录一次', 'Session expired — sign out and back in')
   }
+  /*
+   * 走到这里说明已经登录过了（没登录的在 needsSignIn 就拦下了），
+   * 所以剩下的解释只有一个：后台那份 SQL 没跑完，或者只跑了建表
+   * 那几句、权限那几句没跑到。话要说得能照着做。
+   */
   if (m.includes('row-level security') || m.includes('permission denied')) {
-    return pick('数据库不让写，建表的 SQL 可能没跑完', 'The database refused the write — the setup SQL may not have finished')
+    return pick(
+      '登录了但数据库不让写 —— 去 Supabase 后台 SQL Editor 把 001-records.sql 整段再跑一遍',
+      'Signed in, but the database refuses writes — re-run all of 001-records.sql in the Supabase SQL Editor',
+    )
   }
   if (m.includes('relation') && m.includes('does not exist')) {
     return pick('云端还没有 records 这张表', 'The records table does not exist yet')
@@ -141,6 +176,11 @@ export type PullOutcome =
 
 export async function pullAll(): Promise<PullOutcome> {
   if (!supabase) return { ok: false, error: pick('还没接云端', 'Cloud is not set up') }
+  const noSession = await needsSignIn()
+  if (noSession) {
+    setStatus({ state: 'error', message: noSession, pending })
+    return { ok: false, error: noSession }
+  }
   setStatus({ state: 'syncing' })
   try {
     const { data, error } = await withTimeout(
@@ -230,6 +270,12 @@ async function flush(): Promise<void> {
   }
 
   pending = rows.length
+  const noSession = await needsSignIn()
+  if (noSession) {
+    // 基线不动，等重新登录了这一批还在
+    setStatus({ state: 'error', message: noSession, pending })
+    return
+  }
   setStatus({ state: 'syncing' })
   try {
     const { error } = await withTimeout(
@@ -344,6 +390,11 @@ export async function pushAll(): Promise<{ ok: true; count: number } | { ok: fal
   const rows = [...rowsOf().values()]
   if (rows.length === 0) return { ok: true, count: 0 }
 
+  const noSession = await needsSignIn()
+  if (noSession) {
+    setStatus({ state: 'error', message: noSession, pending })
+    return { ok: false, error: noSession }
+  }
   setStatus({ state: 'syncing' })
   try {
     const { error } = await withTimeout(

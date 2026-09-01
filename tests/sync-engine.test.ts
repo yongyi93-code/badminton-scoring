@@ -20,6 +20,8 @@ const cloud = vi.hoisted(() => ({
   upserts: [] as { kind: string; id: string; deleted: boolean }[][],
   /** 想让读取失败时填这个 */
   selectError: null as { message: string } | null,
+  /** 有没有登录。RLS 只认登录的人，没登录时一个请求都不该发出去 */
+  session: {} as object | null,
 }))
 
 vi.mock('@/lib/supabase', () => {
@@ -43,6 +45,9 @@ vi.mock('@/lib/supabase', () => {
       from: () => table,
       channel: () => channel,
       removeChannel: () => Promise.resolve('ok'),
+      auth: {
+        getSession: () => Promise.resolve({ data: { session: cloud.session } }),
+      },
     },
     cloudReady: true,
   }
@@ -61,6 +66,7 @@ beforeEach(() => {
   cloud.rows = []
   cloud.upserts = []
   cloud.selectError = null
+  cloud.session = {}
   useApp.getState().resetAll()
 })
 
@@ -184,6 +190,55 @@ describe('登录之后本机再改', () => {
     await vi.advanceTimersByTimeAsync(700)
 
     expect(cloud.upserts).toEqual([])
+  })
+})
+
+/*
+ * 没登录时数据库回的是「new row violates row-level security policy」，
+ * 和「策略压根没建好」返回的是同一句话（都是 42501）—— 手机上看到那句话
+ * 根本分不出该去登录还是该去后台跑 SQL。实际上就在这上面卡过一次。
+ * 所以没登录必须在发请求之前就拦住，让剩下那条错误只剩一种解释。
+ */
+describe('没登录的时候', () => {
+  it('手动推送不发请求，直接说去登录', async () => {
+    const { pushAll } = await import('@/lib/sync')
+    useApp.getState().addPlayer('阿伟', 'M')
+    cloud.session = null
+
+    const res = await pushAll()
+
+    expect(cloud.upserts).toEqual([])
+    expect(res.ok).toBe(false)
+    expect(res.ok === false && res.error).toContain('登录')
+  })
+
+  it('手动刷新也一样', async () => {
+    const { pullAll } = await import('@/lib/sync')
+    cloud.session = null
+
+    const res = await pullAll()
+
+    expect(res.ok).toBe(false)
+    expect(res.ok === false && res.error).toContain('登录')
+  })
+
+  /*
+   * 登录着用着用着会话过期，是最容易被当成「同步坏了」的情况。
+   * 这时候基线不能动 —— 重新登录之后这一批还得推上去。
+   */
+  it('会话中途过期：这一批留着，重新登录后照样推得上去', async () => {
+    await startSync()
+    cloud.upserts = []
+
+    cloud.session = null
+    const p = useApp.getState().addPlayer('小林', 'F')
+    await vi.advanceTimersByTimeAsync(700)
+    expect(cloud.upserts).toEqual([])
+
+    cloud.session = {}
+    useApp.getState().updatePlayer(p.id, { name: '小林改了名' })
+    await vi.advanceTimersByTimeAsync(700)
+    expect(pushedKeys()).toContain(`player ${p.id}`)
   })
 })
 
