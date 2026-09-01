@@ -6,6 +6,7 @@ import { Body, Card, Screen, SectionTitle } from '@/components/ui'
 import { decidedMatches } from '@/lib/ranking'
 import { venueSummaries } from '@/lib/venues'
 import { formatDate } from '@/lib/format'
+import { useT } from '@/lib/i18n'
 
 /*
  * 发现。
@@ -57,6 +58,7 @@ const icon = (d: string) => (
 )
 
 export function Discover() {
+  const t = useT()
   const { players, sessions, matches } = useApp()
   const push = useNav((s) => s.push)
 
@@ -67,31 +69,37 @@ export function Discover() {
   return (
     <Screen tabBar>
       <header className="safe-top px-5 pb-3">
-        <h1 className="text-h1">发现</h1>
+        <h1 className="text-h1">{t('发现', 'Discover')}</h1>
         <p className="text-ink-500 mt-1 text-label">
-          排行榜、球友和常去的球馆
+          {t('排行榜、球友和常去的球馆', 'Rankings, players and your regular venues')}
         </p>
       </header>
 
       <Body>
         <Entry
           icon={icon('M8 21h8M12 17v4M6 4h12v5a6 6 0 0 1-12 0V4ZM6 6H3v2a4 4 0 0 0 3 3.9M18 6h3v2a4 4 0 0 1-3 3.9')}
-          title="排行榜"
-          hint={`${played} 场已记录 · 按球馆分开看`}
+          title={t('排行榜', 'Leaderboard')}
+          hint={t(
+            `${played} 场已记录 · 按球馆分开看`,
+            `${played} matches recorded · filter by venue`,
+          )}
           onClick={() => push({ name: 'leaderboard' })}
         />
         <Entry
           icon={icon('M16 20a4 4 0 0 0-8 0M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M20 20a3.5 3.5 0 0 0-4-3.3M18.5 10.5a3 3 0 0 0 0-5')}
-          title="球员库"
-          hint={`${roster} 位球友`}
+          title={t('球员库', 'Players')}
+          hint={t(`${roster} 位球友`, `${roster} players`)}
           onClick={() => push({ name: 'players' })}
         />
 
-        <SectionTitle>常去的球馆</SectionTitle>
+        <SectionTitle>{t('常去的球馆', 'Your venues')}</SectionTitle>
         {venues.length === 0 ? (
           <Card>
             <p className="text-ink-500 text-label">
-              打完第一场球之后，去过的球馆会自动出现在这里。
+              {t(
+                '打完第一场球之后，去过的球馆会自动出现在这里。',
+                'Venues show up here once you have played a match at one.',
+              )}
             </p>
           </Card>
         ) : (
@@ -102,10 +110,14 @@ export function Discover() {
                   <div className="min-w-0">
                     <p className="truncate text-title">{v.label}</p>
                     <p className="text-ink-500 mt-0.5 text-label">
-                      {v.sessionCount} 次球局 · {v.matchCount} 场 · {v.playerCount} 人
+                      {t(
+                        `${v.sessionCount} 次球局 · ${v.matchCount} 场 · ${v.playerCount} 人`,
+                        `${v.sessionCount} sessions · ${v.matchCount} matches · ${v.playerCount} players`,
+                      )}
                     </p>
                     <p className="text-ink-500 mt-0.5 text-caption">
-                      最近：{formatDate(new Date(v.lastPlayedAt).toISOString().slice(0, 10))}
+                      {t('最近：', 'Last played ')}
+                      {formatDate(new Date(v.lastPlayedAt).toISOString().slice(0, 10))}
                     </p>
                   </div>
                   {ARROW}

@@ -11,15 +11,26 @@ import { RankChip } from '@/components/RankMedal'
 import { scoreLine } from '@/lib/scoring'
 import { venueLabel } from '@/lib/venues'
 import { TeamNames } from '@/components/PlayerBits'
+import { lang, useT } from '@/lib/i18n'
 
-/** 早上好 / 下午好 / 晚上好 —— 球局大多在晚上，这句得对得上 */
-function greeting(): string {
+/**
+ * 早上好 / 下午好 / 晚上好 —— 球局大多在晚上，这句得对得上。
+ * 中英文的分段不一样：英文没有「中午好」这个说法，
+ * 直译成 Good noon 会很怪，所以两边各按各的习惯分。
+ */
+function greeting(name: string): string {
   const h = new Date().getHours()
-  if (h < 6) return '夜里好'
-  if (h < 11) return '早上好'
-  if (h < 14) return '中午好'
-  if (h < 18) return '下午好'
-  return '晚上好'
+  if (lang() === 'zh') {
+    if (h < 6) return `夜里好，${name}`
+    if (h < 11) return `早上好，${name}`
+    if (h < 14) return `中午好，${name}`
+    if (h < 18) return `下午好，${name}`
+    return `晚上好，${name}`
+  }
+  if (h < 5) return `Still up, ${name}?`
+  if (h < 12) return `Good morning, ${name}`
+  if (h < 18) return `Good afternoon, ${name}`
+  return `Good evening, ${name}`
 }
 
 const ARROW = (
@@ -30,6 +41,7 @@ const ARROW = (
 )
 
 export function Home() {
+  const t = useT()
   const { players, sessions, matches, meId } = useApp()
   const push = useNav((s) => s.push)
   const switchTab = useNav((s) => s.switchTab)
@@ -105,11 +117,11 @@ export function Home() {
           <div className="min-w-0">
             <h1 className="text-h1 tracking-[0.08em]">RALLY</h1>
             <p className="text-ink-500 mt-0.5 text-label">
-              {me ? `${greeting()}，${me.name}` : '羽球社交竞技平台'}
+              {me ? greeting(me.name) : t('羽球社交竞技平台', 'Badminton, together')}
             </p>
           </div>
           {me && myProgress && (
-            <button onClick={() => switchTab('me')} className="shrink-0" aria-label="我的">
+            <button onClick={() => switchTab('me')} className="shrink-0" aria-label={t('我的', 'Me')}>
               <RankChip level={myProgress.level} />
             </button>
           )}
@@ -127,14 +139,17 @@ export function Home() {
           >
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <Pill tone="brand">进行中</Pill>
+                <Pill tone="brand">{t('进行中', 'Live')}</Pill>
                 <p className="mt-2 truncate text-h2">{venueLabel(active.venue)}</p>
                 <p className="text-ink-500 mt-0.5 text-label">
-                  {formatDate(active.date)} · {active.playerIds.length} 人 ·{' '}
-                  {active.courtCount} 片场 · 已打 {playedIn(active.id)} 场
+                  {formatDate(active.date)} ·{' '}
+                  {t(
+                    `${active.playerIds.length} 人 · ${active.courtCount} 片场 · 已打 ${playedIn(active.id)} 场`,
+                    `${active.playerIds.length} players · ${active.courtCount} courts · ${playedIn(active.id)} played`,
+                  )}
                 </p>
               </div>
-              <span className="text-brand-600 shrink-0 text-title">继续 →</span>
+              <span className="text-brand-600 shrink-0 text-title">{t('继续 →', 'Resume →')}</span>
             </div>
 
             {liveMatches.length > 0 && (
@@ -142,7 +157,7 @@ export function Home() {
                 {liveMatches.map((m) => (
                   <div key={m.id} className="flex items-center gap-2 text-label">
                     <span className="text-ink-500 shrink-0">
-                      {(m.courtIndex ?? 0) + 1} 号场
+                      {t(`${(m.courtIndex ?? 0) + 1} 号场`, `Court ${(m.courtIndex ?? 0) + 1}`)}
                     </span>
                     <TeamNames
                       ids={m.teamA}
@@ -164,9 +179,12 @@ export function Home() {
           </Card>
         ) : (
           <Card>
-            <p className="text-h2">今晚去打球？</p>
+            <p className="text-h2">{t('今晚去打球？', 'Playing tonight?')}</p>
             <p className="text-ink-500 mt-1 text-label">
-              开一个球局，勾上到场的人，RALLY 负责公平排场、记分和算排名。
+              {t(
+                '开一个球局，勾上到场的人，RALLY 负责公平排场、记分和算排名。',
+                'Start a session, tick who is here, and RALLY handles fair rotation, scoring and rankings.',
+              )}
             </p>
             <Button
               variant="primary"
@@ -175,7 +193,7 @@ export function Home() {
               className="mt-4"
               onClick={() => push({ name: 'setup' })}
             >
-              开新球局
+              {t('开新球局', 'New session')}
             </Button>
           </Card>
         )}
@@ -185,14 +203,14 @@ export function Home() {
           <Card onClick={() => push({ name: 'profile', playerId: me.id })}>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-ink-500 text-label">我的进度</p>
+                <p className="text-ink-500 text-label">{t('我的进度', 'My progress')}</p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                   <RankChip level={myProgress.level} />
                   <span className="tnum text-title">MMR {myProgress.mmr}</span>
                 </div>
                 {last5.length > 0 && (
                   <div className="mt-2 flex items-center gap-1.5">
-                    <span className="text-ink-500 text-caption">近 5 场</span>
+                    <span className="text-ink-500 text-caption">{t('近 5 场', 'Last 5')}</span>
                     {last5.map((won, i) => (
                       <span
                         key={i}
@@ -202,7 +220,7 @@ export function Home() {
                             : 'bg-danger-50 text-danger-600 flex size-5 items-center justify-center rounded-md text-caption font-semibold'
                         }
                       >
-                        {won ? '胜' : '负'}
+                        {won ? t('胜', 'W') : t('负', 'L')}
                       </span>
                     ))}
                   </div>
@@ -214,17 +232,17 @@ export function Home() {
         )}
 
         {/* 快捷入口 */}
-        <SectionTitle>快捷入口</SectionTitle>
+        <SectionTitle>{t('快捷入口', 'Shortcuts')}</SectionTitle>
         <div className="grid grid-cols-2 gap-3">
           <Card onClick={() => push({ name: 'leaderboard' })}>
-            <p className="text-ink-500 text-label">排行榜</p>
+            <p className="text-ink-500 text-label">{t('排行榜', 'Leaderboard')}</p>
             <p className="tnum mt-1 text-h2">{totalPlayed}</p>
-            <p className="text-ink-500 text-caption">场已记录</p>
+            <p className="text-ink-500 text-caption">{t('场已记录', 'matches')}</p>
           </Card>
           <Card onClick={() => push({ name: 'players' })}>
-            <p className="text-ink-500 text-label">球员库</p>
+            <p className="text-ink-500 text-label">{t('球员库', 'Players')}</p>
             <p className="tnum mt-1 text-h2">{roster.length}</p>
-            <p className="text-ink-500 text-caption">位球友</p>
+            <p className="text-ink-500 text-caption">{t('位球友', 'players')}</p>
           </Card>
         </div>
 
@@ -234,11 +252,11 @@ export function Home() {
             <SectionTitle
               right={
                 <Button size="sm" variant="tertiary" onClick={() => switchTab('sessions')}>
-                  查看全部
+                  {t('查看全部', 'See all')}
                 </Button>
               }
             >
-              最近球局
+              {t('最近球局', 'Recent sessions')}
             </SectionTitle>
             <div className="space-y-3">
               {past.slice(0, 3).map((s) => (
@@ -247,7 +265,11 @@ export function Home() {
                     <div className="min-w-0">
                       <p className="truncate text-title">{venueLabel(s.venue)}</p>
                       <p className="text-ink-500 mt-0.5 text-label">
-                        {formatDate(s.date)} · {s.playerIds.length} 人 · {playedIn(s.id)} 场
+                        {formatDate(s.date)} ·{' '}
+                        {t(
+                          `${s.playerIds.length} 人 · ${playedIn(s.id)} 场`,
+                          `${s.playerIds.length} players · ${playedIn(s.id)} matches`,
+                        )}
                       </p>
                     </div>
                     {ARROW}

@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Body, Button, Card, EmptyState, Pill, Screen, Segmented } from '@/components/ui'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatMonth } from '@/lib/format'
 import { FORMAT_LABELS, formatOf, type Session } from '@/types'
 import { venueLabel } from '@/lib/venues'
+import { useT } from '@/lib/i18n'
 
 type Filter = 'live' | 'past'
 
@@ -16,6 +17,7 @@ type Filter = 'live' | 'past'
  * 这回事。凭空加一个永远是空的页签只会让人以为功能坏了，所以这里只做两档。
  */
 export function Sessions() {
+  const t = useT()
   const { sessions, matches } = useApp()
   const push = useNav((s) => s.push)
   const [filter, setFilter] = useState<Filter>('live')
@@ -66,18 +68,21 @@ export function Sessions() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="truncate text-title">{venueLabel(s.venue)}</p>
-              {active && <Pill tone="brand">进行中</Pill>}
+              {active && <Pill tone="brand">{t('进行中', 'Live')}</Pill>}
             </div>
-            <p className="mt-1 text-label text-ink-500">
-              {formatDate(s.date)} · {s.playerIds.length} 人 · {s.courtCount} 片场
+            <p className="text-ink-500 mt-1 text-label">
+              {formatDate(s.date)} ·{' '}
+              {t(`${s.playerIds.length} 人`, `${s.playerIds.length} players`)} ·{' '}
+              {t(`${s.courtCount} 片场`, `${s.courtCount} courts`)}
             </p>
-            <p className="mt-0.5 text-label text-ink-500">
-              {FORMAT_LABELS[formatOf(s)]} · {s.rules.pointsToWin} 分制 · 已打{' '}
-              {played} 场
+            <p className="text-ink-500 mt-0.5 text-label">
+              {t(...FORMAT_LABELS[formatOf(s)])} ·{' '}
+              {t(`${s.rules.pointsToWin} 分制`, `to ${s.rules.pointsToWin}`)} ·{' '}
+              {t(`已打 ${played} 场`, `${played} played`)}
             </p>
           </div>
           <span className="text-brand-600 shrink-0 text-label">
-            {active ? '继续记分 →' : '看战绩 ›'}
+            {active ? t('继续记分 →', 'Score →') : t('看战绩 ›', 'Results ›')}
           </span>
         </div>
       </Card>
@@ -87,7 +92,7 @@ export function Sessions() {
   return (
     <Screen tabBar>
       <header className="safe-top px-5 pb-3">
-        <h1 className="text-h1">球局</h1>
+        <h1 className="text-h1">{t('球局', 'Sessions')}</h1>
       </header>
 
       <Body>
@@ -95,8 +100,11 @@ export function Sessions() {
           value={filter}
           onChange={setFilter}
           options={[
-            { value: 'live', label: `进行中${live.length ? ` (${live.length})` : ''}` },
-            { value: 'past', label: `历史 (${past.length})` },
+            {
+              value: 'live',
+              label: `${t('进行中', 'Live')}${live.length ? ` (${live.length})` : ''}`,
+            },
+            { value: 'past', label: `${t('历史', 'History')} (${past.length})` },
           ]}
         />
 
@@ -104,23 +112,33 @@ export function Sessions() {
           live.length === 0 ? (
             <>
               <EmptyState
-                title="现在没有在打的球局"
-                hint="到了球馆就开一个，勾上今晚到场的人，RALLY 负责排场和记分"
+                title={t('现在没有在打的球局', 'No session running')}
+                hint={t(
+                  '到了球馆就开一个，勾上今晚到场的人，RALLY 负责排场和记分',
+                  'Start one at the courts, tick who showed up, and RALLY handles the rotation and scoring',
+                )}
               />
               <Button variant="primary" size="lg" block onClick={() => push({ name: 'setup' })}>
-                开新球局
+                {t('开新球局', 'New session')}
               </Button>
             </>
           ) : (
             <div className="space-y-3">{live.map(row)}</div>
           )
         ) : past.length === 0 ? (
-          <EmptyState title="还没有打完的球局" hint="打完一局并结束，它就会留在这里" />
+          <EmptyState
+            title={t('还没有打完的球局', 'No finished sessions yet')}
+            hint={t(
+              '打完一局并结束，它就会留在这里',
+              'Finish a session and it will show up here',
+            )}
+          />
         ) : (
           byMonth.map(([month, list]) => (
             <div key={month} className="space-y-2">
-              <h2 className="text-label text-ink-500 px-1">
-                {month.replace('-', ' 年 ')} 月 · {list.length} 场球局
+              <h2 className="text-ink-500 px-1 text-label">
+                {formatMonth(month)} ·{' '}
+                {t(`${list.length} 场球局`, `${list.length} sessions`)}
               </h2>
               <div className="space-y-3">{list.map(row)}</div>
             </div>

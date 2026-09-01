@@ -24,14 +24,11 @@ import {
   STAGES,
 } from '@/lib/avatarArt'
 import { dressDefaultsFor, dressUpFor, hasDressUp } from '@/lib/dressup'
-import { useProgress } from '@/store/progress'
 import { RankMedal } from '@/components/RankMedal'
 import {
   AVATAR_SEXES,
   balanceOf,
   buyBlocker,
-  defaultHair,
-  grantDressUp,
   IMMORTAL_STEP,
   LOSS_POINTS,
   outfitValue,
@@ -44,7 +41,6 @@ import {
   SLOT_ORDER,
   WIN_POINTS,
   type AvatarProfile,
-  type AvatarSex,
   type AvatarSlot,
   type Progress,
   type ShopItem,
@@ -341,7 +337,6 @@ export function Avatar({ playerId }: { playerId: string }) {
             avatar={avatar}
             catalog={catalog}
             onToggle={(slot, itemId) => equipItem(playerId, slot, itemId)}
-            onSwitchSex={(sex) => setAvatarSex(playerId, sex)}
             onSkin={(i) => setAvatarSkin(playerId, i)}
           />
         ) : (
@@ -366,16 +361,13 @@ function DressPanel({
   avatar,
   catalog,
   onToggle,
-  onSwitchSex,
   onSkin,
 }: {
   avatar: AvatarProfile
   catalog: ShopItem[]
   onToggle: (slot: AvatarSlot, itemId: string | null) => void
-  onSwitchSex: (sex: AvatarSex) => void
   onSkin: (index: number) => void
 }) {
-  const stage = stageOf(useProgress(avatar.playerId).level)
   return (
     <>
       {SLOT_ORDER.filter(slotIsDressable).map((slot) => {
@@ -440,49 +432,16 @@ function DressPanel({
         </>
       )}
 
-      <SectionTitle>换个角色</SectionTitle>
-      <div className="grid grid-cols-2 gap-2">
-        {AVATAR_SEXES.map((s) => (
-          <button
-            key={s.sex}
-            onClick={() => onSwitchSex(s.sex)}
-            className={cx(
-              'rounded-xl border p-1.5',
-              s.sex === avatar.sex
-                ? 'border-brand-600 bg-brand-100'
-                : 'border-line bg-surface active:bg-fill',
-            )}
-          >
-            {/*
-              预览就是「真按下去会变成什么样」：换过去穿哪几件由
-              grantDressUp 说了算（那边买过最好的一件，没买过就白送的），
-              和真按下去走的是同一个函数。
-              直接把这边的 equipped 传过去是不行的 —— 两套素材 id 不通用，
-              女号那件会被贴到男生底图上。
-            */}
-            <AvatarView
-              sex={s.sex}
-              skin={avatar.skin}
-              equipped={
-                s.sex === avatar.sex
-                  ? avatar.equipped
-                  : grantDressUp({
-                      ...avatar,
-                      sex: s.sex,
-                      equipped: { ...avatar.equipped, hair: defaultHair(s.sex) },
-                    }).equipped
-              }
-              stage={stage}
-              className="h-24 w-full"
-              title={s.label}
-            />
-            <p className="mt-0.5 text-sm">{s.label}</p>
-          </button>
-        ))}
-      </div>
-      <p className="pb-2 text-xs text-ink-500">
-        换性别不花钱，买过的东西一件都不会没收。男女是两套形象、两套装备线，
-        换过去会先穿上那边白送的几件 —— 那边的货你还没买过。换回来原样还在。
+      {/*
+        角色的男女不在这里改 —— 性别是一件事，只该有一个地方填。
+        原来这里有个「换个角色」，于是同一个人可能资料里写着男、
+        角色却是女：混双按资料排、立绘按角色画，两边对不上。
+        改性别的入口留在球员资料里，改了角色会自动跟过去，
+        买过的东西一件不少。
+      */}
+      <p className="text-ink-500 pb-2 text-caption">
+        角色是{avatar.sex === 'm' ? '男生' : '女生'}形象，跟着球员资料里的性别走。
+        要换的话去球员库里改性别 —— 买过的东西一件都不会没收。
       </p>
     </>
   )

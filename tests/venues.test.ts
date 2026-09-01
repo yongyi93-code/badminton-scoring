@@ -73,9 +73,9 @@ describe('场馆名归一化', () => {
   })
 
   it('没填时显示为未填球馆', () => {
-    expect(venueLabel('')).toBe(UNNAMED_VENUE)
-    expect(venueLabel('   ')).toBe(UNNAMED_VENUE)
-    expect(venueLabel(undefined)).toBe(UNNAMED_VENUE)
+    expect(venueLabel('')).toBe(UNNAMED_VENUE())
+    expect(venueLabel('   ')).toBe(UNNAMED_VENUE())
+    expect(venueLabel(undefined)).toBe(UNNAMED_VENUE())
     expect(venueLabel('城中羽球馆')).toBe('城中羽球馆')
   })
 
@@ -170,7 +170,7 @@ describe('场馆概览', () => {
     const ms = [match(s.id, ['a', 'b'], ['c', 'd'])]
     const out = venueSummaries([s], ms)
     expect(out[0].key).toBe('')
-    expect(out[0].label).toBe(UNNAMED_VENUE)
+    expect(out[0].label).toBe(UNNAMED_VENUE())
   })
 })
 

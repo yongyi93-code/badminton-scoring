@@ -22,6 +22,7 @@ import { formatDate, percent, streakLabel } from '@/lib/format'
 import { venueLabel } from '@/lib/venues'
 import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
+import { LANG_LABELS, useLang, useT, type Lang } from '@/lib/i18n'
 
 const ARROW = (
   <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
@@ -59,6 +60,8 @@ function MenuRow({
 }
 
 export function Me() {
+  const t = useT()
+  const { lang, setLang } = useLang()
   const { players, sessions, matches, avatars, meId } = useApp()
   const setMeId = useApp((s) => s.setMeId)
   const exportBackup = useApp((s) => s.exportBackup)
@@ -123,18 +126,22 @@ export function Me() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `RALLY-备份-${data.exportedAt.slice(0, 10)}.json`
+    a.download = `RALLY-${t('备份', 'backup')}-${data.exportedAt.slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    setMessage('备份文件已导出')
+    setMessage(t('备份文件已导出', 'Backup file exported'))
   }
 
   async function upload(file: File) {
     try {
       importBackup(JSON.parse(await file.text()) as Backup)
-      setMessage('已恢复备份')
+      setMessage(t('已恢复备份', 'Backup restored'))
     } catch (err) {
-      setMessage(err instanceof Error ? `导入失败：${err.message}` : '导入失败')
+      setMessage(
+        err instanceof Error
+          ? t(`导入失败：${err.message}`, `Import failed: ${err.message}`)
+          : t('导入失败', 'Import failed'),
+      )
     }
   }
 
@@ -143,7 +150,7 @@ export function Me() {
   return (
     <Screen tabBar>
       <header className="safe-top px-5 pb-3">
-        <h1 className="text-h1">我的</h1>
+        <h1 className="text-h1">{t('我的', 'Me')}</h1>
       </header>
 
       <Body>
@@ -165,22 +172,22 @@ export function Me() {
                   </div>
                 </div>
                 <Button size="sm" variant="tertiary" onClick={() => setPicking(true)}>
-                  换人
+                  {t('换人', 'Switch')}
                 </Button>
               </div>
 
               <div className="border-line mt-4 grid grid-cols-3 gap-2 border-t pt-3 text-center">
                 <div>
                   <p className="tnum text-h2">{thisMonth.games}</p>
-                  <p className="text-ink-500 text-caption">本月场次</p>
+                  <p className="text-ink-500 text-caption">{t('本月场次', 'This month')}</p>
                 </div>
                 <div>
                   <p className="tnum text-h2">{thisMonth.wins}</p>
-                  <p className="text-ink-500 text-caption">本月胜场</p>
+                  <p className="text-ink-500 text-caption">{t('本月胜场', 'Wins')}</p>
                 </div>
                 <div>
                   <p className="tnum text-h2">{percent(stats.winRate)}</p>
-                  <p className="text-ink-500 text-caption">总胜率</p>
+                  <p className="text-ink-500 text-caption">{t('总胜率', 'Win rate')}</p>
                 </div>
               </div>
             </Card>
@@ -209,38 +216,45 @@ export function Me() {
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-title">我的角色</span>
+                  <span className="block text-title">{t('我的角色', 'My character')}</span>
                   <span className="text-ink-500 mt-0.5 block text-label">
-                    {avatar ? `身上行头 ${progress.coins} 金币可花` : '还没建角色，去挑一个'}
+                    {avatar
+                      ? t(`身上行头 ${progress.coins} 金币可花`, `${progress.coins} coins to spend`)
+                      : t('还没建角色，去挑一个', 'No character yet — pick one')}
                   </span>
                 </span>
                 {ARROW}
               </div>
             </Card>
 
-            <SectionTitle>我的战绩</SectionTitle>
+            <SectionTitle>{t('我的战绩', 'My record')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">
               <MenuRow
-                title="完整战绩与对手分析"
-                hint={`${stats.games} 场 · ${stats.wins} 胜 ${stats.losses} 负`}
+                title={t('完整战绩与对手分析', 'Full record and head-to-heads')}
+                hint={t(
+                  `${stats.games} 场 · ${stats.wins} 胜 ${stats.losses} 负`,
+                  `${stats.games} played · ${stats.wins}W ${stats.losses}L`,
+                )}
                 onClick={() => push({ name: 'profile', playerId: me.id })}
               />
               <MenuRow
-                title="累计排行榜"
-                hint="按球馆分开算"
+                title={t('累计排行榜', 'Leaderboard')}
+                hint={t('按球馆分开算', 'Ranked per venue')}
                 onClick={() => push({ name: 'leaderboard' })}
               />
             </div>
 
             {recent.length > 0 && (
               <>
-                <SectionTitle>最近球局</SectionTitle>
+                <SectionTitle>{t('最近球局', 'Recent sessions')}</SectionTitle>
                 <div className="border-line rounded-card overflow-hidden border">
                   {recent.map((s) => (
                     <MenuRow
                       key={s.id}
                       title={venueLabel(s.venue)}
-                      hint={`${formatDate(s.date)} · ${s.status === 'active' ? '进行中' : '已结束'}`}
+                      hint={`${formatDate(s.date)} · ${
+                        s.status === 'active' ? t('进行中', 'Live') : t('已结束', 'Finished')
+                      }`}
                       onClick={() =>
                         push(
                           s.status === 'active'
@@ -256,48 +270,71 @@ export function Me() {
           </>
         ) : (
           <Card>
-            <p className="text-title">你是哪一位？</p>
+            <p className="text-title">{t('你是哪一位？', 'Which one are you?')}</p>
             <p className="text-ink-500 mt-1 text-label">
-              选一个球员绑在这台手机上，这一页就会显示你自己的段位、战绩和角色。
-              只是本机的一个标记，不是账号 —— 数据还是整份存在这台手机里。
+              {t(
+                '选一个球员绑在这台手机上，这一页就会显示你自己的段位、战绩和角色。只是本机的一个标记，不是账号 —— 数据还是整份存在这台手机里。',
+                'Pick a player to link to this phone and this page will show your own rank, record and character. It is just a marker on this device, not an account — all the data still lives on this phone.',
+              )}
             </p>
             <div className="mt-4">
               {roster.length === 0 ? (
                 <Button block variant="primary" onClick={() => push({ name: 'players' })}>
-                  先去添加球员
+                  {t('先去添加球员', 'Add players first')}
                 </Button>
               ) : (
                 <Button block variant="primary" onClick={() => setPicking(true)}>
-                  选一个
+                  {t('选一个', 'Pick one')}
                 </Button>
               )}
             </div>
           </Card>
         )}
 
-        <SectionTitle>设置</SectionTitle>
+        <SectionTitle>{t('设置', 'Settings')}</SectionTitle>
         <div className="border-line rounded-card overflow-hidden border">
           <MenuRow
-            title="深色模式"
-            hint={theme === 'dark' ? '现在是深色' : '现在是浅色'}
+            title={t('语言', 'Language')}
+            hint={LANG_LABELS[lang]}
+            right={
+              <div className="flex gap-1">
+                {(['zh', 'en'] as Lang[]).map((l) => (
+                  <Button
+                    key={l}
+                    size="sm"
+                    variant={l === lang ? 'primary' : 'soft'}
+                    onClick={() => setLang(l)}
+                  >
+                    {LANG_LABELS[l]}
+                  </Button>
+                ))}
+              </div>
+            }
+          />
+          <MenuRow
+            title={t('深色模式', 'Dark mode')}
+            hint={theme === 'dark' ? t('现在是深色', 'Currently dark') : t('现在是浅色', 'Currently light')}
             right={
               <Button
                 size="sm"
                 variant="soft"
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               >
-                {theme === 'dark' ? '切成浅色' : '切成深色'}
+                {theme === 'dark' ? t('切成浅色', 'Go light') : t('切成深色', 'Go dark')}
               </Button>
             }
           />
           <MenuRow
-            title="数据备份与恢复"
-            hint="数据只存在这台手机上，每次打完球导一次"
+            title={t('数据备份与恢复', 'Backup and restore')}
+            hint={t(
+              '数据只存在这台手机上，每次打完球导一次',
+              'Data lives only on this phone — export after every session',
+            )}
             onClick={() => setBackupOpen(true)}
           />
           <MenuRow
-            title="球员库"
-            hint={`${roster.length} 位球友`}
+            title={t('球员库', 'Players')}
+            hint={t(`${roster.length} 位球友`, `${roster.length} players`)}
             onClick={() => switchTab('discover')}
           />
         </div>
@@ -318,14 +355,17 @@ export function Me() {
             disabled={updating}
             className="decoration-line underline underline-offset-4 disabled:opacity-60"
           >
-            {updating ? '更新中…' : '检查更新'}
+            {updating ? t('更新中…', 'Updating…') : t('检查更新', 'Check for updates')}
           </button>
         </div>
       </Body>
 
-      <Sheet open={picking} onClose={() => setPicking(false)} title="你是哪一位？">
+      <Sheet open={picking} onClose={() => setPicking(false)} title={t('你是哪一位？', 'Which one are you?')}>
         {roster.length === 0 ? (
-          <EmptyState title="球员库是空的" hint="先去球员库添加人" />
+          <EmptyState
+            title={t('球员库是空的', 'No players yet')}
+            hint={t('先去球员库添加人', 'Add someone in the players list first')}
+          />
         ) : (
           <div className="max-h-[60vh] space-y-2 overflow-y-auto">
             {roster.map((p) => (
@@ -343,7 +383,7 @@ export function Me() {
               >
                 <Avatar name={p.name} avatar={avatarOf(avatars, p.id)} />
                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                {p.id === meId && <Pill tone="brand">就是我</Pill>}
+                {p.id === meId && <Pill tone="brand">{t('就是我', "That's me")}</Pill>}
               </button>
             ))}
           </div>
@@ -353,22 +393,24 @@ export function Me() {
             setMeId(null)
             setPicking(false)
           }}>
-            取消绑定
+            {t('取消绑定', 'Unlink')}
           </Button>
         )}
       </Sheet>
 
-      <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title="数据备份">
+      <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title={t('数据备份', 'Backup')}>
         <p className="text-ink-700 text-label">
-          所有数据只存在这台手机的浏览器里。清掉浏览器数据或换手机就会丢，
-          建议每次打完球导出一次备份。
+          {t(
+            '所有数据只存在这台手机的浏览器里。清掉浏览器数据或换手机就会丢，建议每次打完球导出一次备份。',
+            'Everything is stored in this phone\u2019s browser only. Clearing browser data or switching phones loses it, so export a backup after every session.',
+          )}
         </p>
         <div className="mt-4 space-y-2">
           <Button block variant="primary" onClick={download}>
-            导出备份文件
+            {t('导出备份文件', 'Export backup file')}
           </Button>
           <Button block variant="ghost" onClick={() => fileRef.current?.click()}>
-            从备份文件恢复
+            {t('从备份文件恢复', 'Restore from file')}
           </Button>
           <input
             ref={fileRef}
@@ -382,7 +424,10 @@ export function Me() {
             }}
           />
           <p className="text-warning-600 text-caption">
-            恢复会覆盖当前所有数据，请先导出一次再恢复。
+            {t(
+              '恢复会覆盖当前所有数据，请先导出一次再恢复。',
+              'Restoring overwrites everything currently on this phone. Export first.',
+            )}
           </p>
         </div>
         {message && <p className="text-brand-600 mt-3 text-label">{message}</p>}
