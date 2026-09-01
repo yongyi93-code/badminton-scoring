@@ -1,6 +1,8 @@
+import { pick } from '@/lib/i18n'
 import type { ReactNode } from 'react'
 import {
   itemById,
+  itemName,
   SKIN_TONES,
   type AvatarProfile,
   type AvatarSex,
@@ -1062,7 +1064,7 @@ export function AvatarView({
         */}
         <img
           src={art}
-          alt={title ?? '角色'}
+          alt={title ?? pick('角色', 'Character')}
           className={cx(
             'relative h-full w-full object-contain',
             !!backdrop && 'rounded-lg',
@@ -1078,7 +1080,7 @@ export function AvatarView({
       viewBox="0 0 100 100"
       className={className}
       role="img"
-      aria-label={title ?? '角色'}
+      aria-label={title ?? pick('角色', 'Character')}
     >
       {title && <title>{title}</title>}
       <AvatarInner sex={sex} skin={skin} equipped={equipped} />
@@ -1117,7 +1119,7 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
           className,
         )}
       >
-        {item.name}
+        {itemName(item)}
       </span>
     )
   }
@@ -1145,7 +1147,7 @@ export function GearIcon({ itemId, className }: { itemId: string; className?: st
         crop={dressBox}
         maxPx={200}
         className={className}
-        title={item.name}
+        title={itemName(item)}
       />
     )
   }
@@ -1208,7 +1210,7 @@ export function AvatarFace({
       <span className={cx('block overflow-hidden', className)}>
         <img
           src={art}
-          alt={title ?? '头像'}
+          alt={title ?? pick('头像', 'Avatar')}
           className="h-full w-full object-contain"
           style={{
             transform: `scale(${HEAD_CROP.scale})`,
@@ -1222,7 +1224,7 @@ export function AvatarFace({
 
   // 裁到 y=60：多带一截领口，队服的颜色也能在头像里看出来
   return (
-    <svg viewBox="22 2 56 58" className={className} role="img" aria-label={title ?? '头像'}>
+    <svg viewBox="22 2 56 58" className={className} role="img" aria-label={title ?? pick('头像', 'Avatar')}>
       {title && <title>{title}</title>}
       <AvatarInner sex={sex} skin={skin} equipped={equipped} />
     </svg>

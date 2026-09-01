@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n'
 import { useMemo, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -5,7 +6,6 @@ import { Body, Button, Card, EmptyState, Pill, Screen, Segmented } from '@/compo
 import { formatDate, formatMonth } from '@/lib/format'
 import { FORMAT_LABELS, formatOf, type Session } from '@/types'
 import { venueLabel } from '@/lib/venues'
-import { useT } from '@/lib/i18n'
 
 type Filter = 'live' | 'past'
 

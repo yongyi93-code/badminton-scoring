@@ -1,3 +1,4 @@
+import { pick } from './i18n'
 import { toSvg } from 'html-to-image'
 
 export type ShareOutcome = 'shared' | 'downloaded' | 'failed'
@@ -13,7 +14,7 @@ export type ShareOutcome = 'shared' | 'downloaded' | 'failed'
 async function nodeToPngBlob(node: HTMLElement, scale = 2): Promise<Blob> {
   const width = node.offsetWidth
   const height = node.offsetHeight
-  if (!width || !height) throw new Error('分享卡片还没渲染出来')
+  if (!width || !height) throw new Error(pick('分享卡片还没渲染出来', 'The share card has not rendered yet'))
 
   const svgUrl = await toSvg(node, { width, height, cacheBust: true })
 
@@ -21,7 +22,7 @@ async function nodeToPngBlob(node: HTMLElement, scale = 2): Promise<Blob> {
   img.decoding = 'sync'
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve()
-    img.onerror = () => reject(new Error('SVG 转图片失败'))
+    img.onerror = () => reject(new Error(pick('SVG 转图片失败', 'Could not turn the SVG into an image')))
     img.src = svgUrl
   })
 
@@ -29,7 +30,7 @@ async function nodeToPngBlob(node: HTMLElement, scale = 2): Promise<Blob> {
   canvas.width = Math.round(width * scale)
   canvas.height = Math.round(height * scale)
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('浏览器不支持 canvas')
+  if (!ctx) throw new Error(pick('浏览器不支持 canvas', 'This browser has no canvas support'))
   ctx.fillStyle = '#0b1220'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
@@ -37,7 +38,7 @@ async function nodeToPngBlob(node: HTMLElement, scale = 2): Promise<Blob> {
   const blob = await new Promise<Blob | null>((resolve) =>
     canvas.toBlob(resolve, 'image/png'),
   )
-  if (!blob) throw new Error('导出 PNG 失败')
+  if (!blob) throw new Error(pick('导出 PNG 失败', 'Could not export the PNG'))
   return blob
 }
 

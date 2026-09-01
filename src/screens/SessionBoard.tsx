@@ -1,3 +1,4 @@
+import { pick, useT } from '@/lib/i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -41,7 +42,6 @@ import {
   type Player,
   type Session,
 } from '@/types'
-import { pick, useT } from '@/lib/i18n'
 import type { AvatarProfile } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *

@@ -1,3 +1,4 @@
+import { lang, useT } from '@/lib/i18n'
 import { useMemo } from 'react'
 import { playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -11,7 +12,6 @@ import { RankChip } from '@/components/RankMedal'
 import { scoreLine } from '@/lib/scoring'
 import { venueLabel } from '@/lib/venues'
 import { TeamNames } from '@/components/PlayerBits'
-import { lang, useT } from '@/lib/i18n'
 
 /**
  * 早上好 / 下午好 / 晚上好 —— 球局大多在晚上，这句得对得上。

@@ -1,6 +1,6 @@
+import { pick } from '@/lib/i18n'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { pick } from '@/lib/i18n'
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
   parts.filter(Boolean).join(' ')

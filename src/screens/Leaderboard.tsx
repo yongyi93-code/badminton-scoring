@@ -1,3 +1,4 @@
+import { pick, useT } from '@/lib/i18n'
 import { useMemo, useState } from 'react'
 import { playerMap, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -35,7 +36,6 @@ import {
   WIN_POINTS,
 } from '@/lib/avatar'
 import { RANK_MIN_GAMES } from '@/types'
-import { pick, useT } from '@/lib/i18n'
 
 type Scope = 'session' | 'all'
 

@@ -1,3 +1,4 @@
+import { pick } from '@/lib/i18n'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
@@ -349,7 +350,7 @@ export const useApp = create<AppState>()(
 
       importBackup(backup) {
         if (backup?.app !== 'badminton-scoring') {
-          throw new Error('不是本 App 的备份文件')
+          throw new Error(pick('不是本 App 的备份文件', 'Not a RALLY backup file'))
         }
         set({
           players: backup.players ?? [],

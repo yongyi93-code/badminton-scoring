@@ -1,3 +1,4 @@
+import { pick } from './i18n'
 import { pickNextMatch, playerLoads, type Pairing } from './rotation'
 import { matchWinnerBySets } from './ranking'
 import {
@@ -177,10 +178,13 @@ function generateOnce(input: ScheduleInput): ScheduleResult {
   if (attending.length < need) {
     return {
       ...empty,
-      reason: `${type === 'singles' ? '单打' : '双打'}需要至少 ${need} 人`,
+      reason: pick(
+      `${type === 'singles' ? '单打' : '双打'}需要至少 ${need} 人`,
+      `${type === 'singles' ? 'Singles' : 'Doubles'} needs at least ${need} players`,
+    ),
     }
   }
-  if (perPlayer < 1) return { ...empty, reason: '每人至少要打 1 场' }
+  if (perPlayer < 1) return { ...empty, reason: pick('每人至少要打 1 场', 'Everyone needs at least 1 match') }
 
   const total =
     input.total !== undefined
@@ -237,7 +241,7 @@ function generateOnce(input: ScheduleInput): ScheduleResult {
     perPlayerMax: counts.length ? Math.max(...counts) : 0,
     reason:
       pairings.length < total
-        ? `只排出 ${pairings.length} 场（目标 ${total} 场）`
+        ? pick(`只排出 ${pairings.length} 场（目标 ${total} 场）`, `Only ${pairings.length} of ${total} matches could be arranged`)
         : undefined,
   }
 }
@@ -339,7 +343,7 @@ export function kingOfCourtNext(input: {
       stayed: [],
       streak: 0,
       cappedOut: false,
-      reason: '这场没有分出胜负，先把比分记完',
+      reason: pick('这场没有分出胜负，先把比分记完', 'This match has no winner yet — finish the score first'),
     }
   }
 
@@ -369,7 +373,10 @@ export function kingOfCourtNext(input: {
       stayed: cappedOut ? [] : winners,
       streak,
       cappedOut,
-      reason: `排队区只有 ${queue.length} 人，还需要 ${needed} 人才能开下一场`,
+      reason: pick(
+        `排队区只有 ${queue.length} 人，还需要 ${needed} 人才能开下一场`,
+        `Only ${queue.length} in the queue — ${needed} more needed for the next match`,
+      ),
     }
   }
 
@@ -485,20 +492,26 @@ export function sessionProgress(
 
   if (format === 'rotation' && scheduleRemaining === 0 && matches.length > 0) {
     shouldWrapUp = true
-    wrapUpReason = '赛程全部打完了'
+    wrapUpReason = pick('赛程全部打完了', 'The whole schedule is done')
   } else if (end.totalMatches && played >= end.totalMatches) {
     shouldWrapUp = true
-    wrapUpReason = `已经打满 ${end.totalMatches} 场了`
+    wrapUpReason = pick(`已经打满 ${end.totalMatches} 场了`, `${end.totalMatches} matches played`)
   } else if (end.durationMinutes && elapsedMinutes >= end.durationMinutes) {
     shouldWrapUp = true
-    wrapUpReason = `已经打了 ${elapsedMinutes} 分钟，超过预定的 ${end.durationMinutes} 分钟`
+    wrapUpReason = pick(
+      `已经打了 ${elapsedMinutes} 分钟，超过预定的 ${end.durationMinutes} 分钟`,
+      `${elapsedMinutes} minutes in, past the planned ${end.durationMinutes}`,
+    )
   }
 
   let unmetFloor: string | undefined
   if (end.perPlayerMatches) {
     const short = perPlayerCounts.filter((c) => c < end.perPlayerMatches!).length
     if (short > 0) {
-      unmetFloor = `还有 ${short} 人没打满 ${end.perPlayerMatches} 场`
+      unmetFloor = pick(
+      `还有 ${short} 人没打满 ${end.perPlayerMatches} 场`,
+      `${short} players are still short of ${end.perPlayerMatches} matches`,
+    )
     }
   }
 

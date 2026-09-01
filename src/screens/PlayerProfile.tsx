@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n'
 import { useMemo } from 'react'
 import { avatarOf, playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -28,7 +29,6 @@ import { AvatarView } from '@/components/Avatar'
 import { stageOf } from '@/lib/avatarArt'
 import { RankChip } from '@/components/RankMedal'
 import { balanceOf, progressOf, WIN_POINTS } from '@/lib/avatar'
-import { useT } from '@/lib/i18n'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (

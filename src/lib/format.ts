@@ -57,9 +57,14 @@ export function duration(ms: number): string {
   return lang() === 'zh' ? `${h} 小时 ${rest} 分` : `${h}h ${rest}m`
 }
 
-/** 连胜连败。2 场以下不算「连」，返回 null 让调用方别显示 */
+/**
+ * 连胜连败。2 场以下不算「连」，返回 null 让调用方别显示。
+ *
+ * 英文用 W3 / L3 这种战绩表写法，不是 3 in a row —— 这个标签永远
+ * 挤在名字旁边的小胶囊里，写成一句话会把名字压到只剩一个字。
+ */
 export const streakLabel = (streak: number) => {
-  if (streak >= 2) return lang() === 'zh' ? `${streak} 连胜` : `${streak} in a row`
-  if (streak <= -2) return lang() === 'zh' ? `${-streak} 连败` : `${-streak} losses`
+  if (streak >= 2) return lang() === 'zh' ? `${streak} 连胜` : `W${streak}`
+  if (streak <= -2) return lang() === 'zh' ? `${-streak} 连败` : `L${-streak}`
   return null
 }

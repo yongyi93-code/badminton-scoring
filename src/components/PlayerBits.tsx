@@ -1,12 +1,12 @@
+import { pick } from '@/lib/i18n'
 import type { ReactNode } from 'react'
 import type { Gender, Level, Player } from '@/types'
-import { itemById, type AvatarProfile, type LevelInfo } from '@/lib/avatar'
+import { itemById, itemName, type AvatarProfile, type LevelInfo } from '@/lib/avatar'
 import { AvatarFace, AvatarFrame } from './Avatar'
 import { stageOf } from '@/lib/avatarArt'
 import { useProgress } from '@/store/progress'
 import { RankChip } from './RankMedal'
 import { cx } from './ui'
-import { pick } from '@/lib/i18n'
 
 const isCJK = (s: string) => /[㐀-鿿]/.test(s)
 
@@ -117,7 +117,7 @@ export function TitleTag({ avatar }: { avatar?: AvatarProfile }) {
   if (!item) return null
   return (
     <span className="shrink-0 rounded-md border border-brand-500 bg-brand-100 px-1.5 py-px text-[11px] font-medium text-brand-600">
-      {item.name}
+      {itemName(item)}
     </span>
   )
 }

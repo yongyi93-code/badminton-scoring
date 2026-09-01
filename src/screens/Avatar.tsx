@@ -1,3 +1,4 @@
+import { lang, pick, useT } from '@/lib/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { avatarOf, playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -22,6 +23,7 @@ import {
   slotIsDressable,
   stageOf,
   STAGES,
+  stageName,
 } from '@/lib/avatarArt'
 import { dressDefaultsFor, dressUpFor, hasDressUp } from '@/lib/dressup'
 import { RankMedal } from '@/components/RankMedal'
@@ -32,6 +34,7 @@ import {
   IMMORTAL_STEP,
   LOSS_POINTS,
   outfitValue,
+  itemName,
   PET_LEVELS,
   UPSET_MULTIPLIER,
   progressOf,
@@ -49,6 +52,7 @@ import {
 type Tab = 'dress' | 'shop'
 
 export function Avatar({ playerId }: { playerId: string }) {
+  const t = useT()
   const players = useApp((s) => s.players)
   const matches = useApp((s) => s.matches)
   const avatars = useApp((s) => s.avatars)
@@ -99,9 +103,9 @@ export function Avatar({ playerId }: { playerId: string }) {
   if (!player) {
     return (
       <Screen>
-        <TopBar title="球员不存在" onBack={back} />
+        <TopBar title={t('球员不存在', 'Player not found')} onBack={back} />
         <Body>
-          <EmptyState title="找不到这个球员" />
+          <EmptyState title={t('找不到这个球员', 'No such player')} />
         </Body>
       </Screen>
     )
@@ -116,23 +120,23 @@ export function Avatar({ playerId }: { playerId: string }) {
     if (player.gender !== '-') {
       return (
         <Screen>
-          <TopBar title={`${player.name} 的角色`} onBack={back} />
+          <TopBar title={t(`${player.name} 的角色`, `${player.name}'s character`)} onBack={back} />
           <Body>{null}</Body>
         </Screen>
       )
     }
     return (
       <Screen>
-        <TopBar title={`${player.name} 的角色`} onBack={back} />
+        <TopBar title={t(`${player.name} 的角色`, `${player.name}'s character`)} onBack={back} />
         <Body>
           <Card className="text-center">
-            <p className="text-lg font-bold">先选个角色</p>
+            <p className="text-lg font-bold">{t('先选个角色', 'Pick a character')}</p>
             <p className="mt-1 text-sm text-ink-500">
               {hasDressUp
-                ? `每赢一场得 ${WIN_POINTS} 金币，买了上衣球鞋球拍就穿上身；段位越高，能买的越好`
+                ? t(`每赢一场得 ${WIN_POINTS} 金币，买了上衣球鞋球拍就穿上身；段位越高，能买的越好`, `Every win earns ${WIN_POINTS} coins. Buy a top, shoes or a racket and they go straight on. The higher your rank, the better the gear.`)
                 : hasArt
-                  ? `赢球涨 MMR，段位一升角色形象就跟着换，一共 ${STAGES.length} 个阶段`
-                  : `每赢一场比赛得 ${WIN_POINTS} 金币，用金币买发型、战服和武器`}
+                  ? t(`赢球涨 MMR，段位一升角色形象就跟着换，一共 ${STAGES.length} 个阶段`, `Winning raises MMR and the character changes with every rank — ${STAGES.length} stages in all`)
+                  : t(`每赢一场比赛得 ${WIN_POINTS} 金币，用金币买发型、战服和武器`, `Every win earns ${WIN_POINTS} coins to spend on hair, kit and rackets`)}
             </p>
           </Card>
 
@@ -153,17 +157,18 @@ export function Avatar({ playerId }: { playerId: string }) {
                   }}
                   stage={STAGES[0]}
                   className="h-40 w-full"
-                  title={s.label}
+                  title={pick(...s.label)}
                 />
-                <p className="mt-1 text-base font-semibold">{s.label}</p>
+                <p className="mt-1 text-base font-semibold">{pick(...s.label)}</p>
               </button>
             ))}
           </div>
 
           <p className="text-xs text-ink-500">
-            这个球员没填性别，所以要在这里选一次。去球员资料里把性别填上，
-            以后建角色就会自动对上，不用再选。选错也没关系，
-            之后随时能换，买过的装备不会没收。
+            {t(
+              '这个球员没填性别，所以要在这里选一次。去球员资料里把性别填上，以后建角色就会自动对上，不用再选。选错了就去球员资料里改性别，买过的装备不会没收。',
+              'This player has no gender set, so pick once here. Fill it in on their player record and the character matches automatically next time. Got it wrong? Change the gender on the player record — nothing you bought is lost.',
+            )}
           </p>
         </Body>
       </Screen>
@@ -175,15 +180,22 @@ export function Avatar({ playerId }: { playerId: string }) {
 
   const tryBuy = (item: ShopItem) => {
     const ok = buyItem(playerId, item.id, progress)
-    setToast(ok ? `买到了「${item.name}」，已经换上` : '买不了，看看下面的提示')
+    setToast(
+      ok
+        ? t(`买到了「${itemName(item)}」，已经换上`, `Bought ${itemName(item)} — now equipped`)
+        : t('买不了，看看下面的提示', 'Cannot buy that yet — see the note below'),
+    )
     window.setTimeout(() => setToast(null), 2200)
   }
 
   return (
     <Screen>
       <TopBar
-        title={`${player.name} 的角色`}
-        subtitle={`${level.display}${level.star !== null ? ` ${level.star}★` : ''} · 金币 ${balance}`}
+        title={t(`${player.name} 的角色`, `${player.name}'s character`)}
+        subtitle={t(
+          `${level.display}${level.star !== null ? ` ${level.star}★` : ''} · 金币 ${balance}`,
+          `${level.display}${level.star !== null ? ` ${level.star}★` : ''} · ${balance} coins`,
+        )}
         onBack={back}
       />
       <Body>
@@ -208,13 +220,12 @@ export function Avatar({ playerId }: { playerId: string }) {
           {hasArt && !dressUpFor(avatar.sex) && (
             <div className="text-center">
               <p className="text-lg font-bold" style={{ color: stage.glow }}>
-                Lv.{stage.lv} {stage.label}{' '}
-                <span className="text-sm font-semibold opacity-80">{stage.en}</span>
+                Lv.{stage.lv} {stageName(stage)}
               </p>
               <p className="mt-0.5 text-xs text-ink-500">
                 {upcoming
-                  ? `还差 ${PET_LEVELS[upcoming.minTier].min - mmr} 分升 ${upcoming.label} ${upcoming.en}`
-                  : '已经是最高形象，无可匹敌的王者'}
+                  ? t(`还差 ${PET_LEVELS[upcoming.minTier].min - mmr} 分升 ${stageName(upcoming)}`, `${PET_LEVELS[upcoming.minTier].min - mmr} MMR to reach ${upcoming.en}`)
+                  : t('已经是最高形象，无可匹敌的王者', 'Top form reached — untouchable')}
               </p>
             </div>
           )}
@@ -226,7 +237,7 @@ export function Avatar({ playerId }: { playerId: string }) {
             会以为是买坏了。这里照排行榜的样子摆一遍，买完立刻看得见。
           */}
           <div className="rounded-xl border border-line bg-fill/60 px-3 py-2.5">
-            <p className="mb-2 text-xs text-ink-500">别人在排行榜上看到的你</p>
+            <p className="mb-2 text-xs text-ink-500">{t('别人在排行榜上看到的你', 'How you look on the leaderboard')}</p>
             <div className="flex items-center gap-3">
               <AvatarPic name={player.name} avatar={avatar} />
               <span className="flex min-w-0 flex-wrap items-center gap-2">
@@ -239,9 +250,9 @@ export function Avatar({ playerId }: { playerId: string }) {
 
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Pill>
-              {wins} 胜 {losses} 负
+              {t(`${wins} 胜 ${losses} 负`, `${wins}W ${losses}L`)}
             </Pill>
-            <Pill>身上行头 {outfitValue(avatar)} 金币</Pill>
+            <Pill>{t(`身上行头 ${outfitValue(avatar)} 金币`, `Wearing ${outfitValue(avatar)} coins`)}</Pill>
           </div>
         </Card>
 
@@ -256,12 +267,15 @@ export function Avatar({ playerId }: { playerId: string }) {
                   <span className="ml-1.5 text-base">{level.star}★</span>
                 )}
               </p>
-              <p className="text-sm text-ink-500">{level.tier.label}</p>
+              {/* 中文界面在英文段位名底下补一行中文叫法；英文界面两者同字，省掉 */}
+              {lang() === 'zh' && (
+                <p className="text-sm text-ink-500">{level.tier.label[0]}</p>
+              )}
               <p className="tnum mt-1 text-xs text-ink-500">
                 MMR {mmr}
                 {level.next
-                  ? ` · 还差 ${level.toNext} 分升 ${level.next.name}`
-                  : ` · 还差 ${level.toNext} 分升 ${level.tier.name} ${(level.immortalRank ?? 0) + 1}`}
+                  ? t(` · 还差 ${level.toNext} 分升 ${level.next.name}`, ` · ${level.toNext} to ${level.next.name}`)
+                  : t(` · 还差 ${level.toNext} 分升 ${level.tier.name} ${(level.immortalRank ?? 0) + 1}`, ` · ${level.toNext} to ${level.tier.name} ${(level.immortalRank ?? 0) + 1}`)}
               </p>
             </div>
           </div>
@@ -308,12 +322,10 @@ export function Avatar({ playerId }: { playerId: string }) {
           </div>
 
           <p className="text-xs leading-relaxed text-ink-500">
-            MMR：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}，扣到 0 就打住、不会变负。
-            赢了 MMR 比自己高的一队算爆冷，那一场拿 {WIN_POINTS * UPSET_MULTIPLIER} 分。
-            每段 5 颗星，星满升段；打到最高段之后每 {IMMORTAL_STEP} 分加一级。
-            <br />
-            买装备用的是金币，金币只按赢的场次算、输球不扣 ——
-            段位会掉，但攒下的家当不会被没收。
+            {t(
+              `MMR：赢一场 +${WIN_POINTS}，输一场 −${LOSS_POINTS}，扣到 0 就打住、不会变负。赢了 MMR 比自己高的一队算爆冷，那一场拿 ${WIN_POINTS * UPSET_MULTIPLIER} 分。每段 5 颗星，星满升段；打到最高段之后每 ${IMMORTAL_STEP} 分加一级。买装备用的是金币，金币只按赢的场次算、输球不扣 —— 段位会掉，但攒下的家当不会被没收。`,
+              `MMR: +${WIN_POINTS} a win, −${LOSS_POINTS} a loss, floored at 0 so it never goes negative. Beating a higher-MMR pair is an upset and pays ${WIN_POINTS * UPSET_MULTIPLIER}. Five stars per rank; past the top rank you gain a level every ${IMMORTAL_STEP}. Gear is bought with coins, and coins only count wins — losing never takes them away, so your rank can drop but your wardrobe never does.`,
+            )}
           </p>
         </Card>
 
@@ -321,8 +333,8 @@ export function Avatar({ playerId }: { playerId: string }) {
           value={tab}
           onChange={setTab}
           options={[
-            { value: 'dress', label: `衣柜 (${owned.length})` },
-            { value: 'shop', label: '商店' },
+            { value: 'dress', label: t(`衣柜 (${owned.length})`, `Wardrobe (${owned.length})`) },
+            { value: 'shop', label: t('商店', 'Shop') },
           ]}
         />
 
@@ -377,7 +389,7 @@ function DressPanel({
         if (mine.length === 0) return null
         return (
           <div key={slot}>
-            <SectionTitle>{SLOT_LABELS[slot]}</SectionTitle>
+            <SectionTitle>{pick(...SLOT_LABELS[slot])}</SectionTitle>
             <div className="grid grid-cols-4 gap-2">
               {mine.map((item) => {
                 const on = avatar.equipped[slot] === item.id
@@ -395,13 +407,14 @@ function DressPanel({
                     <span className="block overflow-hidden rounded-lg bg-fill">
                       <GearIcon itemId={item.id} className="h-14 w-full" />
                     </span>
+                    {/* 英文装备名比中文长一截，一行截断会把区分度最高的那半截掉 */}
                     <p
                       className={cx(
-                        'mt-1 truncate text-xs',
+                        'mt-1 line-clamp-2 text-xs leading-tight',
                         on ? 'text-brand-600' : 'text-ink-700',
                       )}
                     >
-                      {item.name}
+                      {itemName(item)}
                     </p>
                   </button>
                 )
@@ -414,13 +427,13 @@ function DressPanel({
       {/* 肤色只对 SVG 手绘那套有用：立绘是画好的图，改不了肤色 */}
       {!hasArt && (
         <>
-          <SectionTitle>肤色</SectionTitle>
+          <SectionTitle>{pick('肤色', 'Skin tone')}</SectionTitle>
           <div className="flex gap-2">
             {SKIN_TONES.map((tone, i) => (
               <button
                 key={tone}
                 onClick={() => onSkin(i)}
-                aria-label={`肤色 ${i + 1}`}
+                aria-label={pick(`肤色 ${i + 1}`, `Skin tone ${i + 1}`)}
                 className={cx(
                   'size-11 rounded-full border-2',
                   avatar.skin === i ? 'border-brand-600' : 'border-line',
@@ -440,8 +453,10 @@ function DressPanel({
         买过的东西一件不少。
       */}
       <p className="text-ink-500 pb-2 text-caption">
-        角色是{avatar.sex === 'm' ? '男生' : '女生'}形象，跟着球员资料里的性别走。
-        要换的话去球员库里改性别 —— 买过的东西一件都不会没收。
+        {pick(
+          `角色是${avatar.sex === 'm' ? '男生' : '女生'}形象，跟着球员资料里的性别走。要换的话去球员库里改性别 —— 买过的东西一件都不会没收。`,
+          `This is the ${avatar.sex === 'm' ? 'male' : 'female'} character, which follows the gender on the player record. To change it, edit their gender in Players — nothing you bought is lost.`,
+        )}
       </p>
     </>
   )
@@ -468,9 +483,9 @@ function ShopPanel({
     <>
       <Card className="flex items-center justify-between">
         <span className="text-sm text-ink-500">
-          可用金币
+          {pick('可用金币', 'Coins available')}
           <span className="mt-0.5 block text-xs text-ink-500">
-            只按赢的场次算，输球不扣
+            {pick('只按赢的场次算，输球不扣', 'Earned from wins only — losses never cost you any')}
           </span>
         </span>
         <span className="tnum text-2xl font-bold text-brand-600">{balance}</span>
@@ -481,7 +496,7 @@ function ShopPanel({
         if (items.length === 0) return null
         return (
           <div key={slot}>
-            <SectionTitle>{SLOT_LABELS[slot]}</SectionTitle>
+            <SectionTitle>{pick(...SLOT_LABELS[slot])}</SectionTitle>
             <div className="space-y-2">
               {items.map((item) => {
                 const block = buyBlocker(item, avatar, progress)
@@ -493,26 +508,28 @@ function ShopPanel({
                         <GearIcon itemId={item.id} className="h-full w-full" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold">{item.name}</p>
+                        <p className="font-semibold">{itemName(item)}</p>
                         <p className="tnum text-sm text-ink-500">
-                          {item.price} 金币
-                          {item.minLevel > 0 && ` · 需 ${need.name}`}
+                          {pick(`${item.price} 金币`, `${item.price} coins`)}
+                          {item.minLevel > 0 && pick(` · 需 ${need.name}`, ` · needs ${need.name}`)}
                         </p>
                         {block === 'level' && (
                           <p className="text-xs text-ink-500">
-                            MMR 不够，到 {need.min}（{need.name}）才能买，现在{' '}
+                            {pick(`MMR 不够，到 ${need.min}（${need.name}）才能买，现在 `, `Needs ${need.min} MMR (${need.name}) — you have `)}
                             {progress.mmr}
                           </p>
                         )}
                         {block === 'money' && (
                           <p className="text-xs text-ink-500">
-                            还差 {item.price - balance} 金币，再赢{' '}
-                            {Math.ceil((item.price - balance) / WIN_POINTS)} 场
+                            {pick(
+                              `还差 ${item.price - balance} 金币，再赢 ${Math.ceil((item.price - balance) / WIN_POINTS)} 场`,
+                              `${item.price - balance} coins short — ${Math.ceil((item.price - balance) / WIN_POINTS)} more wins`,
+                            )}
                           </p>
                         )}
                       </div>
                       {block === 'owned' ? (
-                        <Pill tone="brand">已拥有</Pill>
+                        <Pill tone="brand">{pick('已拥有', 'Owned')}</Pill>
                       ) : (
                         <Button
                           size="sm"
@@ -520,7 +537,7 @@ function ShopPanel({
                           disabled={block !== null}
                           onClick={() => onBuy(item)}
                         >
-                          {block === 'level' ? '锁定' : '买下'}
+                          {block === 'level' ? pick('锁定', 'Locked') : pick('买下', 'Buy')}
                         </Button>
                       )}
                     </div>
@@ -533,10 +550,10 @@ function ShopPanel({
       })}
 
       <p className="pb-4 text-xs leading-relaxed text-ink-500">
-        价格看金币（赢一场 +{WIN_POINTS}，输球不扣），
-        门槛看 MMR（赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}）。
-        现在 {progress.level.display}，MMR {progress.mmr}，金币 {balance}。
-        两个数都是从比赛记录实时算的 —— 改了战绩会跟着一起变。
+        {pick(
+          `价格看金币（赢一场 +${WIN_POINTS}，输球不扣），门槛看 MMR（赢一场 +${WIN_POINTS}，输一场 −${LOSS_POINTS}）。现在 ${progress.level.display}，MMR ${progress.mmr}，金币 ${balance}。两个数都是从比赛记录实时算的 —— 改了战绩会跟着一起变。`,
+          `Prices are in coins (+${WIN_POINTS} a win, losses cost nothing); the rank gate is MMR (+${WIN_POINTS} a win, −${LOSS_POINTS} a loss). You are ${progress.level.display}, MMR ${progress.mmr}, ${balance} coins. Both are worked out live from the match records — change a result and they change too.`,
+        )}
       </p>
     </>
   )

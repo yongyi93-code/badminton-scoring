@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -37,7 +38,6 @@ import {
   PAIRING_MODE_LABELS,
   type PairingMode,
 } from '@/types'
-import { useT } from '@/lib/i18n'
 
 export function SessionSetup() {
   const t = useT()

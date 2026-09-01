@@ -1,3 +1,4 @@
+import { pick } from './i18n'
 import { chronological, decidedMatches, matchWinnerBySets } from './ranking'
 import {
   DRESS_ITEMS,
@@ -33,9 +34,9 @@ export const LOSS_POINTS = 10
 /** 角色性别，只此两种 */
 export type AvatarSex = 'm' | 'f'
 
-export const AVATAR_SEXES: { sex: AvatarSex; label: string }[] = [
-  { sex: 'm', label: '男' },
-  { sex: 'f', label: '女' },
+export const AVATAR_SEXES: { sex: AvatarSex; label: [string, string] }[] = [
+  { sex: 'm', label: ['男', 'Male'] },
+  { sex: 'f', label: ['女', 'Female'] },
 ]
 
 /** 肤色档位，免费换，不进商店 */
@@ -62,18 +63,26 @@ export type AvatarSlot =
   | 'shoes'
   | 'racket'
 
-export const SLOT_LABELS: Record<AvatarSlot, string> = {
-  hair: '发型',
-  outfit: '战服',
-  weapon: '武器',
-  background: '背景',
-  frame: '头像框',
-  title: '称号',
-  top: '上衣',
-  bottom: '下装',
-  shoes: '球鞋',
-  racket: '球拍',
+export const SLOT_LABELS: Record<AvatarSlot, [string, string]> = {
+  hair: ['发型', 'Hair'],
+  outfit: ['战服', 'Outfit'],
+  weapon: ['武器', 'Racket'],
+  background: ['背景', 'Background'],
+  frame: ['头像框', 'Frame'],
+  title: ['称号', 'Title'],
+  top: ['上衣', 'Top'],
+  bottom: ['下装', 'Bottom'],
+  shoes: ['球鞋', 'Shoes'],
+  racket: ['球拍', 'Racket'],
 }
+
+/**
+ * 商品名，按当前语言取。
+ *
+ * 名字存的是两元组，取的时候才挑 —— 组件只要自己调过 useT()，
+ * 切语言时会重渲染，这里也就跟着出新的语言。
+ */
+export const itemName = (item: Pick<ShopItem, 'name'>) => pick(...item.name)
 
 /** 槽位展示顺序 */
 export const SLOT_ORDER: AvatarSlot[] = [
@@ -91,7 +100,12 @@ export const SLOT_ORDER: AvatarSlot[] = [
 
 export type ShopItem = {
   id: string
-  name: string
+  /**
+   * [中文, English]。存成两元组而不是在这里就 pick() 定死 ——
+   * 这张表是模块级常量，求值发生在 initLang() 之前，
+   * 当场 pick 会把语言冻在默认值上，之后切语言也不会变。
+   */
+  name: [string, string]
   slot: AvatarSlot
   price: number
   /** 需要达到的段位下标，0 = 无门槛 */
@@ -113,53 +127,53 @@ export type ShopItem = {
  */
 export const SHOP_ITEMS: ShopItem[] = [
   // 发型 —— 男
-  { id: 'm-short', name: '利落短发', slot: 'hair', price: 0, minLevel: 0, sex: 'm' },
-  { id: 'm-spiky', name: '刺猬头', slot: 'hair', price: 80, minLevel: 0, sex: 'm' },
-  { id: 'm-wolf', name: '狼尾', slot: 'hair', price: 200, minLevel: 2, sex: 'm' },
-  { id: 'm-silver', name: '银发', slot: 'hair', price: 700, minLevel: 6, sex: 'm' },
+  { id: 'm-short', name: ['利落短发', 'Cropped Hair'], slot: 'hair', price: 0, minLevel: 0, sex: 'm' },
+  { id: 'm-spiky', name: ['刺猬头', 'Spiky Hair'], slot: 'hair', price: 80, minLevel: 0, sex: 'm' },
+  { id: 'm-wolf', name: ['狼尾', 'Wolf Cut'], slot: 'hair', price: 200, minLevel: 2, sex: 'm' },
+  { id: 'm-silver', name: ['银发', 'Silver Hair'], slot: 'hair', price: 700, minLevel: 6, sex: 'm' },
   // 发型 —— 女
-  { id: 'f-bob', name: '齐耳短发', slot: 'hair', price: 0, minLevel: 0, sex: 'f' },
-  { id: 'f-twin', name: '双马尾', slot: 'hair', price: 80, minLevel: 0, sex: 'f' },
-  { id: 'f-long', name: '黑长直', slot: 'hair', price: 200, minLevel: 2, sex: 'f' },
-  { id: 'f-wavy', name: '金色大波浪', slot: 'hair', price: 700, minLevel: 6, sex: 'f' },
+  { id: 'f-bob', name: ['齐耳短发', 'Bob Cut'], slot: 'hair', price: 0, minLevel: 0, sex: 'f' },
+  { id: 'f-twin', name: ['双马尾', 'Twin Tails'], slot: 'hair', price: 80, minLevel: 0, sex: 'f' },
+  { id: 'f-long', name: ['黑长直', 'Long Straight'], slot: 'hair', price: 200, minLevel: 2, sex: 'f' },
+  { id: 'f-wavy', name: ['金色大波浪', 'Golden Waves'], slot: 'hair', price: 700, minLevel: 6, sex: 'f' },
   /*
    * 战服是一条羽球的成长线，不是奇幻装备：
    * 白队服 → 蓝黑队服 → 无袖精英 → 全黑高手 → 金翼传奇。
    * 越往后越像「真的很能打的人」，最后一档加翅膀和金光。
    */
-  { id: 'tee', name: '新手队服', slot: 'outfit', price: 0, minLevel: 0 },
-  { id: 'jersey', name: '进阶队服', slot: 'outfit', price: 60, minLevel: 0 },
-  { id: 'elite', name: '精英战袍', slot: 'outfit', price: 150, minLevel: 1 },
-  { id: 'pro', name: '高手战衣', slot: 'outfit', price: 400, minLevel: 4 },
-  { id: 'legend', name: '传奇金翼', slot: 'outfit', price: 900, minLevel: 7 },
+  { id: 'tee', name: ['新手队服', 'Starter Kit'], slot: 'outfit', price: 0, minLevel: 0 },
+  { id: 'jersey', name: ['进阶队服', 'Club Jersey'], slot: 'outfit', price: 60, minLevel: 0 },
+  { id: 'elite', name: ['精英战袍', 'Elite Kit'], slot: 'outfit', price: 150, minLevel: 1 },
+  { id: 'pro', name: ['高手战衣', 'Pro Kit'], slot: 'outfit', price: 400, minLevel: 4 },
+  { id: 'legend', name: ['传奇金翼', 'Legendary Wings'], slot: 'outfit', price: 900, minLevel: 7 },
   /* 武器全是球拍 —— 这是羽球 App，手里拿剑说不过去 */
-  { id: 'racket', name: '入门球拍', slot: 'weapon', price: 0, minLevel: 0 },
-  { id: 'racket-blue', name: '碳素拍', slot: 'weapon', price: 70, minLevel: 0 },
-  { id: 'racket-pro', name: '竞速拍', slot: 'weapon', price: 250, minLevel: 3 },
-  { id: 'racket-gold', name: '金标拍', slot: 'weapon', price: 500, minLevel: 5 },
-  { id: 'racket-legend', name: '传奇战拍', slot: 'weapon', price: 1200, minLevel: 7 },
+  { id: 'racket', name: ['入门球拍', 'Starter Racket'], slot: 'weapon', price: 0, minLevel: 0 },
+  { id: 'racket-blue', name: ['碳素拍', 'Carbon Racket'], slot: 'weapon', price: 70, minLevel: 0 },
+  { id: 'racket-pro', name: ['竞速拍', 'Speed Racket'], slot: 'weapon', price: 250, minLevel: 3 },
+  { id: 'racket-gold', name: ['金标拍', 'Gold Label Racket'], slot: 'weapon', price: 500, minLevel: 5 },
+  { id: 'racket-legend', name: ['传奇战拍', 'Legendary Racket'], slot: 'weapon', price: 1200, minLevel: 7 },
   /*
    * 下面三类画在人的外面，不动人本身 ——
    * 所以换成立绘图片之后，金币还有地方花，赢球还是有奔头。
    */
   // 背景：衬在人后面
-  { id: 'court', name: '球场', slot: 'background', price: 120, minLevel: 0 },
-  { id: 'night', name: '夜场灯光', slot: 'background', price: 260, minLevel: 2 },
-  { id: 'podium', name: '领奖台', slot: 'background', price: 500, minLevel: 4 },
-  { id: 'final', name: '决赛主场', slot: 'background', price: 800, minLevel: 6 },
-  { id: 'galaxy', name: '星空', slot: 'background', price: 1200, minLevel: 7 },
+  { id: 'court', name: ['球场', 'Court'], slot: 'background', price: 120, minLevel: 0 },
+  { id: 'night', name: ['夜场灯光', 'Night Lights'], slot: 'background', price: 260, minLevel: 2 },
+  { id: 'podium', name: ['领奖台', 'Podium'], slot: 'background', price: 500, minLevel: 4 },
+  { id: 'final', name: ['决赛主场', 'Finals Arena'], slot: 'background', price: 800, minLevel: 6 },
+  { id: 'galaxy', name: ['星空', 'Starfield'], slot: 'background', price: 1200, minLevel: 7 },
   // 头像框：套在头像圆圈外面，排行榜上一眼就看得见，最适合拿来显摆
-  { id: 'ring-steel', name: '钢圈', slot: 'frame', price: 90, minLevel: 0 },
-  { id: 'ring-jade', name: '翠环', slot: 'frame', price: 220, minLevel: 2 },
-  { id: 'ring-gold', name: '金边', slot: 'frame', price: 450, minLevel: 4 },
-  { id: 'ring-flame', name: '烈焰环', slot: 'frame', price: 900, minLevel: 6 },
-  { id: 'ring-crown', name: '王冠框', slot: 'frame', price: 1600, minLevel: 7 },
+  { id: 'ring-steel', name: ['钢圈', 'Steel Ring'], slot: 'frame', price: 90, minLevel: 0 },
+  { id: 'ring-jade', name: ['翠环', 'Jade Ring'], slot: 'frame', price: 220, minLevel: 2 },
+  { id: 'ring-gold', name: ['金边', 'Gold Rim'], slot: 'frame', price: 450, minLevel: 4 },
+  { id: 'ring-flame', name: ['烈焰环', 'Flame Ring'], slot: 'frame', price: 900, minLevel: 6 },
+  { id: 'ring-crown', name: ['王冠框', 'Crown Frame'], slot: 'frame', price: 1600, minLevel: 7 },
   // 称号：写在名字旁边的一行小字
-  { id: 'title-newbie', name: '初入球场', slot: 'title', price: 40, minLevel: 0 },
-  { id: 'title-grinder', name: '球场劳模', slot: 'title', price: 150, minLevel: 1 },
-  { id: 'title-upset', name: '爆冷专家', slot: 'title', price: 300, minLevel: 3 },
-  { id: 'title-streak', name: '连胜王', slot: 'title', price: 600, minLevel: 5 },
-  { id: 'title-king', name: '无可匹敌', slot: 'title', price: 1400, minLevel: 7 },
+  { id: 'title-newbie', name: ['初入球场', 'Newcomer'], slot: 'title', price: 40, minLevel: 0 },
+  { id: 'title-grinder', name: ['球场劳模', 'Court Regular'], slot: 'title', price: 150, minLevel: 1 },
+  { id: 'title-upset', name: ['爆冷专家', 'Giant Killer'], slot: 'title', price: 300, minLevel: 3 },
+  { id: 'title-streak', name: ['连胜王', 'Streak King'], slot: 'title', price: 600, minLevel: 5 },
+  { id: 'title-king', name: ['无可匹敌', 'Untouchable'], slot: 'title', price: 1400, minLevel: 7 },
 ]
 
 /** 画在人身上的老三样。有分层换装素材时它们下架，换成四个新槽位 */
@@ -224,12 +238,21 @@ export const retireOldGear = (a: AvatarProfile): AvatarProfile => {
 export type LevelTier = {
   /** 英文段位名，和 Dota 一致 */
   name: string
-  /** 中文叫法，界面上跟在英文后面 */
-  label: string
+  /** [中文叫法, English]。英文那格和 name 相同，见 tierName */
+  label: [string, string]
   /** 达到这个段位所需的累计积分 */
   min: number
   color: string
 }
+
+/**
+ * 段位怎么写出来。
+ *
+ * 中文界面是「Herald 先锋」—— 英文名是叫法，中文是解释，两个都要。
+ * 英文界面里两格是同一个词，再拼一次就成了「Herald Herald」，所以只留一个。
+ */
+export const tierName = (tier: LevelTier) =>
+  pick(`${tier.name} ${tier.label[0]}`, tier.name)
 
 /** 每个段位内部分几颗星 */
 export const STARS_PER_TIER = 5
@@ -254,14 +277,14 @@ export const IMMORTAL_STEP = 100
  * 所以改这张表会把所有人的段位一起重算，不会留下「老数据按老规则」的烂账。
  */
 export const PET_LEVELS: LevelTier[] = [
-  { name: 'Herald', label: '先锋', min: 0, color: '#8fa07d' },
-  { name: 'Guardian', label: '卫士', min: 50, color: '#9fb0bf' },
-  { name: 'Crusader', label: '中军', min: 100, color: '#5fb8a8' },
-  { name: 'Archon', label: '统帅', min: 150, color: '#7fc47f' },
-  { name: 'Legend', label: '传奇', min: 300, color: '#e3b344' },
-  { name: 'Ancient', label: '万古', min: 400, color: '#b98cd8' },
-  { name: 'Divine', label: '超凡', min: 500, color: '#7fb3ff' },
-  { name: 'Immortal', label: '冠绝', min: 700, color: '#ff8a3d' },
+  { name: 'Herald', label: ['先锋', 'Herald'], min: 0, color: '#8fa07d' },
+  { name: 'Guardian', label: ['卫士', 'Guardian'], min: 50, color: '#9fb0bf' },
+  { name: 'Crusader', label: ['中军', 'Crusader'], min: 100, color: '#5fb8a8' },
+  { name: 'Archon', label: ['统帅', 'Archon'], min: 150, color: '#7fc47f' },
+  { name: 'Legend', label: ['传奇', 'Legend'], min: 300, color: '#e3b344' },
+  { name: 'Ancient', label: ['万古', 'Ancient'], min: 400, color: '#b98cd8' },
+  { name: 'Divine', label: ['超凡', 'Divine'], min: 500, color: '#7fb3ff' },
+  { name: 'Immortal', label: ['冠绝', 'Immortal'], min: 700, color: '#ff8a3d' },
 ]
 
 export type LevelInfo = {

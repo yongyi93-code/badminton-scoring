@@ -1,3 +1,4 @@
+import { pick } from './i18n'
 import type {
   Game,
   Match,
@@ -59,8 +60,8 @@ export function deuceNote(a: number, b: number, rules: Rules): string | null {
   if (!rules.winBy2) return null
   if (a !== b) return null
   const cap = effectiveCap(rules)
-  if (a === cap - 1) return '下一分决胜'
-  if (a >= rules.pointsToWin - 1) return `${a} 平 · 要领先 2 分才算赢`
+  if (a === cap - 1) return pick('下一分决胜', 'Next point decides it')
+  if (a >= rules.pointsToWin - 1) return pick(`${a} 平 · 要领先 2 分才算赢`, `${a} all · must lead by 2`)
   return null
 }
 

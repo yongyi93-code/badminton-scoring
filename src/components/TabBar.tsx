@@ -1,7 +1,7 @@
+import { useT } from '@/lib/i18n'
 import type { ReactNode } from 'react'
 import { useNav, useRoute, TAB_ROUTES, type TabName } from '@/store/useNav'
 import { cx } from '@/components/ui'
-import { useT } from '@/lib/i18n'
 
 /*
  * 底部主导航。规格里写的是「底部四项」，但后面列了五项 ——

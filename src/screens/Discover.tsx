@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n'
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useApp } from '@/store/useApp'
@@ -6,7 +7,6 @@ import { Body, Card, Screen, SectionTitle } from '@/components/ui'
 import { decidedMatches } from '@/lib/ranking'
 import { venueSummaries } from '@/lib/venues'
 import { formatDate } from '@/lib/format'
-import { useT } from '@/lib/i18n'
 
 /*
  * 发现。

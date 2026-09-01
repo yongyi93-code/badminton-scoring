@@ -1,3 +1,4 @@
+import { pick, useT } from '@/lib/i18n'
 import { useMemo, useState } from 'react'
 import { rosterForSession, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -37,7 +38,6 @@ import {
   type Rules,
   type TeamSide,
 } from '@/types'
-import { pick, useT } from '@/lib/i18n'
 
 /* ------------------------------------------------------------------ *
  * 站位图：双打最常吵的就是「谁该发、站哪边」

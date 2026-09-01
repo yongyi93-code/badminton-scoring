@@ -1,3 +1,4 @@
+import { LANG_LABELS, type Lang, useLang, useT } from '@/lib/i18n'
 import { useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { avatarOf, playerMap, useApp, type Backup } from '@/store/useApp'
@@ -22,7 +23,6 @@ import { formatDate, percent, streakLabel } from '@/lib/format'
 import { venueLabel } from '@/lib/venues'
 import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
-import { LANG_LABELS, useLang, useT, type Lang } from '@/lib/i18n'
 
 const ARROW = (
   <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"

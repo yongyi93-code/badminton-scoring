@@ -34,6 +34,12 @@ const detect = (): Lang => {
 let current: Lang = 'zh'
 const listeners = new Set<() => void>()
 
+/** <html lang> 要跟着改：读屏软件靠它决定用哪种语音念 */
+const markHtml = () => {
+  if (typeof document === 'undefined') return // 测试跑在 node 里，没有 document
+  document.documentElement.lang = current === 'zh' ? 'zh-CN' : 'en'
+}
+
 export function setLang(lang: Lang) {
   current = lang
   try {
@@ -41,7 +47,7 @@ export function setLang(lang: Lang) {
   } catch {
     /* 存不下就只在这一次会话里生效 */
   }
-  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en'
+  markHtml()
   listeners.forEach((fn) => fn())
 }
 
@@ -58,7 +64,7 @@ export const pick = (zh: string, en: string): string =>
 /** 在 React 渲染之前调一次，免得中文用户先看到一帧英文 */
 export function initLang() {
   current = detect()
-  document.documentElement.lang = current === 'zh' ? 'zh-CN' : 'en'
+  markHtml()
 }
 
 const subscribe = (fn: () => void) => {

@@ -1,8 +1,8 @@
+import { pick } from '@/lib/i18n'
 import type { Player, PlayerStats } from '@/types'
 import { Avatar, TitleTag } from './PlayerBits'
 import { Pill, cx } from './ui'
 import { percent, signed, streakLabel } from '@/lib/format'
-import { pick } from '@/lib/i18n'
 import { RankMedal } from './RankMedal'
 import type { AvatarProfile, LevelInfo, Progress } from '@/lib/avatar'
 
@@ -60,7 +60,12 @@ export function RankRow({
           </span>
           <TitleTag avatar={avatar} />
           {streak && (
-            <Pill tone={stats.streak > 0 ? 'success' : 'danger'}>{streak}</Pill>
+            <Pill
+              tone={stats.streak > 0 ? 'success' : 'danger'}
+              className="shrink-0 whitespace-nowrap"
+            >
+              {streak}
+            </Pill>
           )}
         </span>
         {level && (

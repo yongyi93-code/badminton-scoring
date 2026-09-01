@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n'
 import { useMemo, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -17,7 +18,6 @@ import {
 import { PlayerRow } from '@/components/PlayerBits'
 import { progressByPlayer } from '@/lib/avatar'
 import type { Gender, Player } from '@/types'
-import { useT } from '@/lib/i18n'
 
 export function PlayerEditor({
   open,
