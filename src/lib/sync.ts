@@ -281,6 +281,17 @@ export async function startSync(): Promise<PullOutcome> {
 
   const outcome = await pullAll()
 
+  /*
+   * 云端是空的，而本机有东西 —— 这是「第一次开局」：把本机整份推上去。
+   *
+   * 不做这一步的话，只有「登录之后再改」的东西才会上去：先建好人
+   * 再登录的人，数据就永远卡在本地。而「先建人后登录」恰恰是最自然的
+   * 顺序 —— 谁会先想到去登录再开始用。
+   */
+  if (outcome.ok && outcome.empty && rowsOf().size > 0) {
+    await pushAll()
+  }
+
   unsubStore = useApp.subscribe(() => {
     if (applying) return
     scheduleFlush()
