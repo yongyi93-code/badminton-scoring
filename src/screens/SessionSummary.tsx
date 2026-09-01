@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n'
 import { useMemo, useRef, useState } from 'react'
 import { rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -62,6 +63,7 @@ function ShareCard({
   venueKing: { name: string; winRate: number; games: number } | null
   innerRef: React.Ref<HTMLDivElement>
 }) {
+  const t = useT()
   const top = ranked.filter((r) => r.qualified).slice(0, 8)
   return (
     <div className="pointer-events-none fixed top-0 -left-[2000px]" aria-hidden>
@@ -75,7 +77,9 @@ function ShareCard({
             <p className="text-[11px] tracking-[0.22em] text-brand-600 uppercase">
               Badminton Night
             </p>
-            <p className="mt-1 text-2xl font-bold">{session.venue || '羽球局'}</p>
+            <p className="mt-1 text-2xl font-bold">
+              {session.venue || t('羽球局', 'Badminton')}
+            </p>
             <p className="mt-0.5 text-sm text-ink-500">
               {formatDateFull(session.date)}
             </p>
@@ -85,9 +89,18 @@ function ShareCard({
 
         <div className="mt-5 grid grid-cols-3 gap-2">
           {[
-            { label: '出席', value: `${session.playerIds.length} 人` },
-            { label: '打了', value: `${matchCount} 场` },
-            { label: '人均', value: perPerson > 0 ? money(perPerson) : '—' },
+            {
+              label: t('出席', 'Turnout'),
+              value: t(`${session.playerIds.length} 人`, `${session.playerIds.length}`),
+            },
+            {
+              label: t('打了', 'Played'),
+              value: t(`${matchCount} 场`, `${matchCount}`),
+            },
+            {
+              label: t('人均', 'Each'),
+              value: perPerson > 0 ? money(perPerson) : '—',
+            },
           ].map((s) => (
             <div key={s.label} className="rounded-xl bg-surface px-3 py-2.5">
               <p className="text-[11px] text-ink-500">{s.label}</p>
@@ -101,7 +114,7 @@ function ShareCard({
             <span className="text-2xl">🏆</span>
             <div className="min-w-0 flex-1">
               <p className="text-[11px] tracking-widest text-brand-600 uppercase">
-                今晚 MVP
+                {t('今晚 MVP', 'MVP tonight')}
               </p>
               <p className="truncate text-lg font-bold">
                 {names.get(mvp.playerId)?.name}
@@ -110,7 +123,7 @@ function ShareCard({
             <div className="text-right">
               <p className="text-lg font-bold">{percent(mvp.winRate)}</p>
               <p className="text-[11px] text-ink-500">
-                {mvp.wins}胜{mvp.losses}负
+                {t(`${mvp.wins}胜${mvp.losses}负`, `${mvp.wins}W ${mvp.losses}L`)}
               </p>
             </div>
           </div>
@@ -121,19 +134,24 @@ function ShareCard({
             <span className="text-2xl">👑</span>
             <div className="min-w-0 flex-1">
               <p className="text-[11px] tracking-widest text-ink-500 uppercase">
-                {venueLabel(session.venue)}累计第一
+                {t(
+                  `${venueLabel(session.venue)}累计第一`,
+                  `Top at ${venueLabel(session.venue)}`,
+                )}
               </p>
               <p className="truncate text-lg font-bold">{venueKing.name}</p>
             </div>
             <div className="text-right">
               <p className="text-lg font-bold">{percent(venueKing.winRate)}</p>
-              <p className="text-[11px] text-ink-500">{venueKing.games} 场</p>
+              <p className="text-[11px] text-ink-500">
+                {t(`${venueKing.games} 场`, `${venueKing.games} games`)}
+              </p>
             </div>
           </div>
         )}
 
         <p className="mt-5 mb-2 text-[11px] tracking-[0.18em] text-ink-500 uppercase">
-          今晚排名
+          {t('今晚排名', 'Tonight’s standings')}
         </p>
         <div className="space-y-1.5">
           {top.map((s, i) => (
@@ -152,12 +170,13 @@ function ShareCard({
                 {names.get(s.playerId)?.name}
               </span>
               <span className="text-xs text-ink-500">
-                {s.wins}胜{s.losses}负
+                {t(`${s.wins}胜${s.losses}负`, `${s.wins}W ${s.losses}L`)}
               </span>
               <span className="w-14 text-right text-xs text-ink-500">
-                净 {signed(s.diff)}
+                {t(`净 ${signed(s.diff)}`, signed(s.diff))}
               </span>
-              <span className="w-10 text-right text-sm font-bold">
+              {/* w-11：100% 在 w-10 里差 3px，会顶到左边的净分 */}
+              <span className="w-11 shrink-0 text-right text-sm font-bold">
                 {percent(s.winRate)}
               </span>
             </div>
@@ -165,7 +184,10 @@ function ShareCard({
         </div>
 
         <p className="mt-5 text-center text-[10px] text-ink-500">
-          排名按胜率 → 净分差 · 至少 {RANK_MIN_GAMES} 场上榜
+          {t(
+            `排名按胜率 → 净分差 · 至少 ${RANK_MIN_GAMES} 场上榜`,
+            `Ranked by win rate, then point diff · ${RANK_MIN_GAMES} games to qualify`,
+          )}
         </p>
       </div>
     </div>
@@ -177,6 +199,7 @@ function ShareCard({
  * ------------------------------------------------------------------ */
 
 export function SessionSummary({ sessionId }: { sessionId: string }) {
+  const t = useT()
   const session = useApp((s) => s.sessions.find((x) => x.id === sessionId))
   const allMatches = useApp((s) => s.matches)
   const allSessions = useApp((s) => s.sessions)
@@ -261,18 +284,21 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
     if (!top) return null
     return {
       playerId: top.playerId,
-      name: names.get(top.playerId)?.name ?? '已删除的球员',
+      name: names.get(top.playerId)?.name ?? t('已删除的球员', 'Deleted player'),
       winRate: top.winRate,
       games: top.games,
     }
-  }, [session, allSessions, allMatches, names])
+  }, [session, allSessions, allMatches, names, t])
 
   if (!session) {
     return (
       <Screen>
-        <TopBar title="球局不存在" onBack={() => resetTo({ name: 'home' })} />
+        <TopBar
+          title={t('球局不存在', 'Session not found')}
+          onBack={() => resetTo({ name: 'home' })}
+        />
         <Body>
-          <EmptyState title="这个球局已经被删掉了" />
+          <EmptyState title={t('这个球局已经被删掉了', 'This session was deleted')} />
         </Body>
       </Screen>
     )
@@ -309,26 +335,36 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
     setShareState('working')
     // 兜底超时：出图卡住时也要把按钮从「生成中」放出来
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('生成超时，请重试')), 15000),
+      setTimeout(
+        () => reject(new Error(t('生成超时，请重试', 'Timed out — try again'))),
+        15000,
+      ),
     )
     try {
       const outcome = await Promise.race([
         shareNodeAsImage(
           shareRef.current,
-          `羽球战绩-${session!.date}.png`,
-          `${session!.venue || '羽球局'} 战绩`,
+          t(`羽球战绩-${session!.date}.png`, `badminton-${session!.date}.png`),
+          t(
+            `${session!.venue || '羽球局'} 战绩`,
+            `${session!.venue || 'Badminton'} results`,
+          ),
         ),
         timeout,
       ])
       setShareState(
         outcome === 'shared'
-          ? '已打开分享面板'
+          ? t('已打开分享面板', 'Share sheet opened')
           : outcome === 'downloaded'
-            ? '图片已下载，可以手动发到群里'
-            : '生成图片失败',
+            ? t('图片已下载，可以手动发到群里', 'Image saved — send it to the group')
+            : t('生成图片失败', 'Could not make the image'),
       )
     } catch (err) {
-      setShareState(err instanceof Error ? err.message : '生成图片失败')
+      setShareState(
+        err instanceof Error
+          ? err.message
+          : t('生成图片失败', 'Could not make the image'),
+      )
     }
   }
 
@@ -351,16 +387,19 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
   return (
     <Screen>
       <TopBar
-        title="今晚结算"
-        subtitle={`${session.venue || '球局'} · ${formatDateFull(session.date)}`}
+        title={t('今晚结算', 'Wrap-up')}
+        subtitle={`${session.venue || t('球局', 'Session')} · ${formatDateFull(session.date)}`}
         onBack={session.status === 'ended' ? back : () => resetTo({ name: 'home' })}
       />
       <Body>
         {done.length === 0 ? (
           <EmptyState
             icon="🤷"
-            title="今晚没有打完的比赛"
-            hint="没有战绩可以结算，但费用还是可以在下面分摊"
+            title={t('今晚没有打完的比赛', 'No finished matches tonight')}
+            hint={t(
+              '没有战绩可以结算，但费用还是可以在下面分摊',
+              'Nothing to rank yet, but you can still split the cost below',
+            )}
           />
         ) : (
           <>
@@ -368,7 +407,10 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
             {clubScore && session.friendly && (
               <Card className="border-brand-500/40 bg-brand-50">
                 <p className="text-center text-xs text-ink-500">
-                  友谊赛总比分 · 共 {clubScore.total} 场
+                  {t(
+                    `友谊赛总比分 · 共 ${clubScore.total} 场`,
+                    `Club match · ${clubScore.total} games`,
+                  )}
                 </p>
                 <div className="mt-2 flex items-center justify-center gap-4">
                   <div className="min-w-0 flex-1 text-right">
@@ -405,11 +447,17 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                 </div>
                 <p className="mt-2 text-center text-sm font-semibold">
                   {clubScore.home === clubScore.away
-                    ? '打平'
-                    : `${clubScore.home > clubScore.away ? session.friendly.homeName : session.friendly.awayName} 赢下这场友谊赛`}
+                    ? t('打平', 'Drawn')
+                    : t(
+                        `${clubScore.home > clubScore.away ? session.friendly.homeName : session.friendly.awayName} 赢下这场友谊赛`,
+                        `${clubScore.home > clubScore.away ? session.friendly.homeName : session.friendly.awayName} take it`,
+                      )}
                 </p>
                 <p className="mt-2 text-center text-xs text-ink-500">
-                  友谊赛成绩单独记，不算进 MMR、段位和累计排行榜
+                  {t(
+                    '友谊赛成绩单独记，不算进 MMR、段位和累计排行榜',
+                    'Club matches are kept separate — no MMR, tier or all-time leaderboard',
+                  )}
                 </p>
               </Card>
             )}
@@ -419,13 +467,15 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                 <div className="flex items-center gap-4">
                   <span className="text-3xl">🏆</span>
                   <div className="min-w-0 flex-1">
-                    <Pill tone="brand">今晚 MVP</Pill>
+                    <Pill tone="brand">{t('今晚 MVP', 'MVP tonight')}</Pill>
                     <p className="mt-1.5 truncate text-xl font-bold">
                       {names.get(mvp.playerId)?.name}
                     </p>
                     <p className="tnum text-sm text-ink-500">
-                      {mvp.games} 场 {mvp.wins}胜{mvp.losses}负 · 胜率{' '}
-                      {percent(mvp.winRate)} · 净分 {signed(mvp.diff)}
+                      {t(
+                        `${mvp.games} 场 ${mvp.wins}胜${mvp.losses}负 · 胜率 ${percent(mvp.winRate)} · 净分 ${signed(mvp.diff)}`,
+                        `${mvp.games} games · ${mvp.wins}W ${mvp.losses}L · ${percent(mvp.winRate)} · ${signed(mvp.diff)} diff`,
+                      )}
                     </p>
                   </div>
                 </div>
@@ -433,7 +483,10 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
             ) : (
               <Card>
                 <p className="text-sm text-ink-700">
-                  今晚没有人打满 {RANK_MIN_GAMES} 场，不评 MVP。
+                  {t(
+                    `今晚没有人打满 ${RANK_MIN_GAMES} 场，不评 MVP。`,
+                    `Nobody reached ${RANK_MIN_GAMES} games tonight, so there is no MVP.`,
+                  )}
                 </p>
               </Card>
             )}
@@ -446,7 +499,10 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                 <span className="text-2xl">👑</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-xs text-ink-500">
-                    {venueLabel(session.venue)}累计第一
+                    {t(
+                      `${venueLabel(session.venue)}累计第一`,
+                      `Top at ${venueLabel(session.venue)}`,
+                    )}
                   </span>
                   <span className="block truncate font-semibold">
                     {venueKing.name}
@@ -455,27 +511,42 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                 <span className="tnum shrink-0 text-right">
                   <span className="block font-bold">{percent(venueKing.winRate)}</span>
                   <span className="block text-xs text-ink-500">
-                    {venueKing.games} 场
+                    {t(`${venueKing.games} 场`, `${venueKing.games} games`)}
                   </span>
                 </span>
               </button>
             )}
 
             <p className="text-sm text-ink-500">
-              {FORMAT_LABELS[formatOf(session)]}
+              {t(...FORMAT_LABELS[formatOf(session)])}
               {session.rotationPerPlayer
-                ? ` · 每人 ${session.rotationPerPlayer} 场的赛程`
+                ? t(
+                    ` · 每人 ${session.rotationPerPlayer} 场的赛程`,
+                    ` · ${session.rotationPerPlayer} games each`,
+                  )
                 : ''}
               {formatOf(session) === 'king' && (session.kingStreakCap ?? 0) > 0
-                ? ` · 连胜上限 ${session.kingStreakCap}`
+                ? t(
+                    ` · 连胜上限 ${session.kingStreakCap}`,
+                    ` · streak cap ${session.kingStreakCap}`,
+                  )
                 : ''}
             </p>
 
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: '打了', value: `${done.length} 场` },
-                { label: '出席', value: `${session.playerIds.length} 人` },
-                { label: '用时', value: played ?? '—' },
+                {
+                  label: t('打了', 'Played'),
+                  value: t(`${done.length} 场`, `${done.length}`),
+                },
+                {
+                  label: t('出席', 'Turnout'),
+                  value: t(
+                    `${session.playerIds.length} 人`,
+                    `${session.playerIds.length}`,
+                  ),
+                },
+                { label: t('用时', 'Time'), value: played ?? '—' },
               ].map((s) => (
                 <div
                   key={s.label}
@@ -487,7 +558,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
               ))}
             </div>
 
-            <SectionTitle>今晚排名</SectionTitle>
+            <SectionTitle>{t('今晚排名', 'Tonight’s standings')}</SectionTitle>
             <RankTable
               ranked={ranked}
               playersById={names}
@@ -499,13 +570,13 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
           </>
         )}
 
-        <SectionTitle>费用 AA</SectionTitle>
+        <SectionTitle>{t('费用 AA', 'Split the cost')}</SectionTitle>
         <Card className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="场地费">
+            <Field label={t('场地费', 'Court fee')}>
               {numberInput(session.fee.courtFee, (v) => setFee({ courtFee: v }), '0')}
             </Field>
-            <Field label="球单价">
+            <Field label={t('球单价', 'Per shuttle')}>
               {numberInput(
                 session.fee.shuttleUnitPrice,
                 (v) => setFee({ shuttleUnitPrice: v }),
@@ -513,7 +584,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
               )}
             </Field>
           </div>
-          <Field label="用了几个球">
+          <Field label={t('用了几个球', 'Shuttles used')}>
             <Stepper
               value={session.fee.shuttleCount}
               onChange={(v) => setFee({ shuttleCount: v })}
@@ -524,35 +595,44 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
               }
               min={0}
               max={99}
-              suffix="个"
+              suffix={t('个', '')}
             />
           </Field>
 
           <div className="rounded-xl bg-fill px-4 py-3">
             <div className="flex items-baseline justify-between">
               <span className="text-sm text-ink-700">
-                总额 {money(fee.total)}（场地 {money(session.fee.courtFee)} + 球{' '}
-                {money(fee.shuttleTotal)}）
+                {t(
+                  `总额 ${money(fee.total)}（场地 ${money(session.fee.courtFee)} + 球 ${money(fee.shuttleTotal)}）`,
+                  `${money(fee.total)} total — court ${money(session.fee.courtFee)} + shuttles ${money(fee.shuttleTotal)}`,
+                )}
               </span>
             </div>
             <div className="mt-1 flex items-baseline justify-between">
-              <span className="text-sm text-ink-700">每人</span>
+              <span className="text-sm text-ink-700">{t('每人', 'Each')}</span>
               <span className="tnum text-2xl font-bold text-brand-600">
                 {money(fee.perPerson)}
               </span>
             </div>
             {fee.outstanding > 0 && (
               <p className="mt-1 text-xs text-warning-600">
-                还有 {fee.unpaidIds.length} 人没付，共 {money(fee.outstanding)}
+                {t(
+                  `还有 ${fee.unpaidIds.length} 人没付，共 ${money(fee.outstanding)}`,
+                  `${fee.unpaidIds.length} still to pay · ${money(fee.outstanding)}`,
+                )}
               </p>
             )}
             {fee.total > 0 && fee.outstanding === 0 && (
-              <p className="mt-1 text-xs text-brand-600">全部收齐 ✓</p>
+              <p className="mt-1 text-xs text-brand-600">
+                {t('全部收齐 ✓', 'All settled ✓')}
+              </p>
             )}
           </div>
 
           <div>
-            <p className="mb-2 text-xs text-ink-500">点名字标记已付</p>
+            <p className="mb-2 text-xs text-ink-500">
+              {t('点名字标记已付', 'Tap a name to mark them paid')}
+            </p>
             <div className="flex flex-wrap gap-2">
               {session.playerIds.map((id) => {
                 const paid = session.fee.paidPlayerIds.includes(id)
@@ -584,7 +664,9 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
           onClick={share}
           disabled={shareState === 'working'}
         >
-          {shareState === 'working' ? '生成中…' : '生成战绩图，发到群里'}
+          {shareState === 'working'
+            ? t('生成中…', 'Making it…')
+            : t('生成战绩图，发到群里', 'Make a results card to share')}
         </Button>
         {shareState !== 'idle' && shareState !== 'working' && (
           <p className="text-center text-sm text-brand-600">{shareState}</p>
@@ -599,18 +681,21 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
               resetTo({ name: 'board', sessionId: session.id })
             }}
           >
-            结束错了，回去继续打
+            {t('结束错了，回去继续打', 'Ended by mistake — keep playing')}
           </Button>
         )}
 
         <Button block variant="soft" onClick={() => resetTo({ name: 'home' })}>
-          回首页
+          {t('回首页', 'Back home')}
         </Button>
 
         {confirmDelete ? (
           <div className="space-y-2 rounded-xl border border-danger-600/30 bg-danger-50 p-3">
             <p className="text-sm text-danger-600">
-              删除后这个球局的所有比赛记录都会消失，累计排行榜也会跟着变。确定吗？
+              {t(
+                '删除后这个球局的所有比赛记录都会消失，累计排行榜也会跟着变。确定吗？',
+                'Deleting drops every match in this session, and the all-time leaderboard shifts with it. Sure?',
+              )}
             </p>
             <div className="flex gap-2">
               <Button
@@ -621,14 +706,14 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                   resetTo({ name: 'home' })
                 }}
               >
-                确定删除
+                {t('确定删除', 'Delete it')}
               </Button>
               <Button
                 variant="ghost"
                 className="flex-1"
                 onClick={() => setConfirmDelete(false)}
               >
-                算了
+                {t('算了', 'Never mind')}
               </Button>
             </div>
           </div>
@@ -637,7 +722,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
             onClick={() => setConfirmDelete(true)}
             className="w-full pb-4 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
           >
-            删除这个球局
+            {t('删除这个球局', 'Delete this session')}
           </button>
         )}
       </Body>

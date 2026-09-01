@@ -1,3 +1,4 @@
+import { pick } from './i18n'
 import { decidedMatches } from './ranking'
 import type { Match, Session } from '@/types'
 
@@ -16,7 +17,7 @@ import type { Match, Session } from '@/types'
  * ------------------------------------------------------------------ */
 
 /** 没填球馆的球局归到这一档 */
-export const UNNAMED_VENUE = '未填球馆'
+export const UNNAMED_VENUE = () => pick('未填球馆', 'No venue')
 
 /** 显示用：去首尾空格，中间连续空白压成一个 */
 export const normalizeVenue = (raw: string | undefined) =>
@@ -31,7 +32,7 @@ export const venueKey = (raw: string | undefined) =>
 
 /** 显示用名字，空的显示成「未填球馆」 */
 export const venueLabel = (raw: string | undefined) =>
-  normalizeVenue(raw) || UNNAMED_VENUE
+  normalizeVenue(raw) || UNNAMED_VENUE()
 
 export type VenueSummary = {
   /** 归组 key；'' 表示没填球馆 */

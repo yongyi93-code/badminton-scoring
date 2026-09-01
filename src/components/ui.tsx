@@ -1,3 +1,4 @@
+import { pick } from '@/lib/i18n'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -108,7 +109,7 @@ export function TopBar({
         {onBack && (
           <button
             onClick={onBack}
-            aria-label="返回"
+            aria-label={pick('返回', 'Back')}
             className="-ml-2 flex size-10 shrink-0 items-center justify-center rounded-xl text-ink-700 active:bg-fill"
           >
             <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2">
@@ -283,7 +284,7 @@ export function Stepper({
         size="md"
         className="w-11 shrink-0 px-0"
         onClick={() => bump(-step)}
-        aria-label="减少"
+        aria-label={pick('减少', 'Decrease')}
       >
         <span className="text-xl leading-none">−</span>
       </Button>
@@ -295,7 +296,7 @@ export function Stepper({
         size="md"
         className="w-11 shrink-0 px-0"
         onClick={() => bump(step)}
-        aria-label="增加"
+        aria-label={pick('增加', 'Increase')}
       >
         <span className="text-xl leading-none">+</span>
       </Button>
@@ -399,7 +400,7 @@ export function Sheet({
           <h3 className="text-base font-semibold">{title}</h3>
           <button
             onClick={onClose}
-            aria-label="关闭"
+            aria-label={pick('关闭', 'Close')}
             className="-mr-1 flex size-9 items-center justify-center rounded-lg text-ink-500 active:bg-fill"
           >
             <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -448,7 +449,7 @@ export function Toast({
       >
         <span className="min-w-0 flex-1">{message}</span>
         {tone === 'error' && (
-          <button onClick={onClose} aria-label="关闭" className="shrink-0 px-1">
+          <button onClick={onClose} aria-label={pick('关闭', 'Close')} className="shrink-0 px-1">
             ✕
           </button>
         )}

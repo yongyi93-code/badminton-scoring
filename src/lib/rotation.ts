@@ -1,3 +1,4 @@
+import { pick } from './i18n'
 import type { Match, MatchType, PairingMode, Player } from '@/types'
 
 /* ------------------------------------------------------------------ *
@@ -173,14 +174,23 @@ export function pairingNotes(
   const avg = (ids: string[]) =>
     ids.length ? ids.reduce((n, id) => n + mmrOf(id), 0) / ids.length : 0
   const gap = Math.round(Math.abs(avg(teamA) - avg(teamB)))
-  notes.push(gap === 0 ? '两队平均 MMR 一样' : `两队平均 MMR 差 ${gap}`)
+  notes.push(
+    gap === 0
+      ? pick('两队平均 MMR 一样', 'Both sides average the same MMR')
+      : pick(`两队平均 MMR 差 ${gap}`, `${gap} MMR between the sides`),
+  )
 
   // 歇得最久的那个人。他上场是这一场存在的主要理由
   const rested = [...teamA, ...teamB]
     .map((id) => ({ id, r: loads.get(id)?.restRounds ?? 0 }))
     .sort((a, b) => b.r - a.r)[0]
   if (rested && rested.r > 0) {
-    notes.push(`${nameOf(rested.id)} 已经歇了 ${rested.r} 轮`)
+    notes.push(
+      pick(
+        `${nameOf(rested.id)} 已经歇了 ${rested.r} 轮`,
+        `${nameOf(rested.id)} has sat out ${rested.r} rounds`,
+      ),
+    )
   }
   return notes.slice(0, 2)
 }
@@ -289,8 +299,8 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
       return {
         pairing: null,
         reason: genderless.length
-          ? `混双需要至少 2 男 2 女，且有 ${genderless.length} 人没填性别，无法自动排`
-          : '混双需要至少 2 男 2 女在等待区',
+          ? pick(`混双需要至少 2 男 2 女，且有 ${genderless.length} 人没填性别，无法自动排`, `Mixed doubles needs 2 men and 2 women, and ${genderless.length} players have no gender set`)
+          : pick('混双需要至少 2 男 2 女在等待区', 'Mixed doubles needs at least 2 men and 2 women waiting'),
       }
     }
   }
@@ -298,7 +308,10 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
   if (available.length < need) {
     return {
       pairing: null,
-      reason: `等待区只有 ${available.length} 人，${type === 'singles' ? '单打' : '双打'}需要 ${need} 人`,
+      reason: pick(
+        `等待区只有 ${available.length} 人，${type === 'singles' ? '单打' : '双打'}需要 ${need} 人`,
+        `Only ${available.length} waiting — ${type === 'singles' ? 'singles' : 'doubles'} needs ${need}`,
+      ),
     }
   }
 
@@ -309,14 +322,17 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     if (count('home') < half || count('away') < half) {
       return {
         pairing: null,
-        reason: `友谊赛一场要两队各 ${half} 人，现在主队 ${count('home')} 人、客队 ${count('away')} 人在等待区`,
+        reason: pick(
+          `友谊赛一场要两队各 ${half} 人，现在主队 ${count('home')} 人、客队 ${count('away')} 人在等待区`,
+          `A friendly needs ${half} from each side; ${count('home')} home and ${count('away')} away are waiting`,
+        ),
       }
     }
   }
 
   const missingMust = mustInclude.filter((id) => !available.some((p) => p.id === id))
   if (missingMust.length) {
-    return { pairing: null, reason: '指定上场的球员当前不在等待区' }
+    return { pairing: null, reason: pick('指定上场的球员当前不在等待区', 'A player you pinned is not in the waiting area') }
   }
 
   const loads = playerLoads(available, matches)
@@ -442,7 +458,10 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
   if (merged.length > need) {
     return {
       pairing: null,
-      reason: '指定上场的人和「该轮到的人」加起来超过一场的人数，请先取消部分指定',
+      reason: pick(
+        '指定上场的人和「该轮到的人」加起来超过一场的人数，请先取消部分指定',
+        'Too many players pinned on top of those who are due — unpin some first',
+      ),
     }
   }
 
@@ -479,8 +498,8 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
       pairing: null,
       reason:
         type === 'mixed'
-          ? '等待区凑不出「每队一男一女」的阵容'
-          : '等待区凑不出合法阵容',
+          ? pick('等待区凑不出「每队一男一女」的阵容', 'Cannot make one man and one woman per side from who is waiting')
+          : pick('等待区凑不出合法阵容', 'Cannot build a valid match from who is waiting'),
     }
   }
 

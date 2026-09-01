@@ -1,3 +1,4 @@
+import { pick, useT } from '@/lib/i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -100,25 +101,25 @@ function TeamLine({
 function ProgressStrip({ progress }: { progress: SessionProgress }) {
   const bars = [
     progress.scheduleTotal !== undefined && {
-      label: '赛程',
-      text: `第 ${progress.played} / ${progress.scheduleTotal} 场`,
+      label: pick('赛程', 'Schedule'),
+      text: pick(`第 ${progress.played} / ${progress.scheduleTotal} 场`, `${progress.played} / ${progress.scheduleTotal}`),
       ratio: progress.scheduleTotal
         ? progress.played / progress.scheduleTotal
         : 0,
     },
     progress.totalTarget && {
-      label: '场数',
-      text: `${progress.played} / ${progress.totalTarget} 场`,
+      label: pick('场数', 'Matches'),
+      text: `${progress.played} / ${progress.totalTarget}`,
       ratio: progress.played / progress.totalTarget,
     },
     progress.durationTarget && {
-      label: '时间',
-      text: `${progress.elapsedMinutes} / ${progress.durationTarget} 分钟`,
+      label: pick('时间', 'Time'),
+      text: pick(`${progress.elapsedMinutes} / ${progress.durationTarget} 分钟`, `${progress.elapsedMinutes} / ${progress.durationTarget} min`),
       ratio: progress.elapsedMinutes / progress.durationTarget,
     },
     progress.perPlayerTarget && {
-      label: '每人',
-      text: `最少 ${progress.perPlayerMin} / ${progress.perPlayerTarget} 场`,
+      label: pick('每人', 'Each'),
+      text: pick(`最少 ${progress.perPlayerMin} / ${progress.perPlayerTarget} 场`, `min ${progress.perPlayerMin} / ${progress.perPlayerTarget}`),
       ratio: progress.perPlayerMin / progress.perPlayerTarget,
     },
   ].filter(Boolean) as { label: string; text: string; ratio: number }[]
@@ -143,9 +144,9 @@ function ProgressStrip({ progress }: { progress: SessionProgress }) {
       ))}
       {progress.estimatedMatchesLeft !== undefined && !progress.shouldWrapUp && (
         <p className="text-xs text-ink-500">
-          按目前节奏，剩下的时间还够打{' '}
+          {pick('按目前节奏，剩下的时间还够打 ', 'At this pace there is still room for ')}
           <span className="font-semibold text-brand-600">
-            {progress.estimatedMatchesLeft} 场
+            {pick(`${progress.estimatedMatchesLeft} 场`, `${progress.estimatedMatchesLeft} matches`)}
           </span>
         </p>
       )}
@@ -193,7 +194,7 @@ function FinishedRow({
         className="mt-1.5 text-xs text-brand-600"
         onClick={onReopen}
       >
-        记错了，退回去改 ›
+        {pick('记错了，退回去改 ›', 'Wrong score? Send it back ›')}
       </button>
     </div>
   )
@@ -206,7 +207,7 @@ function Elapsed({ since }: { since: number }) {
     const t = setInterval(() => tick((n) => n + 1), 30_000)
     return () => clearInterval(t)
   }, [])
-  return <>已打 {duration(Date.now() - since)}</>
+  return <>{pick(`已打 ${duration(Date.now() - since)}`, `${duration(Date.now() - since)} in`)}</>
 }
 
 function CourtCard({
@@ -236,8 +237,8 @@ function CourtCard({
     /* 空场是这一屏上最要紧的一件事，按钮就该是大号的 */
     return (
       <Card className="border-dashed">
-        <p className="text-ink-700 text-title">{index + 1} 号场</p>
-        <p className="text-ink-500 mt-0.5 text-label">空着，等下一场</p>
+        <p className="text-ink-700 text-title">{pick(`${index + 1} 号场`, `Court ${index + 1}`)}</p>
+        <p className="text-ink-500 mt-0.5 text-label">{pick('空着，等下一场', 'Free — waiting for the next match')}</p>
         <Button
           variant="primary"
           size="lg"
@@ -246,7 +247,7 @@ function CourtCard({
           onClick={onArrange}
           disabled={arranging}
         >
-          安排下一场
+          {pick('安排下一场', 'Set up next match')}
         </Button>
       </Card>
     )
@@ -260,7 +261,7 @@ function CourtCard({
     <Card>
       <div className="mb-2.5 flex items-center justify-between">
         <span className="text-brand-600 flex items-baseline gap-2 text-title">
-          {index + 1} 号场
+          {pick(`${index + 1} 号场`, `Court ${index + 1}`)}
           {/* 已打时长：场地按小时算钱，「这场打多久了」是每晚都要问的 */}
           {match.startedAt && (
             <span className="tnum text-ink-500 text-caption font-normal">
@@ -270,17 +271,17 @@ function CourtCard({
         </span>
         <div className="flex items-center gap-2">
           {holder && holder.streak > 0 && (
-            <Pill tone="brand">守场 {holder.streak} 连胜</Pill>
+            <Pill tone="brand">{pick(`守场 ${holder.streak} 连胜`, `Holding · ${holder.streak} in a row`)}</Pill>
           )}
           {session.rules.bestOf === 3 && (
             <Pill>
-              第 {gi + 1} 局 · {sets.A}:{sets.B}
+              {pick(`第 ${gi + 1} 局 · ${sets.A}:${sets.B}`, `Game ${gi + 1} · ${sets.A}:${sets.B}`)}
             </Pill>
           )}
-          <Pill tone="brand">进行中</Pill>
+          <Pill tone="brand">{pick('进行中', 'Live')}</Pill>
           <button
             onClick={onManage}
-            aria-label="调整这一场"
+            aria-label={pick('调整这一场', 'Adjust this match')}
             className="-mr-1 flex size-8 items-center justify-center rounded-lg text-ink-500 active:bg-fill"
           >
             ⋯
@@ -308,7 +309,7 @@ function CourtCard({
       </div>
 
       <Button variant="primary" block className="mt-3" onClick={onScore}>
-        记分
+        {pick('记分', 'Score')}
       </Button>
     </Card>
   )
@@ -319,6 +320,7 @@ function CourtCard({
  * ------------------------------------------------------------------ */
 
 export function SessionBoard({ sessionId }: { sessionId: string }) {
+  const t = useT()
   const session = useApp((s) => s.sessions.find((x) => x.id === sessionId))
   const allMatches = useApp((s) => s.matches)
   const players = useApp((s) => s.players)
@@ -387,9 +389,9 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   if (!session) {
     return (
       <Screen>
-        <TopBar title="球局不存在" onBack={() => resetTo({ name: 'home' })} />
+        <TopBar title={t('球局不存在', 'Session not found')} onBack={() => resetTo({ name: 'home' })} />
         <Body>
-          <EmptyState title="这个球局已经被删掉了" />
+          <EmptyState title={t('这个球局已经被删掉了', 'This session was deleted')} />
         </Body>
       </Screen>
     )
@@ -558,7 +560,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         busyIds: busyNow,
       })
       if (queue.length < teamSize * 2) {
-        setNotice(`排队区只有 ${queue.length} 人，还开不了一场`)
+        setNotice(t(`排队区只有 ${queue.length} 人，还开不了一场`, `Only ${queue.length} waiting — not enough for a match`))
         return
       }
       buildMatch(
@@ -584,7 +586,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       clubOf,
     })
     if (!pairing) {
-      setNotice(reason ?? '排不出下一场')
+      setNotice(reason ?? t('排不出下一场', 'Could not arrange the next match'))
       return
     }
     buildMatch(pairing, courtIndex)
@@ -610,7 +612,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       clubOf,
     })
     if (!pairing) {
-      setNotice(reason ?? '重排失败')
+      setNotice(reason ?? t('重排失败', 'Could not reshuffle'))
       return
     }
     updateMatch(match.id, {
@@ -669,7 +671,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const reopenMatch = (match: Match) => {
     const free = courts.find((i) => !onCourt.has(i))
     if (free === undefined) {
-      setNotice('场上都满了，先把某一场打完或取消，再退回这一场')
+      setNotice(t('场上都满了，先把某一场打完或取消，再退回这一场', 'All courts are busy — finish or cancel one first'))
       return
     }
     updateMatch(match.id, {
@@ -748,11 +750,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       clubOf,
     })
     if (!schedule.pairings.length) {
-      setNotice(schedule.reason ?? '排不出剩余赛程')
+      setNotice(schedule.reason ?? t('排不出剩余赛程', 'Could not rebuild the schedule'))
       return
     }
     addMatches(schedule.pairings.map((p) => matchInput(p, session!.id, null)))
-    setNotice(`已按现在的 ${schedulable.length} 人重排了 ${schedule.pairings.length} 场`)
+    setNotice(t(`已按现在的 ${schedulable.length} 人重排了 ${schedule.pairings.length} 场`, `Rebuilt ${schedule.pairings.length} matches for the current ${schedulable.length} players`))
   }
 
   /** 轮转赛：在赛程后面再接几场 */
@@ -770,7 +772,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       clubOf,
     })
     if (!schedule.pairings.length) {
-      setNotice(schedule.reason ?? '排不出更多场次')
+      setNotice(schedule.reason ?? t('排不出更多场次', 'Could not add more matches'))
       return
     }
     addMatches(schedule.pairings.map((p) => matchInput(p, session!.id, null)))
@@ -791,12 +793,15 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   return (
     <Screen>
       <TopBar
-        title={session.venue || '球局'}
-        subtitle={`${FORMAT_LABELS[format]} · ${session.rules.pointsToWin} 分制 · ${attending.length} 人 · 已打 ${finished.length} 场`}
+        title={session.venue || t('球局', 'Session')}
+        subtitle={t(
+          `${t(...FORMAT_LABELS[format])} · ${session.rules.pointsToWin} 分制 · ${attending.length} 人 · 已打 ${finished.length} 场`,
+          `${t(...FORMAT_LABELS[format])} · to ${session.rules.pointsToWin} · ${attending.length} players · ${finished.length} played`,
+        )}
         onBack={() => resetTo({ name: 'home' })}
         right={
           <Button size="sm" variant="ghost" onClick={() => setEndOpen(true)}>
-            结束
+            {t('结束', 'End')}
           </Button>
         }
       />
@@ -815,7 +820,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 className="flex-1"
                 onClick={() => setEndOpen(true)}
               >
-                去结算
+                {t('去结算', 'Wrap up')}
               </Button>
               <Button
                 size="sm"
@@ -823,7 +828,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 className="flex-1"
                 onClick={() => (format === 'rotation' ? appendSchedule(4) : extendLimit())}
               >
-                {format === 'rotation' ? '再排 4 场' : '再加一点'}
+                {format === 'rotation' ? t('再排 4 场', 'Add 4 more') : t('再加一点', 'Extend')}
               </Button>
             </div>
           </div>
@@ -880,30 +885,30 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           right={
             format === 'rotation' ? (
               <button className="text-xs text-brand-600" onClick={regenerateSchedule}>
-                按现在的人重排
+                {t('按现在的人重排', 'Rebuild for who is here')}
               </button>
             ) : format === 'king' ? null : (
               <button
                 className="text-xs text-brand-600 disabled:text-ink-500"
                 onClick={() => arrange('queue')}
               >
-                + 预排一场
+                {t('+ 预排一场', '+ Queue one')}
               </button>
             )
           }
         >
           {format === 'rotation'
-            ? `赛程（还剩 ${queued.length} 场）`
-            : '排队中'}
+            ? t(`赛程（还剩 ${queued.length} 场）`, `Schedule (${queued.length} left)`)
+            : t('排队中', 'Up next')}
         </SectionTitle>
 
         {queued.length === 0 ? (
           <p className="text-sm text-ink-500">
             {format === 'rotation'
-              ? '赛程都打完了。可以「再排 4 场」加时，或者去结算。'
+              ? t('赛程都打完了。可以「再排 4 场」加时，或者去结算。', 'The schedule is done. Add 4 more, or wrap up.')
               : format === 'king'
-                ? '下一场由这一场谁赢决定，打完记分自动排上，不用预排。'
-                : '没有预排的比赛。场地空出来时点「排下一场」即可，也可以先预排让大家知道下一场是谁。'}
+                ? t('下一场由这一场谁赢决定，打完记分自动排上，不用预排。', 'The next match depends on who wins this one — it gets arranged automatically.')
+                : t('没有预排的比赛。场地空出来时点「排下一场」即可，也可以先预排让大家知道下一场是谁。', 'Nothing queued. Tap “Set up next” when a court frees up, or queue one now so everyone knows who is on.')}
           </p>
         ) : (
           <div className="space-y-2">
@@ -913,10 +918,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             ).map((m, idx) => (
               <Card key={m.id}>
                 <div className="mb-2 flex items-center justify-between">
-                  <Pill>下一场 {idx + 1}</Pill>
+                  <Pill>{t(`下一场 ${idx + 1}`, `Next ${idx + 1}`)}</Pill>
                   <div className="flex gap-1">
                     <Button size="sm" variant="ghost" onClick={() => reshuffle(m)}>
-                      重排
+                      {t('重排', 'Reshuffle')}
                     </Button>
                     {/* 轮转赛删掉单场会打乱整份赛程，改用「按现在的人重排」 */}
                     {format !== 'rotation' && (
@@ -925,7 +930,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                         variant="danger"
                         onClick={() => deleteMatch(m.id)}
                       >
-                        取消
+                        {t('取消', 'Cancel')}
                       </Button>
                     )}
                   </div>
@@ -949,8 +954,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 className="w-full py-2 text-center text-sm text-brand-600"
               >
                 {showAllSchedule
-                  ? '收起'
-                  : `查看全部赛程（还剩 ${queued.length} 场）`}
+                  ? t('收起', 'Collapse')
+                  : t(`查看全部赛程（还剩 ${queued.length} 场）`, `Show the whole schedule (${queued.length} left)`)}
               </button>
             )}
           </div>
@@ -965,39 +970,39 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           right={
             <div className="flex items-center gap-3">
               <button className="text-brand-600 text-caption" onClick={() => setPairOpen(true)}>
-                配对设置
+                {t('配对设置', 'Pairing')}
               </button>
               <button className="text-brand-600 text-caption" onClick={() => setAdding(true)}>
-                + 加人
+                {t('+ 加人', '+ Add')}
               </button>
             </div>
           }
         >
           {format === 'king'
-            ? `排队顺序（${waiting.length} 人）`
-            : `谁该上场（等待 ${waiting.length} 人）`}
+            ? t(`排队顺序（${waiting.length} 人）`, `Queue (${waiting.length})`)
+            : t(`谁该上场（等待 ${waiting.length} 人）`, `Who is up (${waiting.length} waiting)`)}
         </SectionTitle>
 
         {format === 'king' && (
           <p className="text-sm text-ink-500">
-            队头两人下一场上。赢的留场
+            {t('队头两人下一场上。赢的留场', 'The top two are up next. Winners stay on')}
             {(session.kingStreakCap ?? 0) > 0
-              ? `，连赢 ${session.kingStreakCap} 场强制下场休息`
-              : '，赢到底'}
+              ? t(`，连赢 ${session.kingStreakCap} 场强制下场休息`, `, but must sit out after ${session.kingStreakCap} straight wins`)
+              : t('，赢到底', ' until they lose')}
             。
           </p>
         )}
 
         {format !== 'rotation' && (
           <div>
-            <p className="mb-1.5 text-xs text-ink-500">下一场排什么</p>
+            <p className="mb-1.5 text-xs text-ink-500">{t('下一场排什么', 'What to arrange next')}</p>
             <Segmented
               value={type}
               onChange={(v) => setNextType(v)}
               options={[
-                { value: 'doubles', label: '双打' },
-                { value: 'singles', label: '单打' },
-                { value: 'mixed', label: '混双' },
+                { value: 'doubles', label: t('双打', 'Doubles') },
+                { value: 'singles', label: t('单打', 'Singles') },
+                { value: 'mixed', label: t('混双', 'Mixed') },
               ]}
             />
           </div>
@@ -1025,11 +1030,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
                   <span className="text-xs text-ink-500">
-                    已打 {l.games} 场
-                    {l.restRounds > 0 && ` · 休息 ${l.restRounds} 轮`}
+                    {t(`已打 ${l.games} 场`, `${l.games} played`)}
+                    {l.restRounds > 0 && t(` · 休息 ${l.restRounds} 轮`, ` · rested ${l.restRounds}`)}
                   </span>
                 </span>
-                {must && <Pill tone="brand">下一场必上</Pill>}
+                {must && <Pill tone="brand">{t('下一场必上', 'On next')}</Pill>}
               </button>
             )
           })}
@@ -1047,16 +1052,16 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
-                  <span className="text-xs text-ink-500">已打 {l.games} 场</span>
+                  <span className="text-xs text-ink-500">{t(`已打 ${l.games} 场`, `${l.games} played`)}</span>
                 </span>
-                <Pill>场上</Pill>
+                <Pill>{t('场上', 'Playing')}</Pill>
               </div>
             )
           })}
 
           {restingIds.length > 0 && (
             <div className="pt-1">
-              <p className="mb-2 text-xs text-ink-500">休息中（不参与排场）</p>
+              <p className="mb-2 text-xs text-ink-500">{t('休息中（不参与排场）', 'Sitting out (not arranged)')}</p>
               <div className="flex flex-wrap gap-2">
                 {restingIds.map((id) => (
                   <button
@@ -1078,7 +1083,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           )}
 
           {waiting.length === 0 && onCourtLoads.length === 0 && restingIds.length === 0 && (
-            <p className="text-sm text-ink-500">这一局还没有人。</p>
+            <p className="text-sm text-ink-500">{t('这一局还没有人。', 'Nobody in this session yet.')}</p>
           )}
         </div>
 
@@ -1089,7 +1094,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         */}
         {finished.length > 0 && (
           <>
-            <SectionTitle>已打完（{finished.length} 场）</SectionTitle>
+            <SectionTitle>{t(`已打完（${finished.length} 场）`, `Finished (${finished.length})`)}</SectionTitle>
             <div className="space-y-2">
               {[...finished]
                 .sort((a, b) => b.seq - a.seq)
@@ -1107,7 +1112,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                   className="w-full py-1 text-xs text-brand-600"
                   onClick={() => setShowAllFinished((v) => !v)}
                 >
-                  {showAllFinished ? '收起' : `展开全部 ${finished.length} 场`}
+                  {showAllFinished ? t('收起', 'Collapse') : t(`展开全部 ${finished.length} 场`, `Show all ${finished.length}`)}
                 </button>
               )}
             </div>
@@ -1122,14 +1127,14 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             className="flex-1"
             onClick={() => push({ name: 'leaderboard', sessionId: session.id })}
           >
-            今晚排名
+            {t('今晚排名', 'Tonight’s ranking')}
           </Button>
           <Button
             variant="primary"
             className="flex-1"
             onClick={() => arrange('auto')}
           >
-            {courts.some((i) => !onCourt.has(i)) ? '排下一场' : '预排下一场'}
+            {courts.some((i) => !onCourt.has(i)) ? t('排下一场', 'Set up next') : t('预排下一场', 'Queue next')}
           </Button>
         </div>
       </BottomBar>
@@ -1138,13 +1143,15 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       <Sheet
         open={Boolean(managing)}
         onClose={() => setManaging(null)}
-        title="调整这一场"
+        title={t('调整这一场', 'Adjust this match')}
       >
         {managing && (
           <div className="space-y-3">
             <p className="text-sm text-ink-700">
-              点某个球员可以换人，换人或重排都会把比分清零。
-              打得最多的那个标出来了，换他下去最公平。
+              {t(
+                '点某个球员可以换人，换人或重排都会把比分清零。打得最多的那个标出来了，换他下去最公平。',
+                'Tap a player to swap them out. Swapping or reshuffling clears the score. Whoever has played most is marked — taking them off is the fairest.',
+              )}
             </p>
             <div className="space-y-2">
               {(() => {
@@ -1173,19 +1180,19 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{names.get(id)?.name}</span>
-                        <span className="text-xs text-ink-500">已打 {games} 场</span>
+                        <span className="text-xs text-ink-500">{t(`已打 ${games} 场`, `${games} played`)}</span>
                       </span>
                       {games === most && most > 0 && (
-                        <span className="shrink-0 text-xs text-warning-600">打得最多</span>
+                        <span className="shrink-0 text-xs text-warning-600">{t('打得最多', 'Most played')}</span>
                       )}
-                      <span className="shrink-0 text-xs text-ink-500">换人 ›</span>
+                      <span className="shrink-0 text-xs text-ink-500">{t('换人 ›', 'Swap ›')}</span>
                     </button>
                   )
                 })
               })()}
             </div>
             <Button block variant="ghost" onClick={() => reshuffle(managing)}>
-              整场重排
+              {t('整场重排', 'Reshuffle all four')}
             </Button>
             <Button
               block
@@ -1195,40 +1202,43 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 setManaging(null)
               }}
             >
-              取消这一场
+              {t('取消这一场', 'Cancel this match')}
             </Button>
           </div>
         )}
       </Sheet>
 
       {/* 中途加人 */}
-      <Sheet open={pairOpen} onClose={() => setPairOpen(false)} title="怎么配对">
+      <Sheet open={pairOpen} onClose={() => setPairOpen(false)} title={t('怎么配对', 'Pairing')}>
         <Segmented
           value={pairingMode}
           onChange={(m: PairingMode) => updateSession(sessionId, { pairingMode: m })}
           options={(Object.keys(PAIRING_MODE_LABELS) as PairingMode[]).map((m) => ({
             value: m,
-            label: PAIRING_MODE_LABELS[m],
+            label: t(...PAIRING_MODE_LABELS[m]),
           }))}
         />
         <p className="text-ink-500 mt-2 text-label">
-          {PAIRING_MODE_HINTS[pairingMode]}。已排好的场不动，之后排的按新口径来。
+          {t(
+            `${t(...PAIRING_MODE_HINTS[pairingMode])}。已排好的场不动，之后排的按新口径来。`,
+            `${t(...PAIRING_MODE_HINTS[pairingMode])}. Matches already arranged stay as they are; later ones use the new rule.`,
+          )}
         </p>
         <Button block variant="soft" className="mt-4" onClick={() => setPairOpen(false)}>
-          知道了
+          {t('知道了', 'Got it')}
         </Button>
       </Sheet>
 
-      <Sheet open={adding} onClose={() => setAdding(false)} title="加人进这一局">
+      <Sheet open={adding} onClose={() => setAdding(false)} title={t('加人进这一局', 'Add to this session')}>
         <div className="space-y-2">
           {addable.length === 0 ? (
             <p className="text-sm text-ink-500">
-              所有球员都已经在这一局里了。新面孔要先去「球员」里建一个。
+              {t('所有球员都已经在这一局里了。新面孔要先去「球员」里建一个。', 'Everyone is already in. Add a new face under Players first.')}
             </p>
           ) : (
             <>
               <p className="text-sm text-ink-700">
-                迟到的人来了就加进来，已打场数从 0 算起，下一场会优先排到他。
+                {t('迟到的人来了就加进来，已打场数从 0 算起，下一场会优先排到他。', 'Add latecomers here. They start on 0 matches, so they get priority for the next one.')}
               </p>
               {addable.map((p) => (
                 <button
@@ -1238,7 +1248,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 >
                   <Avatar name={p.name} avatar={avatarsById.get(p.id)} size="sm" />
                   <span className="flex-1 truncate">{p.name}</span>
-                  <span className="text-xs text-brand-600">加进来 ›</span>
+                  <span className="text-xs text-brand-600">{t('加进来 ›', 'Add ›')}</span>
                 </button>
               ))}
             </>
@@ -1247,11 +1257,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       </Sheet>
 
       {/* 换人：从等待区挑一个 */}
-      <Sheet open={Boolean(swapping)} onClose={() => setSwapping(null)} title="换成谁">
+      <Sheet open={Boolean(swapping)} onClose={() => setSwapping(null)} title={t('换成谁', 'Swap in who')}>
         {swapping && (
           <div className="space-y-2">
             {waiting.length === 0 ? (
-              <p className="text-sm text-ink-500">等待区没人了。</p>
+              <p className="text-sm text-ink-500">{t('等待区没人了。', 'Nobody is waiting.')}</p>
             ) : (
               <>
                 {/*
@@ -1260,7 +1270,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                   不然谁被晾着只能自己数。列表本来就按该上场的顺序排。
                 */}
                 <p className="text-sm text-ink-700">
-                  按「该轮到谁」排的，最上面的等最久、打得最少。
+                  {t('按「该轮到谁」排的，最上面的等最久、打得最少。', 'Sorted by who is due — the top one has waited longest and played least.')}
                 </p>
                 {waiting.map((l) => (
                   <button
@@ -1281,11 +1291,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{names.get(l.playerId)?.name}</span>
                       <span className="text-xs text-ink-500">
-                        已打 {l.games} 场
-                        {l.restRounds > 0 && ` · 休息 ${l.restRounds} 轮`}
+                        {t(`已打 ${l.games} 场`, `${l.games} played`)}
+                        {l.restRounds > 0 && t(` · 休息 ${l.restRounds} 轮`, ` · rested ${l.restRounds}`)}
                       </span>
                     </span>
-                    {l.games === waiting[0].games && <Pill tone="brand">该轮到</Pill>}
+                    {l.games === waiting[0].games && <Pill tone="brand">{t('该轮到', 'Due')}</Pill>}
                   </button>
                 ))}
               </>
@@ -1308,11 +1318,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
               onClick={() => toggleMustInclude(pickingRest.id)}
             >
               {mustInclude.includes(pickingRest.id)
-                ? '取消「下一场必上」'
-                : '下一场必上'}
+                ? t('取消「下一场必上」', 'Remove “on next”')
+                : t('下一场必上', 'Put them on next')}
             </Button>
             <Button block variant="ghost" onClick={() => toggleResting(pickingRest.id)}>
-              先休息，不参与排场
+              {t('先休息，不参与排场', 'Sit out for now')}
             </Button>
             <Button
               block
@@ -1323,19 +1333,19 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 push({ name: 'profile', playerId: id })
               }}
             >
-              看他的战绩
+              {t('看他的战绩', 'See their record')}
             </Button>
           </div>
         )}
       </Sheet>
 
       {/* 结束球局 */}
-      <Sheet open={endOpen} onClose={() => setEndOpen(false)} title="结束今晚球局">
+      <Sheet open={endOpen} onClose={() => setEndOpen(false)} title={t('结束今晚球局', 'End this session')}>
         <p className="text-sm text-ink-700">
-          结束后会算出今晚排名、MVP 和 AA 费用。
+          {t('结束后会算出今晚排名、MVP 和 AA 费用。', 'Ending works out tonight’s ranking, MVP and the split of costs.')}
           {live.length > 0 && (
             <span className="mt-2 block text-warning-600">
-              还有 {live.length} 场在打，结束后这些比分不会计入排名。
+              {t(`还有 ${live.length} 场在打，结束后这些比分不会计入排名。`, `${live.length} matches are still running — their scores will not count once you end.`)}
             </span>
           )}
         </p>
@@ -1349,10 +1359,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
               replace({ name: 'summary', sessionId: session.id })
             }}
           >
-            结束并结算
+            {t('结束并结算', 'End and settle')}
           </Button>
           <Button block variant="ghost" onClick={() => setEndOpen(false)}>
-            继续打
+            {t('继续打', 'Keep playing')}
           </Button>
         </div>
       </Sheet>

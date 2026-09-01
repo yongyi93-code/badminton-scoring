@@ -1,4 +1,5 @@
-import { PET_LEVELS, STARS_PER_TIER, type LevelInfo } from '@/lib/avatar'
+import { pick } from '@/lib/i18n'
+import { PET_LEVELS, STARS_PER_TIER, tierName, type LevelInfo } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *
  * 段位徽章
@@ -66,11 +67,11 @@ export function RankMedal({
       viewBox={compact ? '0 0 100 90' : '0 0 100 100'}
       className={className}
       role="img"
-      aria-label={`${tier.name} ${tier.label}`}
+      aria-label={tierName(tier)}
     >
       <title>
-        {tier.name} {tier.label}
-        {star !== null ? ` ${star} 星` : ''}
+        {tierName(tier)}
+        {star !== null ? pick(` ${star} 星`, ` ${star}★`) : ''}
       </title>
 
       {hasWings && (

@@ -1,3 +1,4 @@
+import { pick, useT } from '@/lib/i18n'
 import { useMemo, useState } from 'react'
 import { playerMap, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -51,13 +52,14 @@ type VenueFilter = string | null
  */
 type SortBy = 'winRate' | 'mmr' | 'games'
 
-const SORT_LABELS: Record<SortBy, string> = {
-  winRate: '胜率',
-  mmr: 'MMR',
-  games: '场次',
+const SORT_LABELS: Record<SortBy, [string, string]> = {
+  winRate: ['胜率', 'Win rate'],
+  mmr: ['MMR', 'MMR'],
+  games: ['场次', 'Matches'],
 }
 
 export function Leaderboard({ sessionId }: { sessionId?: string }) {
+  const t = useT()
   const { players, sessions, matches, avatars, meId } = useApp()
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
@@ -142,13 +144,13 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
   return (
     <Screen>
       <TopBar
-        title="排行榜"
+        title={t('排行榜', 'Leaderboard')}
         subtitle={
           scope === 'session' && session
             ? `${venueLabel(session.venue)} · ${formatDate(session.date)}`
             : venue !== null
-              ? `${current?.label ?? venueLabel(venue)} · ${PERIOD_LABELS[period]}`
-              : `所有球馆 · ${PERIOD_LABELS[period]}`
+              ? `${current?.label ?? venueLabel(venue)} · ${t(...PERIOD_LABELS[period])}`
+              : `${t('所有球馆', 'All venues')} · ${t(...PERIOD_LABELS[period])}`
         }
         onBack={back}
       />
@@ -158,8 +160,8 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
             value={scope}
             onChange={setScope}
             options={[
-              { value: 'session', label: '今晚' },
-              { value: 'all', label: '累计' },
+              { value: 'session', label: t('今晚', 'Tonight') },
+              { value: 'all', label: t('累计', 'All time') },
             ]}
           />
         )}
@@ -172,18 +174,18 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
           <div className="flex flex-wrap gap-2">
             {showVenueRow && (
               <FilterChip
-                label={venue === null ? '全部场馆' : (current?.label ?? venueLabel(venue))}
+                label={venue === null ? t('全部场馆', 'All venues') : (current?.label ?? venueLabel(venue))}
                 active={venue !== null}
                 onClick={() => setPicker('venue')}
               />
             )}
             <FilterChip
-              label={PERIOD_LABELS[period]}
+              label={t(...PERIOD_LABELS[period])}
               active={period !== 'all'}
               onClick={() => setPicker('period')}
             />
             <FilterChip
-              label={`按${SORT_LABELS[sortBy]}排`}
+              label={t(`按${SORT_LABELS[sortBy][0]}排`, `By ${SORT_LABELS[sortBy][1].toLowerCase()}`)}
               active={sortBy !== 'winRate'}
               onClick={() => setPicker('sort')}
             />
@@ -213,7 +215,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
                     />
                   </span>
                   <span className="mt-1.5 block truncate text-label font-semibold">
-                    {p?.name ?? '已删除'}
+                    {p?.name ?? t('已删除', 'Deleted')}
                   </span>
                   <span className="tnum text-ink-500 block text-caption">
                     MMR {progressById.get(s.playerId)?.mmr ?? 0}
@@ -228,7 +230,11 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
         {myRank && (
           <div className="border-brand-500/40 bg-brand-50 rounded-card border px-4 py-3">
             <p className="text-label">
-              你是第 <span className="tnum font-bold">{myRank.place}</span> 名 ·{' '}
+              {t('你是第 ', 'You are ')}
+              <span className="tnum font-bold">
+                {t(`${myRank.place}`, `#${myRank.place}`)}
+              </span>
+              {t(' 名 · ', ' · ')}
               <span className="tnum">
                 MMR {progressById.get(myRank.stats.playerId)?.mmr ?? 0}
               </span>
@@ -236,13 +242,19 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
                 <>
                   {' · '}
                   {/* 差距要按当前排序口径说，否则按 MMR 排却告诉你差几个胜率，对不上 */}
-                  距第 {myRank.place - 1} 名还差{' '}
+                  {t(`距第 ${myRank.place - 1} 名还差 `, `${myRank.place - 1 === 1 ? '1st' : `#${myRank.place - 1}`} is ahead by `)}
                   <span className="tnum">
                     {sortBy === 'mmr'
                       ? `${(progressById.get(myRank.ahead.playerId)?.mmr ?? 0) - (progressById.get(myRank.stats.playerId)?.mmr ?? 0)} MMR`
                       : sortBy === 'games'
-                        ? `${myRank.ahead.games - myRank.stats.games} 场`
-                        : `${percent(myRank.ahead.winRate - myRank.stats.winRate)} 胜率`}
+                        ? t(
+                            `${myRank.ahead.games - myRank.stats.games} 场`,
+                            `${myRank.ahead.games - myRank.stats.games} matches`,
+                          )
+                        : t(
+                            `${percent(myRank.ahead.winRate - myRank.stats.winRate)} 胜率`,
+                            `${percent(myRank.ahead.winRate - myRank.stats.winRate)} win rate`,
+                          )}
                   </span>
                 </>
               )}
@@ -256,13 +268,20 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
             <div className="flex items-center gap-4">
               <span className="text-3xl">👑</span>
               <div className="min-w-0 flex-1">
-                <Pill tone="brand">{(current?.label ?? venueLabel(venue))}之王</Pill>
+                <Pill tone="brand">
+                  {t(
+                    `${current?.label ?? venueLabel(venue)}之王`,
+                    `King of ${current?.label ?? venueLabel(venue)}`,
+                  )}
+                </Pill>
                 <p className="mt-1.5 truncate text-xl font-bold">
-                  {names.get(champion.playerId)?.name ?? '已删除的球员'}
+                  {names.get(champion.playerId)?.name ?? t('已删除的球员', 'Deleted player')}
                 </p>
                 <p className="tnum text-sm text-ink-500">
-                  在这里打了 {champion.games} 场 · 胜率{' '}
-                  {percent(champion.winRate)} · 净分 {signed(champion.diff)}
+                  {t(
+                    `在这里打了 ${champion.games} 场 · 胜率 ${percent(champion.winRate)} · 净分 ${signed(champion.diff)}`,
+                    `${champion.games} matches here · ${percent(champion.winRate)} wins · diff ${signed(champion.diff)}`,
+                  )}
                 </p>
               </div>
               <Avatar
@@ -276,8 +295,10 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
 
         {current && (
           <p className="text-xs text-ink-500">
-            {current.sessionCount} 次球局 · {current.matchCount} 场 ·{' '}
-            {current.playerCount} 人在这里打过
+            {t(
+              `${current.sessionCount} 次球局 · ${current.matchCount} 场 · ${current.playerCount} 人在这里打过`,
+              `${current.sessionCount} sessions · ${current.matchCount} matches · ${current.playerCount} players here`,
+            )}
           </p>
         )}
 
@@ -285,9 +306,14 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
           <EmptyState
             icon="📊"
             title={
-              venue !== null ? '这个场馆还没有战绩' : '还没有打完的比赛'
+              venue !== null
+                ? t('这个场馆还没有战绩', 'No results at this venue yet')
+                : t('还没有打完的比赛', 'No finished matches yet')
             }
-            hint={`排名按胜率排，同胜率看净分差；至少 ${RANK_MIN_GAMES} 场才上榜`}
+            hint={t(
+              `排名按胜率排，同胜率看净分差；至少 ${RANK_MIN_GAMES} 场才上榜`,
+              `Ranked by win rate, ties broken on point difference; ${RANK_MIN_GAMES} matches minimum`,
+            )}
           />
         ) : (
           <>
@@ -300,17 +326,22 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
               onPick={(playerId) => push({ name: 'profile', playerId })}
             />
             <p className="pt-2 pb-4 text-xs leading-relaxed text-ink-500">
-              排名口径：胜率 ↓ → 净分差 ↓ → 场数 ↓。
-              净分差 = 本人所在队伍的总得分 − 总失分，
-              双打里搭档的表现也会算进你的净分差。
+              {t(
+                '排名口径：胜率 ↓ → 净分差 ↓ → 场数 ↓。净分差 = 本人所在队伍的总得分 − 总失分，双打里搭档的表现也会算进你的净分差。',
+                'Ranking: win rate ↓ → point difference ↓ → matches ↓. Point difference is your side\u2019s points for minus against, so in doubles your partner counts too.',
+              )}
               <br />
-              段位看 MMR：赢一场 +{WIN_POINTS}，输一场 −{LOSS_POINTS}，但扣到 0 就打住，不会变负。
-              赢了 MMR 比自己高的一队算爆冷，那一场拿 {WIN_POINTS * UPSET_MULTIPLIER} 分。
-              算的是跨场馆的整体水平，不会因为切换场馆而变。
+              {t(
+                `段位看 MMR：赢一场 +${WIN_POINTS}，输一场 −${LOSS_POINTS}，但扣到 0 就打住，不会变负。赢了 MMR 比自己高的一队算爆冷，那一场拿 ${WIN_POINTS * UPSET_MULTIPLIER} 分。算的是跨场馆的整体水平，不会因为切换场馆而变。`,
+                `Rank follows MMR: +${WIN_POINTS} a win, −${LOSS_POINTS} a loss, floored at 0 so it never goes negative. Beating a higher-MMR pair is an upset and pays ${WIN_POINTS * UPSET_MULTIPLIER}. MMR is your overall level across every venue, so switching venue does not change it.`,
+              )}
               {scope === 'all' && venue !== null && (
                 <>
                   <br />
-                  这里只统计在{(current?.label ?? venueLabel(venue))}打的比赛，换个场馆名次会不一样。
+                  {t(
+                    `这里只统计在${current?.label ?? venueLabel(venue)}打的比赛，换个场馆名次会不一样。`,
+                    `Only matches played at ${current?.label ?? venueLabel(venue)} count here — other venues rank differently.`,
+                  )}
                 </>
               )}
             </p>
@@ -318,10 +349,10 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
         )}
       </Body>
 
-      <Sheet open={picker === 'venue'} onClose={() => setPicker(null)} title="看哪个球馆">
+      <Sheet open={picker === 'venue'} onClose={() => setPicker(null)} title={t('看哪个球馆', 'Which venue')}>
         <div className="max-h-[60vh] space-y-2 overflow-y-auto">
           <PickRow
-            label="全部场馆"
+            label={t('全部场馆', 'All venues')}
             active={venue === null}
             onClick={() => {
               setVenue(null)
@@ -332,7 +363,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
             <PickRow
               key={v.key || '__unnamed__'}
               label={v.label}
-              meta={`${v.matchCount} 场 · ${v.playerCount} 人`}
+              meta={t(`${v.matchCount} 场 · ${v.playerCount} 人`, `${v.matchCount} matches · ${v.playerCount} players`)}
               active={venue === v.key}
               onClick={() => {
                 setVenue(v.key)
@@ -343,12 +374,12 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
         </div>
       </Sheet>
 
-      <Sheet open={picker === 'period'} onClose={() => setPicker(null)} title="看哪一段时间">
+      <Sheet open={picker === 'period'} onClose={() => setPicker(null)} title={t('看哪一段时间', 'Which period')}>
         <div className="space-y-2">
           {(['all', 'quarter', 'month'] as Period[]).map((p) => (
             <PickRow
               key={p}
-              label={PERIOD_LABELS[p]}
+              label={t(...PERIOD_LABELS[p])}
               active={period === p}
               onClick={() => {
                 setPeriod(p)
@@ -359,11 +390,11 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
         </div>
       </Sheet>
 
-      <Sheet open={picker === 'sort'} onClose={() => setPicker(null)} title="按什么排">
+      <Sheet open={picker === 'sort'} onClose={() => setPicker(null)} title={t('按什么排', 'Sort by')}>
         <div className="space-y-2">
           <PickRow
-            label="胜率"
-            meta="同胜率看净分差，再看场数"
+            label={t('胜率', 'Win rate')}
+            meta={t('同胜率看净分差，再看场数', 'Ties broken on point difference, then matches')}
             active={sortBy === 'winRate'}
             onClick={() => {
               setSortBy('winRate')
@@ -372,7 +403,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
           />
           <PickRow
             label="MMR"
-            meta="整体水平，不随场馆和周期变"
+            meta={t('整体水平，不随场馆和周期变', 'Overall level — same across venues and periods')}
             active={sortBy === 'mmr'}
             onClick={() => {
               setSortBy('mmr')
@@ -380,8 +411,8 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
             }}
           />
           <PickRow
-            label="场次"
-            meta="谁来得最勤"
+            label={t('场次', 'Matches')}
+            meta={t('谁来得最勤', 'Who turns up most')}
             active={sortBy === 'games'}
             onClick={() => {
               setSortBy('games')
@@ -447,7 +478,7 @@ function PickRow({
         <span className="block truncate">{label}</span>
         {meta && <span className="text-ink-500 mt-0.5 block text-caption">{meta}</span>}
       </span>
-      {active && <Pill tone="brand">当前</Pill>}
+      {active && <Pill tone="brand">{pick('当前', 'Current')}</Pill>}
     </button>
   )
 }

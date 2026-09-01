@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n'
 import type { ReactNode } from 'react'
 import { useNav, useRoute, TAB_ROUTES, type TabName } from '@/store/useNav'
 import { cx } from '@/components/ui'
@@ -9,7 +10,7 @@ import { cx } from '@/components/ui'
  * 所以做成凸起的主操作，也不参与选中态。
  */
 
-type Item = { tab: TabName; label: string; icon: ReactNode }
+type Item = { tab: TabName; label: [string, string]; icon: ReactNode }
 
 const stroke = {
   fill: 'none',
@@ -47,11 +48,11 @@ const ICONS: Record<TabName, ReactNode> = {
   ),
 }
 
-const LABELS: Record<TabName, string> = {
-  home: '首页',
-  sessions: '球局',
-  discover: '发现',
-  me: '我的',
+const LABELS: Record<TabName, [string, string]> = {
+  home: ['首页', 'Home'],
+  sessions: ['球局', 'Sessions'],
+  discover: ['发现', 'Discover'],
+  me: ['我的', 'Me'],
 }
 
 const ITEMS: Item[] = TAB_ROUTES.map((tab) => ({
@@ -61,6 +62,7 @@ const ITEMS: Item[] = TAB_ROUTES.map((tab) => ({
 }))
 
 export function TabBar() {
+  const t = useT()
   const route = useRoute()
   const switchTab = useNav((s) => s.switchTab)
   const push = useNav((s) => s.push)
@@ -83,7 +85,7 @@ export function TabBar() {
           {item.icon}
         </svg>
         <span className={cx('text-caption', on && 'font-semibold')}>
-          {item.label}
+          {t(...item.label)}
         </span>
       </button>
     )
@@ -91,7 +93,7 @@ export function TabBar() {
 
   return (
     <nav
-      aria-label="主导航"
+      aria-label={t('主导航', 'Main navigation')}
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
@@ -102,7 +104,7 @@ export function TabBar() {
         <div className="flex w-[76px] shrink-0 items-center justify-center">
           <button
             onClick={() => push({ name: 'setup' })}
-            aria-label="开新球局"
+            aria-label={t('开新球局', 'New session')}
             className="bg-brand-solid text-on-brand shadow-pop active:bg-brand-solid-press -mt-6 flex size-14 items-center justify-center rounded-full"
           >
             <svg viewBox="0 0 24 24" className="size-7" aria-hidden>

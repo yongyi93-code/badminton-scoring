@@ -1,3 +1,4 @@
+import { pick } from '@/lib/i18n'
 import { useEffect, useRef, useState } from 'react'
 import {
   DRESS_SLOTS,
@@ -148,7 +149,7 @@ export function DressUpView({
     <span
       className={cx('flex items-center justify-center overflow-hidden', className)}
       role="img"
-      aria-label={title ?? '角色'}
+      aria-label={title ?? pick('角色', 'Character')}
     >
       {/*
         画布自带内在尺寸（就是取景框的大小），max-w/max-h 会等比缩到容器里 ——

@@ -1,3 +1,4 @@
+import { pick } from '@/lib/i18n'
 import type { Player, PlayerStats } from '@/types'
 import { Avatar, TitleTag } from './PlayerBits'
 import { Pill, cx } from './ui'
@@ -54,10 +55,17 @@ export function RankRow({
       )}
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
-          <span className="truncate font-medium">{player?.name ?? '已删除的球员'}</span>
+          <span className="truncate font-medium">
+            {player?.name ?? pick('已删除的球员', 'Deleted player')}
+          </span>
           <TitleTag avatar={avatar} />
           {streak && (
-            <Pill tone={stats.streak > 0 ? 'success' : 'danger'}>{streak}</Pill>
+            <Pill
+              tone={stats.streak > 0 ? 'success' : 'danger'}
+              className="shrink-0 whitespace-nowrap"
+            >
+              {streak}
+            </Pill>
           )}
         </span>
         {level && (
@@ -72,13 +80,18 @@ export function RankRow({
           </span>
         )}
         <span className="tnum mt-0.5 block text-xs text-ink-500">
-          {stats.wins}胜{stats.losses}负 · 净分 {signed(stats.diff)}
-          {!stats.qualified && ' · 场次不足'}
+          {pick(
+            `${stats.wins}胜${stats.losses}负 · 净分 ${signed(stats.diff)}`,
+            `${stats.wins}W ${stats.losses}L · diff ${signed(stats.diff)}`,
+          )}
+          {!stats.qualified && pick(' · 场次不足', ' · not enough matches')}
         </span>
       </span>
       <span className="tnum shrink-0 text-right">
         <span className="block text-lg font-bold">{percent(stats.winRate)}</span>
-        <span className="block text-xs text-ink-500">{stats.games} 场</span>
+        <span className="block text-xs text-ink-500">
+          {pick(`${stats.games} 场`, `${stats.games} played`)}
+        </span>
       </span>
     </button>
   )
@@ -123,7 +136,10 @@ export function RankTable({
       {rest.length > 0 && (
         <>
           <p className="pt-2 text-xs text-ink-500">
-            以下球员不足 {minGames} 场，不参与排名
+            {pick(
+              `以下球员不足 ${minGames} 场，不参与排名`,
+              `Below ${minGames} matches — not ranked yet`,
+            )}
           </p>
           {rest.map((s) => (
             <RankRow

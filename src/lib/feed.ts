@@ -1,3 +1,4 @@
+import { pick } from './i18n'
 import { progressByPlayer } from './avatar'
 import {
   chronological,
@@ -9,6 +10,7 @@ import {
 } from './ranking'
 import { matchesAtVenue, playerIdsAtVenue, venueSummaries } from './venues'
 import type { Match, Player, Session } from '@/types'
+import { UNNAMED_VENUE } from './venues'
 
 /* ------------------------------------------------------------------ *
  * 首页快讯
@@ -91,7 +93,10 @@ export function buildFeed(
       out.push({
         id: `rankup-${id}-${now.level.index}`,
         icon: '⬆️',
-        text: `${name} 升到 ${now.level.tier.label} ${now.level.display} 了`,
+        text: pick(
+          `${name} 升到 ${now.level.tier.label} ${now.level.display} 了`,
+          `${name} climbed to ${now.level.display}`,
+        ),
         weight: 1000 + now.level.index,
         link: { kind: 'player', playerId: id },
       })
@@ -109,7 +114,10 @@ export function buildFeed(
     out.push({
       id: `king-${v.key}`,
       icon: '👑',
-      text: `${v.label} 现在是 ${name} 的天下（${king.wins}胜${king.games - king.wins}负）`,
+      text: pick(
+        `${v.label} 现在是 ${name} 的天下（${king.wins}胜${king.games - king.wins}负）`,
+        `${name} rules ${v.label} (${king.wins}W ${king.games - king.wins}L)`,
+      ),
       weight: 500 + Math.min(99, v.matchCount),
       link: { kind: 'leaderboard' },
     })
@@ -123,7 +131,7 @@ export function buildFeed(
     out.push({
       id: `streak-${p.id}-${n}`,
       icon: '🔥',
-      text: `${p.name} ${n} 连胜，还没人拦得住`,
+      text: pick(`${p.name} ${n} 连胜，还没人拦得住`, `${p.name} is on ${n} straight wins`),
       weight: 300 + n,
       link: { kind: 'player', playerId: p.id },
     })
@@ -140,7 +148,7 @@ export function buildFeed(
       out.push({
         id: `newvenue-${v.key}`,
         icon: '📍',
-        text: `新球馆：${v.label}，第一次在这里打球`,
+        text: pick(`新球馆：${v.label}，第一次在这里打球`, `New venue: ${v.label}, played here for the first time`),
         weight: 800,
         link: { kind: 'summary', sessionId: latest.id },
       })
@@ -154,7 +162,10 @@ export function buildFeed(
       out.push({
         id: `last-${latest.id}`,
         icon: '🏸',
-        text: `上一局在${latest.venue || '未填球馆'}打了 ${n} 场`,
+        text: pick(
+      `上一局在${latest.venue || UNNAMED_VENUE()}打了 ${n} 场`,
+      `${n} matches last time at ${latest.venue || UNNAMED_VENUE()}`,
+    ),
         weight: 100,
         link: { kind: 'summary', sessionId: latest.id },
       })

@@ -1,3 +1,4 @@
+import { pick, useT } from '@/lib/i18n'
 import { useMemo, useState } from 'react'
 import { rosterForSession, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
@@ -100,7 +101,10 @@ function CourtDiagram({
     return (
       <CourtCell
         name={nameOf(id)}
-        label={`${team} 队${court === 'right' ? '右' : '左'}区`}
+        label={pick(
+          `${team} 队${court === 'right' ? '右' : '左'}区`,
+          `${team} ${court === 'right' ? 'right' : 'left'}`,
+        )}
         isServer={id === serve.serverId}
         isReceiver={id === serve.receiverId && id !== serve.serverId}
         tone={team === 'A' ? 'teamA' : 'teamB'}
@@ -165,7 +169,10 @@ function ScoreZone({
       }}
       disabled={disabled}
       /* 读屏和大字体模式下，「点这里 +1」那种小字提示是没用的，标签才有用 */
-      aria-label={`为 ${team} 队 ${who} 加 1 分，当前 ${score} 分`}
+      aria-label={pick(
+        `为 ${team} 队 ${who} 加 1 分，当前 ${score} 分`,
+        `Add a point for team ${team}, ${who}. Currently ${score}.`,
+      )}
       className={cx(
         'relative flex flex-1 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl border px-4 py-6 transition-colors',
         tone === 'teamA'
@@ -189,7 +196,7 @@ function ScoreZone({
             tone === 'teamA' ? 'text-team-a' : 'text-team-b',
           )}
         >
-          {team} 队
+          {pick(`${team} 队`, `Team ${team}`)}
         </span>
         {ids.map((id) => (
           <span
@@ -212,7 +219,7 @@ function ScoreZone({
       >
         {score}
       </span>
-      {gamePoint && <Pill tone="warn">局点</Pill>}
+      {gamePoint && <Pill tone="warn">{pick('局点', 'Game point')}</Pill>}
     </button>
   )
 }
@@ -226,6 +233,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const session = useApp((s) =>
     s.sessions.find((x) => x.id === match?.sessionId),
   )
+  const t = useT()
   const players = useApp((s) => s.players)
   const updateMatch = useApp((s) => s.updateMatch)
   const back = useNav((s) => s.back)
@@ -259,9 +267,9 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   if (!match || !session) {
     return (
       <Screen>
-        <TopBar title="比赛不存在" onBack={back} />
+        <TopBar title={t('比赛不存在', 'Match not found')} onBack={back} />
         <div className="px-4 pt-4">
-          <EmptyState title="这场比赛已经被删掉了" />
+          <EmptyState title={t('这场比赛已经被删掉了', 'This match was deleted')} />
         </div>
       </Screen>
     )
@@ -324,13 +332,17 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
     const before = games[idx]
     games[idx] = undoPoint(before)
     if (games[idx] === before) {
-      setToast('这一局还没有可以撤销的分')
+      setToast(t('这一局还没有可以撤销的分', 'Nothing to undo in this game'))
       return
     }
     updateMatch(fresh.id, { games })
     // 说清撤掉的是哪一队的分 —— 「已撤销」三个字本身不解决任何争议
     const removed = before.points?.[before.points.length - 1]
-    setToast(removed ? `已撤销 ${removed} 队 1 分` : '已撤销上一分')
+    setToast(
+      removed
+        ? t(`已撤销 ${removed} 队 1 分`, `Undid 1 point for team ${removed}`)
+        : t('已撤销上一分', 'Undid the last point'),
+    )
   }
 
   /**
@@ -439,17 +451,23 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
     <Screen>
       <div className="flex min-h-dvh flex-col">
         <TopBar
-          title={`${(match.courtIndex ?? 0) + 1} 号场`}
+          title={t(`${(match.courtIndex ?? 0) + 1} 号场`, `Court ${(match.courtIndex ?? 0) + 1}`)}
           subtitle={
             rules.bestOf === 3
-              ? `${rules.pointsToWin} 分制 · 第 ${gi + 1} 局 · 大比分 ${sets.A}:${sets.B}`
-              : `${rules.pointsToWin} 分制${rules.winBy2 ? ' · 净胜 2 分' : ''}`
+              ? t(
+                  `${rules.pointsToWin} 分制 · 第 ${gi + 1} 局 · 大比分 ${sets.A}:${sets.B}`,
+                  `to ${rules.pointsToWin} · game ${gi + 1} · sets ${sets.A}:${sets.B}`,
+                )
+              : t(
+                  `${rules.pointsToWin} 分制${rules.winBy2 ? ' · 净胜 2 分' : ''}`,
+                  `to ${rules.pointsToWin}${rules.winBy2 ? ' · win by 2' : ''}`,
+                )
           }
           onBack={back}
           right={
             <button
               onClick={() => setMoreOpen(true)}
-              aria-label="更多"
+              aria-label={t('更多', 'More')}
               className="text-ink-700 active:bg-fill -mr-1 flex size-10 shrink-0 items-center justify-center rounded-xl"
             >
               <svg viewBox="0 0 24 24" className="size-6" fill="currentColor" aria-hidden>
@@ -477,20 +495,22 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                   <span className="text-brand-600 font-semibold">
                     {names.get(serve.serverId)?.name}
                   </span>
-                  <span className="text-ink-700"> 发球 · </span>
+                  <span className="text-ink-700">{t(' 发球 · ', ' serves · ')}</span>
                   <span className="font-medium">
-                    {serve.serveCourt === 'right' ? '右发球区' : '左发球区'}
+                    {serve.serveCourt === 'right'
+                      ? t('右发球区', 'right court')
+                      : t('左发球区', 'left court')}
                   </span>
                   {isDoubles && (
                     <>
-                      <span className="text-ink-700"> · 接发 </span>
+                      <span className="text-ink-700">{t(' · 接发 ', ' · receiver ')}</span>
                       <span className="font-medium">
                         {names.get(serve.receiverId)?.name}
                       </span>
                     </>
                   )}
                 </span>
-                <span className="text-ink-500 shrink-0 text-caption">改 ›</span>
+                <span className="text-ink-500 shrink-0 text-caption">{t('改 ›', 'Change ›')}</span>
               </button>
               <CourtDiagram serve={serve} names={names} isDoubles={isDoubles} />
             </div>
@@ -499,7 +519,10 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
 
         {!serve && !gameOver && (
           <p className="px-4 pt-3 text-center text-xs text-ink-500">
-            这一局是直接输入比分的，没有发球提示
+            {t(
+              '这一局是直接输入比分的，没有发球提示',
+              'This game was entered as a final score — no serve tracking',
+            )}
           </p>
         )}
 
@@ -549,32 +572,37 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                     .join(' / ')}
                 </span>
                 <span className="text-ink-700">
-                  {' '}
-                  拿下这一局 {Math.max(game.a, game.b)}:{Math.min(game.a, game.b)}
+                  {t(
+                    ` 拿下这一局 ${Math.max(game.a, game.b)}:${Math.min(game.a, game.b)}`,
+                    ` won it ${Math.max(game.a, game.b)}:${Math.min(game.a, game.b)}`,
+                  )}
                 </span>
               </p>
               {kingNext && (
                 <div className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-center text-sm">
                   {kingNext.cappedOut ? (
                     <p className="text-warning-600">
-                      {kingNext.streak} 连胜到顶，
+                      {t(`${kingNext.streak} 连胜到顶，`, `${kingNext.streak} wins is the cap — `)}
                       {(game.a > game.b ? match.teamA : match.teamB)
                         .map((id) => names.get(id)?.name)
                         .join('/')}
-                      下场休息
+                      {t(' 下场休息', ' sits out next')}
                     </p>
                   ) : (
                     <p className="text-brand-600">
-                      守场成功 · {kingNext.streak} 连胜
+                      {t(
+                        `守场成功 · ${kingNext.streak} 连胜`,
+                        `Held the court · ${kingNext.streak} in a row`,
+                      )}
                     </p>
                   )}
                   {kingNext.pairing ? (
                     <p className="mt-1 text-ink-700">
-                      下一场：
+                      {t('下一场：', 'Next: ')}
                       {kingNext.pairing.teamA
                         .map((id) => names.get(id)?.name)
                         .join('/')}
-                      {' 对 '}
+                      {t(' 对 ', ' vs ')}
                       {kingNext.pairing.teamB
                         .map((id) => names.get(id)?.name)
                         .join('/')}
@@ -588,16 +616,16 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               {winner ? (
                 <Button variant="primary" size="lg" block onClick={() => setConfirmEnd(true)}>
                   {kingNext?.pairing || formatOf(session) === 'rotation'
-                    ? '结束比赛，排下一场'
-                    : '结束比赛，回到看板'}
+                    ? t('结束比赛，排下一场', 'Finish and set up the next')
+                    : t('结束比赛，回到看板', 'Finish and go back')}
                 </Button>
               ) : (
                 <Button variant="primary" size="lg" block onClick={startNextGame}>
-                  打第 {match.games.length + 1} 局
+                  {t(`打第 ${match.games.length + 1} 局`, `Play game ${match.games.length + 1}`)}
                 </Button>
               )}
               <Button block variant="ghost" onClick={() => undoLast()}>
-                改错了，撤销上一分
+                {t('改错了，撤销上一分', 'Undo the last point')}
               </Button>
             </div>
           ) : (
@@ -609,7 +637,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                   disabled={!game.points || game.points.length === 0}
                   onClick={() => undoLast()}
                 >
-                  撤销
+                  {t('撤销', 'Undo')}
                 </Button>
                 {/* 场上交换场地之后，屏幕上的上下也跟着换，省得每次在脑子里镜像一遍 */}
                 <Button
@@ -617,14 +645,18 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                   className="flex-1"
                   onClick={() => {
                     setFlipped((v) => !v)
-                    setToast(flipped ? '已换回原来的上下' : '已换边，A 队现在在下面')
+                    setToast(
+                      flipped
+                        ? t('已换回原来的上下', 'Sides put back')
+                        : t('已换边，A 队现在在下面', 'Swapped — team A is now at the bottom'),
+                    )
                   }}
                 >
-                  换边
+                  {t('换边', 'Swap ends')}
                 </Button>
               </div>
               <Button block variant="soft" onClick={back}>
-                先回看板
+                {t('先回看板', 'Back to the board')}
               </Button>
             </div>
           )}
@@ -633,14 +665,16 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
 
       <Toast message={toast} onClose={() => setToast(null)} />
 
-      <Sheet open={serveOpen} onClose={() => setServeOpen(false)} title="谁先发球">
+      <Sheet open={serveOpen} onClose={() => setServeOpen(false)} title={t('谁先发球', 'Who serves first')}>
         <p className="text-ink-700 text-label">
-          改的是这一局「开局」谁发球，整局会按新设定重推 ——
-          比分一分不动，发球人、发球区和接发人跟着改正。
+          {t(
+            '改的是这一局「开局」谁发球，整局会按新设定重推 —— 比分一分不动，发球人、发球区和接发人跟着改正。',
+            'This changes who served at 0:0. The whole game is re-derived from it — the score does not move, but the server, service court and receiver are corrected.',
+          )}
         </p>
         <div className="mt-4 space-y-4">
           <div>
-            <p className="text-ink-500 mb-2 text-caption">开局发球</p>
+            <p className="text-ink-500 mb-2 text-caption">{t('开局发球', 'First server')}</p>
             <div className="grid grid-cols-2 gap-2">
               {[...match.teamA, ...match.teamB].map((id) => (
                 <button
@@ -665,7 +699,10 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           {isDoubles && openingServer && (
             <div>
               <p className="text-ink-500 mb-2 text-caption">
-                开局对面谁接（决定他俩开局谁站右区）
+                {t(
+                  '开局对面谁接（决定他俩开局谁站右区）',
+                  'First receiver (decides who starts in the right court)',
+                )}
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {(match.teamA.includes(openingServer) ? match.teamB : match.teamA).map(
@@ -689,11 +726,11 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           )}
         </div>
         <Button block variant="soft" className="mt-4" onClick={() => setServeOpen(false)}>
-          完成
+          {t('完成', 'Done')}
         </Button>
       </Sheet>
 
-      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="这一场">
+      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t('这一场', 'This match')}>
         <div className="space-y-2">
           <Button
             block
@@ -703,7 +740,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               setDirectOpen(true)
             }}
           >
-            直接输入最终比分
+            {t('直接输入最终比分', 'Enter the final score')}
           </Button>
           <Button
             block
@@ -711,10 +748,14 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
             onClick={() => {
               setFlipped((v) => !v)
               setMoreOpen(false)
-              setToast(flipped ? '已换回原来的上下' : '已换边，A 队现在在下面')
+              setToast(
+                      flipped
+                        ? t('已换回原来的上下', 'Sides put back')
+                        : t('已换边，A 队现在在下面', 'Swapped — team A is now at the bottom'),
+                    )
             }}
           >
-            交换屏幕上的上下
+            {t('交换屏幕上的上下', 'Swap top and bottom')}
           </Button>
           {/*
             场地时间到了、或者比分输错卡在没打完的状态时的出口。
@@ -729,7 +770,10 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
                 setConfirmEnd(true)
               }}
             >
-              提前结束这一场（按 {game.a}:{game.b} 算）
+              {t(
+                `提前结束这一场（按 ${game.a}:${game.b} 算）`,
+                `End it now at ${game.a}:${game.b}`,
+              )}
             </Button>
           )}
         </div>
@@ -739,7 +783,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
         规格 §E：打到分了不直接结束，弹一层确认，可以「继续比赛」。
         最后一分点错的代价是整场重来，多按一下的代价是一秒。
       */}
-      <Sheet open={confirmEnd} onClose={() => setConfirmEnd(false)} title="这一场结束了？">
+      <Sheet open={confirmEnd} onClose={() => setConfirmEnd(false)} title={t('这一场结束了？', 'Match over?')}>
         <p className="tnum text-display text-center">
           {game.a} : {game.b}
         </p>
@@ -747,10 +791,13 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           {(game.a > game.b ? match.teamA : match.teamB)
             .map((id) => names.get(id)?.name ?? '?')
             .join(' / ')}{' '}
-          获胜
+          {t('获胜', 'win')}
         </p>
         <p className="text-ink-500 mt-3 text-caption">
-          结束后这一场会记进战绩和排名。记错了可以在看板上把它退回来改。
+          {t(
+            '结束后这一场会记进战绩和排名。记错了可以在看板上把它退回来改。',
+            'Once finished this counts towards records and rankings. If you got it wrong you can send it back from the board.',
+          )}
         </p>
         <div className="mt-4 space-y-2">
           <Button
@@ -762,20 +809,23 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               finishMatch()
             }}
           >
-            确认结束
+            {t('确认结束', 'Confirm')}
           </Button>
           <Button block variant="ghost" onClick={() => setConfirmEnd(false)}>
-            继续比赛
+            {t('继续比赛', 'Keep playing')}
           </Button>
         </div>
       </Sheet>
 
-      <Sheet open={directOpen} onClose={() => setDirectOpen(false)} title="直接输入最终比分">
+      <Sheet open={directOpen} onClose={() => setDirectOpen(false)} title={t('直接输入最终比分', 'Enter the final score')}>
         <p className="text-sm text-ink-700">
-          没人盯着手机计分的那几场用这个。输入后这一局就没有发球提示和撤销了。
+          {t(
+            '没人盯着手机计分的那几场用这个。输入后这一局就没有发球提示和撤销了。',
+            'For games nobody scored live. Once entered, this game has no serve tracking and no undo.',
+          )}
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <Field label={`A 队 ${match.teamA.map((id) => names.get(id)?.name).join('/')}`}>
+          <Field label={`${t('A 队', 'Team A')} ${match.teamA.map((id) => names.get(id)?.name).join('/')}`}>
             <input
               className={inputClass}
               type="number"
@@ -786,7 +836,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               placeholder="21"
             />
           </Field>
-          <Field label={`B 队 ${match.teamB.map((id) => names.get(id)?.name).join('/')}`}>
+          <Field label={`${t('B 队', 'Team B')} ${match.teamB.map((id) => names.get(id)?.name).join('/')}`}>
             <input
               className={inputClass}
               type="number"
@@ -805,7 +855,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           disabled={directA === '' || directB === ''}
           onClick={applyDirect}
         >
-          保存这一局比分
+          {t('保存这一局比分', 'Save this game')}
         </Button>
       </Sheet>
     </Screen>

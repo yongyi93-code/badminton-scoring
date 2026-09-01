@@ -1,6 +1,7 @@
+import { pick } from '@/lib/i18n'
 import type { ReactNode } from 'react'
 import type { Gender, Level, Player } from '@/types'
-import { itemById, type AvatarProfile, type LevelInfo } from '@/lib/avatar'
+import { itemById, itemName, type AvatarProfile, type LevelInfo } from '@/lib/avatar'
 import { AvatarFace, AvatarFrame } from './Avatar'
 import { stageOf } from '@/lib/avatarArt'
 import { useProgress } from '@/store/progress'
@@ -116,14 +117,14 @@ export function TitleTag({ avatar }: { avatar?: AvatarProfile }) {
   if (!item) return null
   return (
     <span className="shrink-0 rounded-md border border-brand-500 bg-brand-100 px-1.5 py-px text-[11px] font-medium text-brand-600">
-      {item.name}
+      {itemName(item)}
     </span>
   )
 }
 
 export function LevelDots({ level }: { level: Level }) {
   return (
-    <span className="inline-flex items-center gap-0.5" title={`水平 ${level} 星`}>
+    <span className="inline-flex items-center gap-0.5" title={pick(`水平 ${level} 星`, `Level ${level}`)}>
       {[1, 2, 3, 4, 5].map((i) => (
         <span
           key={i}
@@ -146,7 +147,7 @@ export function GenderTag({ gender }: { gender: Gender }) {
         gender === 'M' ? 'text-male' : 'text-female',
       )}
     >
-      {gender === 'M' ? '男' : '女'}
+      {gender === 'M' ? pick('男', 'M') : pick('女', 'F')}
     </span>
   )
 }

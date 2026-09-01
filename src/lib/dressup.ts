@@ -27,13 +27,6 @@ import type { AvatarSex, ShopItem } from '@/lib/avatar'
 export const DRESS_SLOTS = ['bottom', 'top', 'shoes', 'racket'] as const
 export type DressSlot = (typeof DRESS_SLOTS)[number]
 
-export const DRESS_SLOT_LABELS: Record<DressSlot, string> = {
-  bottom: '下装',
-  top: '上衣',
-  shoes: '球鞋',
-  racket: '球拍',
-}
-
 /** 每个槽位有几件 */
 export const TIERS_PER_SLOT = 11
 
@@ -47,49 +40,119 @@ const PRICE = [0, 40, 90, 160, 260, 400, 570, 780, 1030, 1330, 1700]
 const MIN_TIER = [0, 0, 1, 1, 2, 3, 4, 5, 6, 7, 7]
 
 /** 每件的名字，下标即等级（0 起）。顺序就是素材文件的编号顺序。 */
-const NAMES: Record<AvatarSex, Record<DressSlot, string[]>> = {
+/*
+ * 每件的名字，下标即等级（0 起）。顺序就是素材文件的编号顺序。
+ *
+ * 存成 [中文, English] 两元组 —— 少一个 TypeScript 当场报元组长度不对，
+ * 不会等到英文界面上冒出一串中文才发现。
+ */
+const NAMES: Record<AvatarSex, Record<DressSlot, [string, string][]>> = {
   f: {
     top: [
-      '白紫背心', '粉白训练衫', '浅粉运动T', '速干透气衣', '白紫轻量背心',
-      '樱花暗纹袍', '冰蓝运动衫', '紫晶护肩衣', '紫月能量外套',
-      '金白冠军战衣', '粉蓝传奇战衣',
+      ['白紫背心', 'White & Violet Vest'],
+      ['粉白训练衫', 'Pink Training Top'],
+      ['浅粉运动T', 'Soft Pink Tee'],
+      ['速干透气衣', 'Quick-Dry Tee'],
+      ['白紫轻量背心', 'Violet Light Vest'],
+      ['樱花暗纹袍', 'Sakura Weave Top'],
+      ['冰蓝运动衫', 'Ice Blue Jersey'],
+      ['紫晶护肩衣', 'Amethyst Shoulder Top'],
+      ['紫月能量外套', 'Violet Moon Jacket'],
+      ['金白冠军战衣', 'Gold & White Champion Top'],
+      ['粉蓝传奇战衣', 'Legendary Rose Top'],
     ],
     bottom: [
-      '灰白运动裙', '黑运动短裙', '粉白运动裙', '速干五分裤', '白紫训练裤',
-      '樱花纹战裙', '电光粉紧身裤', '冰晶护膝裙', '紫月能量裤',
-      '金白冠军裙', '粉蓝传奇战裙',
+      ['灰白运动裙', 'Grey Sports Skirt'],
+      ['黑运动短裙', 'Black Sports Skirt'],
+      ['粉白运动裙', 'Pink Sports Skirt'],
+      ['速干五分裤', 'Quick-Dry Shorts'],
+      ['白紫训练裤', 'Violet Training Pants'],
+      ['樱花纹战裙', 'Sakura Weave Skirt'],
+      ['电光粉紧身裤', 'Neon Pink Tights'],
+      ['冰晶护膝裙', 'Ice Crystal Skirt'],
+      ['紫月能量裤', 'Violet Moon Pants'],
+      ['金白冠军裙', 'Gold & White Champion Skirt'],
+      ['粉蓝传奇战裙', 'Legendary Rose Skirt'],
     ],
     shoes: [
-      '入门球鞋', '白粉训练鞋', '粉白练习鞋', '轻量速跑鞋', '紫白稳定鞋',
-      '樱花纹战靴', '电光粉弹跳鞋', '冰晶护踝鞋', '紫晶护踝鞋',
-      '金白冠军鞋', '粉蓝传奇战靴',
+      ['入门球鞋', 'Starter Shoes'],
+      ['白粉训练鞋', 'Pink Training Shoes'],
+      ['粉白练习鞋', 'Soft Pink Trainers'],
+      ['轻量速跑鞋', 'Lightweight Runners'],
+      ['紫白稳定鞋', 'Violet Stability Shoes'],
+      ['樱花纹战靴', 'Sakura Weave Boots'],
+      ['电光粉弹跳鞋', 'Neon Pink Bounce'],
+      ['冰晶护踝鞋', 'Ice Crystal Highs'],
+      ['紫晶护踝鞋', 'Amethyst Highs'],
+      ['金白冠军鞋', 'Gold & White Champion Shoes'],
+      ['粉蓝传奇战靴', 'Legendary Rose Boots'],
     ],
     racket: [
-      '入门球拍', '基础训练拍', '粉白练习拍', '轻量速拍', '紫白进攻拍',
-      '樱花纹球拍', '电光粉球拍', '冰晶球拍', '紫月能量拍',
-      '金白冠军拍', '粉蓝传奇拍',
+      ['入门球拍', 'Starter Racket'],
+      ['基础训练拍', 'Basic Training Racket'],
+      ['粉白练习拍', 'Pink Practice Racket'],
+      ['轻量速拍', 'Lightweight Speed Racket'],
+      ['紫白进攻拍', 'Violet Attack Racket'],
+      ['樱花纹球拍', 'Sakura Weave Racket'],
+      ['电光粉球拍', 'Neon Pink Racket'],
+      ['冰晶球拍', 'Ice Crystal Racket'],
+      ['紫月能量拍', 'Violet Moon Racket'],
+      ['金白冠军拍', 'Gold & White Champion Racket'],
+      ['粉蓝传奇拍', 'Legendary Rose Racket'],
     ],
   },
   m: {
     top: [
-      '白蓝背心', '黑白训练衫', '浅灰运动T', '速干透气衣', '藏青轻量背心',
-      '云纹暗纹衫', '电光蓝运动衫', '冰晶护肩衣', '暗夜能量外套',
-      '金黑冠军战衣', '蓝金传奇战衣',
+      ['白蓝背心', 'White & Blue Vest'],
+      ['黑白训练衫', 'Black Training Top'],
+      ['浅灰运动T', 'Light Grey Tee'],
+      ['速干透气衣', 'Quick-Dry Tee'],
+      ['藏青轻量背心', 'Navy Light Vest'],
+      ['云纹暗纹衫', 'Cloud Weave Top'],
+      ['电光蓝运动衫', 'Electric Blue Jersey'],
+      ['冰晶护肩衣', 'Ice Crystal Shoulder Top'],
+      ['暗夜能量外套', 'Midnight Jacket'],
+      ['金黑冠军战衣', 'Gold & Black Champion Top'],
+      ['蓝金传奇战衣', 'Legendary Blue Top'],
     ],
     bottom: [
-      '灰白运动短裤', '黑运动短裤', '白蓝运动短裤', '速干五分裤', '藏青训练裤',
-      '云纹战裤', '电光蓝紧身裤', '冰晶护膝裤', '暗夜能量裤',
-      '金黑冠军裤', '蓝金传奇战裤',
+      ['灰白运动短裤', 'Grey Sports Shorts'],
+      ['黑运动短裤', 'Black Sports Shorts'],
+      ['白蓝运动短裤', 'White & Blue Shorts'],
+      ['速干五分裤', 'Quick-Dry Shorts'],
+      ['藏青训练裤', 'Navy Training Pants'],
+      ['云纹战裤', 'Cloud Weave Shorts'],
+      ['电光蓝紧身裤', 'Electric Blue Tights'],
+      ['冰晶护膝裤', 'Ice Crystal Pants'],
+      ['暗夜能量裤', 'Midnight Pants'],
+      ['金黑冠军裤', 'Gold & Black Champion Shorts'],
+      ['蓝金传奇战裤', 'Legendary Blue Shorts'],
     ],
     shoes: [
-      '入门球鞋', '黑白训练鞋', '灰白练习鞋', '轻量速跑鞋', '藏青稳定鞋',
-      '云纹战靴', '电光蓝弹跳鞋', '冰晶护踝鞋', '暗夜护踝鞋',
-      '金黑冠军鞋', '蓝金传奇战靴',
+      ['入门球鞋', 'Starter Shoes'],
+      ['黑白训练鞋', 'Black Training Shoes'],
+      ['灰白练习鞋', 'Grey Trainers'],
+      ['轻量速跑鞋', 'Lightweight Runners'],
+      ['藏青稳定鞋', 'Navy Stability Shoes'],
+      ['云纹战靴', 'Cloud Weave Boots'],
+      ['电光蓝弹跳鞋', 'Electric Blue Bounce'],
+      ['冰晶护踝鞋', 'Ice Crystal Highs'],
+      ['暗夜护踝鞋', 'Midnight Highs'],
+      ['金黑冠军鞋', 'Gold & Black Champion Shoes'],
+      ['蓝金传奇战靴', 'Legendary Blue Boots'],
     ],
     racket: [
-      '入门球拍', '基础训练拍', '灰白练习拍', '轻量速拍', '藏青进攻拍',
-      '云纹球拍', '电光蓝球拍', '冰晶球拍', '暗夜能量拍',
-      '金黑冠军拍', '蓝金传奇拍',
+      ['入门球拍', 'Starter Racket'],
+      ['基础训练拍', 'Basic Training Racket'],
+      ['灰白练习拍', 'Grey Practice Racket'],
+      ['轻量速拍', 'Lightweight Speed Racket'],
+      ['藏青进攻拍', 'Navy Attack Racket'],
+      ['云纹球拍', 'Cloud Weave Racket'],
+      ['电光蓝球拍', 'Electric Blue Racket'],
+      ['冰晶球拍', 'Ice Crystal Racket'],
+      ['暗夜能量拍', 'Midnight Racket'],
+      ['金黑冠军拍', 'Gold & Black Champion Racket'],
+      ['蓝金传奇拍', 'Legendary Blue Racket'],
     ],
   },
 }

@@ -1,3 +1,4 @@
+import { pick } from './i18n'
 import type { AvatarSex, LevelInfo } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *
@@ -17,7 +18,7 @@ export type Stage = {
   id: string
   /** 中文阶段名 */
   label: string
-  /** 英文阶段名，跟在中文后面显示 */
+  /** 英文阶段名，中文界面里跟在中文后面显示 */
   en: string
   /** 设计稿上的等级数字，只是个说法，实际按段位算 */
   lv: number
@@ -37,6 +38,15 @@ export const STAGES: Stage[] = [
   { id: 'pro', label: '高手', en: 'Pro', lv: 50, minTier: 5, glow: '#a855f7' },
   { id: 'legend', label: '传奇', en: 'Legend', lv: 100, minTier: 7, glow: '#f2c14e' },
 ]
+
+/**
+ * 阶段名。中文界面写「进阶 Player」，英文界面只写 Player。
+ *
+ * 不在 STAGES 表里就 pick() 定死 —— 那张表是模块级常量，
+ * 求值早于 initLang()，当场挑会把语言冻在默认值上。
+ */
+export const stageName = (stage: Stage) =>
+  pick(`${stage.label} ${stage.en}`, stage.en)
 
 /** 段位 → 成长阶段。取最后一个够得着的。 */
 export function stageOf(level: LevelInfo): Stage {

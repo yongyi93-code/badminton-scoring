@@ -67,11 +67,15 @@ export type Fee = {
  */
 export type SessionFormat = 'free' | 'king' | 'rotation' | 'friendly'
 
-export const FORMAT_LABELS: Record<SessionFormat, string> = {
-  free: '自由模式',
-  king: '车轮赛',
-  rotation: '轮转赛',
-  friendly: '友谊赛',
+/*
+ * 文案表一律存成 [中文, English] 两元组，用的地方 t(...FORMAT_LABELS[f]) 展开。
+ * 这样漏翻一句 TypeScript 当场就报元组长度不对，不会等到线上才发现。
+ */
+export const FORMAT_LABELS: Record<SessionFormat, [string, string]> = {
+  free: ['自由模式', 'Free play'],
+  king: ['车轮赛', 'King of the court'],
+  rotation: ['轮转赛', 'Round robin'],
+  friendly: ['友谊赛', 'Club friendly'],
 }
 
 /**
@@ -118,14 +122,20 @@ export const isGuestId = (id: string) => id.startsWith(GUEST_PREFIX)
  */
 export type PairingMode = 'balanced' | 'tiered'
 
-export const PAIRING_MODE_LABELS: Record<PairingMode, string> = {
-  balanced: '均衡（高带低）',
-  tiered: '同级（强打强）',
+export const PAIRING_MODE_LABELS: Record<PairingMode, [string, string]> = {
+  balanced: ['均衡（高带低）', 'Balanced'],
+  tiered: ['同级（强打强）', 'By level'],
 }
 
-export const PAIRING_MODE_HINTS: Record<PairingMode, string> = {
-  balanced: '一场里高分带低分，两队实力尽量拉平，每一场都咬得紧',
-  tiered: '挑水平接近的人凑一场，高分打高分、低分打低分',
+export const PAIRING_MODE_HINTS: Record<PairingMode, [string, string]> = {
+  balanced: [
+    '一场里高分带低分，两队实力尽量拉平，每一场都咬得紧',
+    'Strong players carry weaker ones so both sides are even and every game stays close',
+  ],
+  tiered: [
+    '挑水平接近的人凑一场，高分打高分、低分打低分',
+    'Players of similar level play each other — strong with strong, beginners with beginners',
+  ],
 }
 
 /** 旧球局没存这个字段，统一从这里取 */

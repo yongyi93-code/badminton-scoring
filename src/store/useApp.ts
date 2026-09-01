@@ -1,3 +1,4 @@
+import { pick } from '@/lib/i18n'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
@@ -144,6 +145,20 @@ export const useApp = create<AppState>()(
         set((s) => ({
           players: s.players.map((p) => (p.id === id ? { ...p, ...patch } : p)),
         }))
+        /*
+         * 角色的男女跟着球员资料走，不在角色页单独改。
+         *
+         * 性别是一件事，只该有一个地方填。原来角色页有个「换个角色」，
+         * 于是同一个人可能资料里写着男、角色却是女 —— 混双按资料排、
+         * 立绘按角色画，两边对不上。
+         *
+         * 改性别不没收任何东西：买过的、花掉的都留着，
+         * 换过去先穿那边白送的几件，换回来原样还在（见 setAvatarSex）。
+         */
+        const sex = patch.gender === 'M' ? 'm' : patch.gender === 'F' ? 'f' : null
+        if (sex && get().avatars.some((a) => a.playerId === id && a.sex !== sex)) {
+          get().setAvatarSex(id, sex)
+        }
       },
 
       setPlayerArchived(id, archived) {
@@ -335,7 +350,7 @@ export const useApp = create<AppState>()(
 
       importBackup(backup) {
         if (backup?.app !== 'badminton-scoring') {
-          throw new Error('不是本 App 的备份文件')
+          throw new Error(pick('不是本 App 的备份文件', 'Not a RALLY backup file'))
         }
         set({
           players: backup.players ?? [],
