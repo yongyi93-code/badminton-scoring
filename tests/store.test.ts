@@ -117,15 +117,6 @@ describe('认领身份', () => {
     expect(after.players.find((p) => p.id === b.id)?.ownerId).toBe('uid-2')
   })
 
-  it('松开之后变成无主，别人可以认领', () => {
-    const s = useApp.getState()
-    const a = s.addPlayer('阿伟', 'M')
-    useApp.getState().claimPlayer(a.id, 'uid-1')
-    useApp.getState().releasePlayer('uid-1')
-
-    expect(useApp.getState().players.find((p) => p.id === a.id)?.ownerId).toBeNull()
-  })
-
   it('代建的球员没有主，谁都能帮他记分', () => {
     const a = useApp.getState().addPlayer('不装 App 的球友', 'M')
     expect(useApp.getState().players.find((p) => p.id === a.id)?.ownerId).toBeUndefined()

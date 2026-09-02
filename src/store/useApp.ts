@@ -96,16 +96,15 @@ type AppState = {
 
   setMeId: (playerId: string | null) => void
   /**
-   * 认领一个球员当作「我」。
+   * 把刚建出来的自己和登录账号绑在一起。
    *
-   * 和 setMeId 的区别：setMeId 只在这台手机上做个标记，
-   * 认领会把登录账号写进球员本身，跟着同步到别人手机上 ——
-   * 这样别人就知道那个「阿伟」是有主的，不会再建一个。
+   * 和 setMeId 的区别：setMeId 只在这台手机上做个标记，绑定会把账号
+   * 写进球员本身、跟着同步出去 —— 别人手机上就知道那个「阿伟」有主。
+   *
+   * 现在只在「建一个你自己」那一步调用：谁建的就是谁的，
+   * 没有从别人那里认领过来这回事，也就没有松开这一说。
    */
   claimPlayer: (playerId: string, ownerId: string) => void
-  /** 松开认领（换人、或者退出登录时用） */
-  releasePlayer: (ownerId: string) => void
-
   addPlayer: (name: string, gender: Gender) => Player
   updatePlayer: (id: string, patch: Partial<Omit<Player, 'id'>>) => void
   setPlayerArchived: (id: string, archived: boolean) => void
@@ -173,14 +172,6 @@ export const useApp = create<AppState>()(
                 : p,
           ),
           meId: playerId,
-        }))
-      },
-
-      releasePlayer(ownerId) {
-        set((st) => ({
-          players: st.players.map((p) =>
-            p.ownerId === ownerId ? { ...p, ownerId: null } : p,
-          ),
         }))
       },
 
