@@ -42,6 +42,27 @@ export default defineConfig({
     },
   },
   plugins: [
+    /*
+     * 出一份 version.json，里面只有构建号。
+     *
+     * 页面靠它自己判断「我这份是不是过期了」：启动后拿网络上的这个文件
+     * 和自己编译进来的构建号比一比，对不上就说明手上跑的是旧的。
+     *
+     * 为什么不能问 Service Worker：出问题的时候正是它在骗人 ——
+     * 它端出一份旧的 index.html，页面自己毫不知情。所以这个文件
+     * 故意不进预缓存（globPatterns 里没有 json），fetch 时又带
+     * no-store，问到的必定是服务器上此刻的真相。
+     */
+    {
+      name: 'rally-version-json',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify({ build: buildId }),
+        })
+      },
+    },
     react(),
     tailwindcss(),
     VitePWA({
@@ -72,6 +93,19 @@ export default defineConfig({
       workbox: {
         // webp 是角色立绘 —— 漏了它离线时头像会变成空白
         globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
+        /*
+         * 带 ?_v= 的那次导航一律走网络，不许拿预缓存里的 index.html 应付。
+         *
+         * 「检查更新」的做法是先注销 Service Worker 再重载。但注销要等
+         * 页面卸载才真正生效，那次重载的导航请求仍然可能被旧的 Service
+         * Worker 接住 —— 它照规矩端出自己预缓存的那份 index.html，
+         * 于是「更新完还是旧版本」，而那份旧 HTML 引用的 JS 要是已经被
+         * 系统清掉（手机存储紧张时很常见），拿到的就是一片白。
+         *
+         * ?_v= 是我们自己加的更新标记，只在这一次导航里出现，
+         * 拿它当「这次别用缓存」的信号最准。
+         */
+        navigateFallbackDenylist: [/[?&]_v=/],
         // 十张立绘约 220KB，加上代码离线包到 700KB 上下，默认 2MiB 的上限够用
       },
     }),

@@ -14,9 +14,110 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
     <title>RALLY · 羽球社交竞技平台</title>
+
+    <!--
+      白屏救急。
+
+      装成 PWA 之后最糟的失败长这样：Service Worker 端出一份对不上的旧缓存，
+      页面一片空白，手机上既看不到报错也没有开发者工具，除了删掉重装
+      没有任何自救的办法 —— 而重装意味着球员、球局、比赛全没了。
+
+      所以这里放一段不依赖任何打包产物的普通脚本（不是 module，
+      就算 assets 里的 JS 全部 404 它照样跑）：几秒后 root 还是空的，
+      就说明没渲染起来，把一个纯手写的救急面板画出来。
+
+      它做的事和「检查更新」一样：注销 Service Worker、清掉它的缓存、
+      重新加载。localStorage 一个字节都不碰 —— 数据全在那里。
+    -->
+    <script>
+      ;(function () {
+        /*
+         * 15 秒是个「慢也慢不到这份上」的数：手机网络再差，
+         * 这时候还一片空白基本就是真的坏了。宁可等久一点，
+         * 也不要在网速慢的人面前误报一次「没能启动」。
+         *
+         * 主脚本加载失败（旧 index.html 引用的 JS 已经不在了 ——
+         * 这正是最常见的那种坏法）不用等：script 的 error 事件一到就画。
+         */
+        var WAIT_MS = 15000
+        var shown = false
+        setTimeout(show, WAIT_MS)
+
+        /*
+         * 资源加载失败不冒泡，只能在捕获阶段抓。
+         * onerror 属性靠不住 —— vite 打包时会把它丢掉。
+         */
+        window.addEventListener(
+          'error',
+          function (e) {
+            var t = e.target
+            if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) show()
+          },
+          true,
+        )
+
+        function show() {
+          if (shown) return
+          var root = document.getElementById('root')
+          if (root && root.childElementCount > 0) return // 渲染出来了，收工
+          shown = true
+
+          document.body.innerHTML =
+            '<div style="font:16px/1.6 -apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;' +
+            'color:#0d1d24;background:#f6fafa;min-height:100vh;padding:32px 24px;' +
+            'display:flex;flex-direction:column;justify-content:center;gap:16px">' +
+            '<h1 style="margin:0;font-size:20px">RALLY 没能启动</h1>' +
+            '<p style="margin:0;color:#4a5b63">多半是上次更新留下的旧缓存对不上了。' +
+            '点下面这个按钮清一遍重来。</p>' +
+            '<p style="margin:0;color:#4a5b63;font-weight:600">' +
+            '球员、球局、比赛记录都不会动，清的只是缓存。</p>' +
+            '<button id="rescue" style="margin-top:8px;padding:14px;border:0;border-radius:12px;' +
+            'background:#0f9b8e;color:#fff;font-size:16px;font-weight:600">清理缓存，重新打开</button>' +
+            '<p id="rescue-note" style="margin:0;color:#4a5b63;font-size:13px">' +
+            'App failed to start — tap to clear the cache and reload. Your data is not touched.</p>' +
+            '</div>'
+
+          document.getElementById('rescue').onclick = function () {
+            document.getElementById('rescue').disabled = true
+            document.getElementById('rescue-note').textContent = '清理中…'
+            var jobs = []
+            if (navigator.serviceWorker) {
+              jobs.push(
+                navigator.serviceWorker.getRegistrations().then(function (rs) {
+                  return Promise.all(
+                    rs.map(function (r) {
+                      return r.unregister()
+                    }),
+                  )
+                }),
+              )
+            }
+            if (window.caches) {
+              jobs.push(
+                caches.keys().then(function (ks) {
+                  return Promise.all(
+                    ks.map(function (k) {
+                      return caches.delete(k)
+                    }),
+                  )
+                }),
+              )
+            }
+            // 不管成没成都要重新加载：卡在这一屏对谁都没好处
+            Promise.all(jobs)['catch'](function () {})['then'](function () {
+              var u = new URL(location.href)
+              u.searchParams.set('_v', String(Date.now()))
+              location.replace(u.toString())
+            })
+          }
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
+
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
