@@ -2,6 +2,7 @@ import { lang, useT } from '@/lib/i18n'
 import { useMemo } from 'react'
 import { playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
+import { OpenSessions } from '@/components/OpenSessions'
 import { Body, Button, Card, Pill, Screen, SectionTitle } from '@/components/ui'
 import { Ticker } from '@/components/Ticker'
 import { formatDate } from '@/lib/format'
@@ -53,7 +54,14 @@ export function Home() {
   )
   const me = meId ? names.get(meId) : undefined
 
-  const active = sessions.find((s) => s.status === 'active')
+  /*
+   * 主行动卡只认「我在里面的那一场」。
+   * 球局公开之后，同一时间可能有好几场在开 —— 拿第一场当「你的球局」
+   * 会把别人的局显示成「继续 →」，点进去一脸茫然。
+   */
+  const active = sessions.find(
+    (s) => s.status === 'active' && (!meId || s.playerIds.includes(meId)),
+  )
   const past = useMemo(
     () =>
       sessions
@@ -61,8 +69,6 @@ export function Home() {
         .sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt)),
     [sessions],
   )
-  const roster = players.filter((p) => !p.archived)
-  const totalPlayed = decidedMatches(matches).length
 
   /* 进行中的那几场，首页直接把实时比分摆出来 —— 规格 §A 的主行动卡 */
   const liveMatches = useMemo(
@@ -87,7 +93,7 @@ export function Home() {
   const openFeed = (item: FeedItem) => {
     const l = item.link
     if (!l) return
-    if (l.kind === 'leaderboard') push({ name: 'leaderboard' })
+    if (l.kind === 'leaderboard') push({ name: 'leaderboard', venue: l.venue })
     else if (l.kind === 'player') push({ name: 'profile', playerId: l.playerId })
     else push({ name: 'summary', sessionId: l.sessionId })
   }
@@ -182,8 +188,8 @@ export function Home() {
             <p className="text-h2">{t('今晚去打球？', 'Playing tonight?')}</p>
             <p className="text-ink-500 mt-1 text-label">
               {t(
-                '开一个球局，勾上到场的人，RALLY 负责公平排场、记分和算排名。',
-                'Start a session, tick who is here, and RALLY handles fair rotation, scoring and rankings.',
+                '开一个球局，装了 App 的球友自己就能加进来。RALLY 负责公平排场、记分和算排名。',
+                'Start a session and everyone with the app can join it themselves. RALLY handles fair rotation, scoring and rankings.',
               )}
             </p>
             <Button
@@ -231,20 +237,7 @@ export function Home() {
           </Card>
         )}
 
-        {/* 快捷入口 */}
-        <SectionTitle>{t('快捷入口', 'Shortcuts')}</SectionTitle>
-        <div className="grid grid-cols-2 gap-3">
-          <Card onClick={() => push({ name: 'leaderboard' })}>
-            <p className="text-ink-500 text-label">{t('排行榜', 'Leaderboard')}</p>
-            <p className="tnum mt-1 text-h2">{totalPlayed}</p>
-            <p className="text-ink-500 text-caption">{t('场已记录', 'matches')}</p>
-          </Card>
-          <Card onClick={() => push({ name: 'players' })}>
-            <p className="text-ink-500 text-label">{t('球员库', 'Players')}</p>
-            <p className="tnum mt-1 text-h2">{roster.length}</p>
-            <p className="text-ink-500 text-caption">{t('位球友', 'players')}</p>
-          </Card>
-        </div>
+        <OpenSessions />
 
         {/* 最近球局最多三条，完整的历史在「球局」那个 tab 里 */}
         {past.length > 0 && (

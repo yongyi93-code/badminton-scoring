@@ -131,3 +131,81 @@ describe('认领身份', () => {
     expect(useApp.getState().players.find((p) => p.id === a.id)?.ownerId).toBeUndefined()
   })
 })
+
+/*
+ * 球局公开之后，加入是每个人自己点的 —— 而「自己点」意味着两台手机
+ * 可能同时点、同步也会把同一条改动送回来。加两遍的后果不是多一行，
+ * 是排场时这个人占两个位置。
+ */
+describe('自己加入别人开的球局', () => {
+  const openOne = () => {
+    const host = useApp.getState().addPlayer('阿伟', 'M')
+    const s = useApp.getState().createSession({
+      date: '2026-09-02',
+      venue: '中央球馆',
+      courtCount: 2,
+      playerIds: [host.id],
+      defaultType: 'doubles',
+      createdBy: host.id,
+    })
+    return { host, s }
+  }
+
+  it('加进去之后就在名单里，而且记得是谁开的', () => {
+    const { host, s } = openOne()
+    const me = useApp.getState().addPlayer('小林', 'F')
+    useApp.getState().joinSession(s.id, me.id)
+
+    const after = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(after.playerIds).toEqual([host.id, me.id])
+    expect(after.createdBy).toBe(host.id)
+  })
+
+  it('点两次只算一次', () => {
+    const { s } = openOne()
+    const me = useApp.getState().addPlayer('小林', 'F')
+    useApp.getState().joinSession(s.id, me.id)
+    useApp.getState().joinSession(s.id, me.id)
+
+    const after = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(after.playerIds.filter((id) => id === me.id)).toHaveLength(1)
+  })
+
+  it('还没打过就能退出', () => {
+    const { s } = openOne()
+    const me = useApp.getState().addPlayer('小林', 'F')
+    useApp.getState().joinSession(s.id, me.id)
+    useApp.getState().leaveSession(s.id, me.id)
+
+    expect(
+      useApp.getState().sessions.find((x) => x.id === s.id)!.playerIds,
+    ).not.toContain(me.id)
+  })
+
+  /*
+   * 打过的人退不掉：他那几场比赛还在，退了之后那些记录就挂着一个
+   * 不在名单里的人，排行榜和结算都会对不上。
+   */
+  it('已经打过球的人退不掉', () => {
+    const { host, s } = openOne()
+    const me = useApp.getState().addPlayer('小林', 'F')
+    const c = useApp.getState().addPlayer('阿May', 'F')
+    const d = useApp.getState().addPlayer('老陈', 'M')
+    useApp.getState().joinSession(s.id, me.id)
+
+    useApp.getState().addMatch({
+      sessionId: s.id,
+      type: 'doubles',
+      teamA: [host.id, me.id],
+      teamB: [c.id, d.id],
+      games: [{ a: 21, b: 15, points: null, serveInit: null }],
+      status: 'done',
+      courtIndex: 0,
+    })
+
+    useApp.getState().leaveSession(s.id, me.id)
+    expect(
+      useApp.getState().sessions.find((x) => x.id === s.id)!.playerIds,
+    ).toContain(me.id)
+  })
+})

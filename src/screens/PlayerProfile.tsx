@@ -284,12 +284,6 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
           </>
         )}
 
-        <button
-          onClick={() => push({ name: 'leaderboard' })}
-          className="w-full py-4 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
-        >
-          {t('看累计排行榜', 'Open leaderboard')}
-        </button>
       </Body>
     </Screen>
   )

@@ -48,6 +48,8 @@ export type SessionDraft = {
   rotationPerPlayer?: number
   pairingMode?: PairingMode
   friendly?: FriendlySetup
+  /** 谁开的（球员 id）。首页那份「谁在哪开了局」要显示 */
+  createdBy?: string
 }
 
 /**
@@ -103,6 +105,15 @@ type AppState = {
   endSession: (id: string) => void
   reopenSession: (id: string) => void
   deleteSession: (id: string) => void
+  /**
+   * 自己加入一个别人开的球局。
+   *
+   * 幂等：已经在里面了就什么都不做 —— 两台手机同时点、
+   * 或者同步把同一条改动送回来时，不能把人加两遍。
+   */
+  joinSession: (sessionId: string, playerId: string) => void
+  /** 自己退出（还没打过的情况下）。打过的人退不掉，战绩要对得上 */
+  leaveSession: (sessionId: string, playerId: string) => void
 
   addMatch: (match: Omit<Match, 'id' | 'seq'>) => Match
   addMatches: (matches: Omit<Match, 'id' | 'seq'>[]) => Match[]
@@ -223,6 +234,7 @@ export const useApp = create<AppState>()(
           rotationPerPlayer: draft.rotationPerPlayer,
           pairingMode: draft.pairingMode ?? 'balanced',
           friendly: draft.friendly,
+          createdBy: draft.createdBy,
         }
         set((s) => ({ sessions: [session, ...s.sessions] }))
         return session
@@ -266,6 +278,37 @@ export const useApp = create<AppState>()(
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === id ? { ...x, status: 'active', endedAt: undefined } : x,
+          ),
+        }))
+      },
+
+      joinSession(sessionId, playerId) {
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === sessionId && !x.playerIds.includes(playerId)
+              ? { ...x, playerIds: [...x.playerIds, playerId] }
+              : x,
+          ),
+        }))
+      },
+
+      leaveSession(sessionId, playerId) {
+        // 打过球的人不能退：他的比赛还在，退了那几场就没有主
+        const played = get().matches.some(
+          (m) =>
+            m.sessionId === sessionId &&
+            (m.teamA.includes(playerId) || m.teamB.includes(playerId)),
+        )
+        if (played) return
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === sessionId
+              ? {
+                  ...x,
+                  playerIds: x.playerIds.filter((id) => id !== playerId),
+                  restingIds: x.restingIds?.filter((id) => id !== playerId),
+                }
+              : x,
           ),
         }))
       },

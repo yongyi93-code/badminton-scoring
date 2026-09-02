@@ -8,7 +8,6 @@ import {
   EmptyState,
   Pill,
   Screen,
-  Segmented,
   Sheet,
   TopBar,
   cx,
@@ -37,10 +36,14 @@ import {
 } from '@/lib/avatar'
 import { RANK_MIN_GAMES } from '@/types'
 
-type Scope = 'session' | 'all'
-
-/** '' 是「没填球馆」那一档，所以用 null 表示「全部场馆」 */
-type VenueFilter = string | null
+/*
+ * 排行榜一定是「某个范围的」排行榜，没有全员榜。
+ *
+ * 原来还有一个「所有球馆累计」的模式，连着球员库一起去掉了：
+ * 这个 App 不再有「翻一遍所有人」这件事 —— 你只在自己打过的球局和
+ * 常去的球馆里看见别人。范围由调用方给死，屏内不能切。
+ */
+type Scope = { sessionId: string; venue?: undefined } | { venue: string; sessionId?: undefined }
 
 /**
  * 排序口径。
@@ -58,16 +61,14 @@ const SORT_LABELS: Record<SortBy, [string, string]> = {
   games: ['场次', 'Matches'],
 }
 
-export function Leaderboard({ sessionId }: { sessionId?: string }) {
+export function Leaderboard({ sessionId, venue }: Scope) {
   const t = useT()
   const { players, sessions, matches, avatars, meId } = useApp()
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
-  const [scope, setScope] = useState<Scope>(sessionId ? 'session' : 'all')
-  const [venue, setVenue] = useState<VenueFilter>(null)
   const [period, setPeriod] = useState<Period>('all')
   const [sortBy, setSortBy] = useState<SortBy>('winRate')
-  const [picker, setPicker] = useState<'venue' | 'period' | 'sort' | null>(null)
+  const [picker, setPicker] = useState<'period' | 'sort' | null>(null)
 
   const session = sessions.find((s) => s.id === sessionId)
   const names = useMemo(() => playerMap(players), [players])
@@ -85,26 +86,19 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
 
   const ranked = useMemo(() => {
     const base = (() => {
-      if (scope === 'session' && session) {
+      if (session) {
         const ms = sessionMatches(matches, session.id)
         return rankPlayers(computeStats(ms, session.playerIds))
       }
+      // 分场馆：只算这个场馆打过的比赛和在这里打过球的人
       const inPeriod = matchesInPeriod(sessions, matches, period)
-      if (venue !== null) {
-        // 分场馆：只算这个场馆打过的比赛和在这里打过球的人
-        const ms = matchesAtVenue(sessions, inPeriod, venue)
-        return rankPlayers(
-          computeStats(ms, playerIdsAtVenue(sessions, inPeriod, venue)),
-        )
-      }
-      // 全部场馆累计，把所有出现过的球员都算进来，包含已移出球员库的人
-      const everyone = Array.from(
-        new Set([
-          ...players.map((p) => p.id),
-          ...inPeriod.flatMap((m) => [...m.teamA, ...m.teamB]),
-        ]),
+      const at = venue ?? ''
+      return rankPlayers(
+        computeStats(
+          matchesAtVenue(sessions, inPeriod, at),
+          playerIdsAtVenue(sessions, inPeriod, at),
+        ),
       )
-      return rankPlayers(computeStats(inPeriod, everyone))
     })()
 
     if (sortBy === 'winRate') return base
@@ -114,7 +108,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
     const key = (s: (typeof base)[number]) =>
       sortBy === 'mmr' ? (progressById.get(s.playerId)?.mmr ?? 0) : s.games
     return [...ok.sort((a, b) => key(b) - key(a) || b.winRate - a.winRate), ...no]
-  }, [scope, session, venue, period, sortBy, sessions, matches, players, progressById])
+  }, [session, venue, period, sortBy, sessions, matches, progressById])
 
   /* 我在第几 —— 规格 §G 要的那条固定信息条 */
   const myRank = useMemo(() => {
@@ -137,7 +131,6 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
    * 原来限定「超过 1 个场馆」才显示，结果一直在同一个球馆打的人
    * 整排按钮和「本馆之王」都看不到，会以为压根没有分场馆这回事。
    */
-  const showVenueRow = scope === 'all' && venues.length > 0
   const current = venues.find((v) => v.key === venue)
   const podium = ranked.filter((r) => r.qualified).slice(0, 3)
 
@@ -146,39 +139,19 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
       <TopBar
         title={t('排行榜', 'Leaderboard')}
         subtitle={
-          scope === 'session' && session
+          session
             ? `${venueLabel(session.venue)} · ${formatDate(session.date)}`
-            : venue !== null
-              ? `${current?.label ?? venueLabel(venue)} · ${t(...PERIOD_LABELS[period])}`
-              : `${t('所有球馆', 'All venues')} · ${t(...PERIOD_LABELS[period])}`
+            : `${current?.label ?? venueLabel(venue ?? '')} · ${t(...PERIOD_LABELS[period])}`
         }
         onBack={back}
       />
       <Body>
-        {session && (
-          <Segmented
-            value={scope}
-            onChange={setScope}
-            options={[
-              { value: 'session', label: t('今晚', 'Tonight') },
-              { value: 'all', label: t('累计', 'All time') },
-            ]}
-          />
-        )}
-
         {/*
           规格 §G：筛选收成几个可点的 Chip，不再在榜单上面先讲一段
           「按球馆分开算」。真想知道口径的人会往下翻到说明那一段。
         */}
-        {scope === 'all' && (
+        {!session && (
           <div className="flex flex-wrap gap-2">
-            {showVenueRow && (
-              <FilterChip
-                label={venue === null ? t('全部场馆', 'All venues') : (current?.label ?? venueLabel(venue))}
-                active={venue !== null}
-                onClick={() => setPicker('venue')}
-              />
-            )}
             <FilterChip
               label={t(...PERIOD_LABELS[period])}
               active={period !== 'all'}
@@ -263,7 +236,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
         )}
 
         {/* 谁是这个场的第一 —— 挑战者一眼就知道该找谁 */}
-        {scope === 'all' && venue !== null && champion && (
+        {!session && champion && (
           <Card className="border-brand-500/40 bg-brand-50">
             <div className="flex items-center gap-4">
               <span className="text-3xl">👑</span>
@@ -335,7 +308,7 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
                 `段位看 MMR：赢一场 +${WIN_POINTS}，输一场 −${LOSS_POINTS}，但扣到 0 就打住，不会变负。赢了 MMR 比自己高的一队算爆冷，那一场拿 ${WIN_POINTS * UPSET_MULTIPLIER} 分。算的是跨场馆的整体水平，不会因为切换场馆而变。`,
                 `Rank follows MMR: +${WIN_POINTS} a win, −${LOSS_POINTS} a loss, floored at 0 so it never goes negative. Beating a higher-MMR pair is an upset and pays ${WIN_POINTS * UPSET_MULTIPLIER}. MMR is your overall level across every venue, so switching venue does not change it.`,
               )}
-              {scope === 'all' && venue !== null && (
+              {!session && (
                 <>
                   <br />
                   {t(
@@ -349,30 +322,6 @@ export function Leaderboard({ sessionId }: { sessionId?: string }) {
         )}
       </Body>
 
-      <Sheet open={picker === 'venue'} onClose={() => setPicker(null)} title={t('看哪个球馆', 'Which venue')}>
-        <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-          <PickRow
-            label={t('全部场馆', 'All venues')}
-            active={venue === null}
-            onClick={() => {
-              setVenue(null)
-              setPicker(null)
-            }}
-          />
-          {venues.map((v) => (
-            <PickRow
-              key={v.key || '__unnamed__'}
-              label={v.label}
-              meta={t(`${v.matchCount} 场 · ${v.playerCount} 人`, `${v.matchCount} matches · ${v.playerCount} players`)}
-              active={venue === v.key}
-              onClick={() => {
-                setVenue(v.key)
-                setPicker(null)
-              }}
-            />
-          ))}
-        </div>
-      </Sheet>
 
       <Sheet open={picker === 'period'} onClose={() => setPicker(null)} title={t('看哪一段时间', 'Which period')}>
         <div className="space-y-2">

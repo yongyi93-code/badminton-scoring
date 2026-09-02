@@ -18,6 +18,7 @@ import {
   cx,
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
+import { AddGuest } from '@/components/AddGuest'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
 import { duration } from '@/lib/format'
 import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
@@ -718,7 +719,6 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   /** 还能加进来的人：没归档、还不在这一局里 */
   const attendingIds = new Set(attending.map((p) => p.id))
-  const addable = players.filter((p) => !p.archived && !attendingIds.has(p.id))
 
   /**
    * 有人提前走、有人晚到之后重排剩余赛程。
@@ -1229,32 +1229,16 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         </Button>
       </Sheet>
 
-      <Sheet open={adding} onClose={() => setAdding(false)} title={t('加人进这一局', 'Add to this session')}>
-        <div className="space-y-2">
-          {addable.length === 0 ? (
-            <p className="text-sm text-ink-500">
-              {t('所有球员都已经在这一局里了。新面孔要先去「球员」里建一个。', 'Everyone is already in. Add a new face under Players first.')}
-            </p>
-          ) : (
-            <>
-              <p className="text-sm text-ink-700">
-                {t('迟到的人来了就加进来，已打场数从 0 算起，下一场会优先排到他。', 'Add latecomers here. They start on 0 matches, so they get priority for the next one.')}
-              </p>
-              {addable.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => addToSession(p.id)}
-                  className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 text-left active:bg-fill"
-                >
-                  <Avatar name={p.name} avatar={avatarsById.get(p.id)} size="sm" />
-                  <span className="flex-1 truncate">{p.name}</span>
-                  <span className="text-xs text-brand-600">{t('加进来 ›', 'Add ›')}</span>
-                </button>
-              ))}
-            </>
-          )}
-        </div>
-      </Sheet>
+      {/*
+        中途加人现在只加「没装 App 的人」。装了的球友会在自己首页看到
+        这一场，自己点进来 —— 不需要谁替他勾。
+      */}
+      <AddGuest
+        open={adding}
+        onClose={() => setAdding(false)}
+        exclude={[...attendingIds]}
+        onPick={addToSession}
+      />
 
       {/* 换人：从等待区挑一个 */}
       <Sheet open={Boolean(swapping)} onClose={() => setSwapping(null)} title={t('换成谁', 'Swap in who')}>

@@ -114,7 +114,7 @@ export function Sessions() {
               <EmptyState
                 title={t('现在没有在打的球局', 'No session running')}
                 hint={t(
-                  '到了球馆就开一个，勾上今晚到场的人，RALLY 负责排场和记分',
+                  '到了球馆就开一个，其他人在自己首页就能看到，点一下加入',
                   'Start one at the courts, tick who showed up, and RALLY handles the rotation and scoring',
                 )}
               />

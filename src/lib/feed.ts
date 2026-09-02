@@ -24,7 +24,8 @@ import { UNNAMED_VENUE } from './venues'
  * ------------------------------------------------------------------ */
 
 export type FeedLink =
-  | { kind: 'leaderboard'; sessionId?: string }
+  /** 排行榜一定带范围 —— 这里只会是某个球馆的 */
+  | { kind: 'leaderboard'; venue: string }
   | { kind: 'player'; playerId: string }
   | { kind: 'summary'; sessionId: string }
 
@@ -119,7 +120,7 @@ export function buildFeed(
         `${name} rules ${v.label} (${king.wins}W ${king.games - king.wins}L)`,
       ),
       weight: 500 + Math.min(99, v.matchCount),
-      link: { kind: 'leaderboard' },
+      link: { kind: 'leaderboard', venue: v.key },
     })
   }
 

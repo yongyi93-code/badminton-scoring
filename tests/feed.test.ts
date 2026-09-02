@@ -58,7 +58,7 @@ describe('首页快讯', () => {
     expect(king).toBeDefined()
     expect(king!.text).toContain('城中羽球馆')
     expect(king!.text).toContain('球员1')
-    expect(king!.link).toEqual({ kind: 'leaderboard' })
+    expect(king!.link).toEqual({ kind: 'leaderboard', venue: '城中羽球馆' })
   })
 
   it('场次不够就不说谁是第一 —— 打两场就称王没有说服力', () => {

@@ -18,7 +18,7 @@ import {
   inputClass,
 } from '@/components/ui'
 import { PlayerRow } from '@/components/PlayerBits'
-import { PlayerEditor } from './Players'
+import { AddGuest } from '@/components/AddGuest'
 import { todayISO } from '@/lib/format'
 import { buildSchedule, matchInput } from '@/lib/sessionFormat'
 import { progressByPlayer } from '@/lib/avatar'
@@ -62,6 +62,7 @@ export function SessionSetup() {
   const players = useApp((s) => s.players)
   const sessions = useApp((s) => s.sessions)
   const matches = useApp((s) => s.matches)
+  const meId = useApp((s) => s.meId)
   const createSession = useApp((s) => s.createSession)
   const addMatches = useApp((s) => s.addMatches)
   const back = useNav((s) => s.back)
@@ -80,7 +81,13 @@ export function SessionSetup() {
   const [winBy2, setWinBy2] = useState(DEFAULT_RULES.winBy2)
   const [bestOf, setBestOf] = useState<1 | 3>(DEFAULT_RULES.bestOf)
   const [showRules, setShowRules] = useState(false)
-  const [selected, setSelected] = useState<string[]>([])
+  /*
+   * 开局的人自己默认就在场上。
+   *
+   * 球员库拿掉之后这一步不再是「从名册里勾人」，而是
+   * 「你自己 + 你临时加的客人」，其余的人自己从首页点进来加入。
+   */
+  const [selected, setSelected] = useState<string[]>(meId ? [meId] : [])
   const [addOpen, setAddOpen] = useState(false)
   const [step, setStep] = useState(0)
 
@@ -94,11 +101,6 @@ export function SessionSetup() {
   const [capMatches, setCapMatches] = useState(0)
   const [capMinutes, setCapMinutes] = useState(0)
   const [floorPerPlayer, setFloorPerPlayer] = useState(0)
-
-  const roster = useMemo(
-    () => players.filter((p) => !p.archived),
-    [players],
-  )
 
   // 开局时临时新增的球员，默认就算到场 —— 不然还要多点一次很容易漏
   const mountedAt = useRef(Date.now())
@@ -129,21 +131,45 @@ export function SessionSetup() {
   const namedAway = awayPlayers.filter((g) => g.name.trim())
   const isFriendly = format === 'friendly'
   const half = needed / 2
+  /*
+   * 开局的门槛跟着「人是陆陆续续到的」改了。
+   *
+   * 原来要凑够 4 个人才让开局 —— 那是名册时代的假设：开局的人替所有人
+   * 勾到场，所以开局那一刻人就齐了。现在不是了：你到了球馆先开一个，
+   * 别人在自己首页看到再点进来。要求先凑够 4 个，等于要求他们先到齐、
+   * 再有一个人去开局，整条路就堵死了。
+   *
+   * 两个例外：
+   *   - 轮转赛的整份赛程是开局那一刻算好的，人不齐算不出来
+   *   - 友谊赛是两队对打，客队名字得先写上
+   */
   const enough = isFriendly
     ? selected.length >= half && namedAway.length >= half
-    : selected.length >= needed
+    : format === 'rotation'
+      ? selected.length >= needed
+      : selected.length >= 1
   const startHint = isFriendly
     ? enough
       ? t(`开始友谊赛（${selected.length} 打 ${namedAway.length}）`, `Start friendly (${selected.length} v ${namedAway.length})`)
       : t(`两队各至少 ${half} 人：主队 ${selected.length}、客队 ${namedAway.length}`, `Each side needs ${half}: home ${selected.length}, away ${namedAway.length}`)
     : enough
       ? t(`开始球局（${selected.length} 人）`, `Start session (${selected.length} players)`)
-      : t(`至少选 ${needed} 人`, `Pick at least ${needed} players`)
+      : format === 'rotation'
+        ? t(
+            `轮转赛要先凑够 ${needed} 人 —— 赛程是现在就排好的`,
+            `Rotation needs ${needed} people now — the whole schedule is built upfront`,
+          )
+        : t('先在「我的」里选一下你是哪一位', 'Pick who you are under “Me” first')
+
+  const chosenPlayers = useMemo(() => {
+    const byId = new Map(players.map((p) => [p.id, p]))
+    return selected.flatMap((id) => byId.get(id) ?? [])
+  }, [players, selected])
 
   const genderWarning =
     defaultType === 'mixed' &&
     (() => {
-      const chosen = roster.filter((p) => selected.includes(p.id))
+      const chosen = chosenPlayers
       const males = chosen.filter((p) => p.gender === 'M').length
       const females = chosen.filter((p) => p.gender === 'F').length
       const unknown = chosen.filter((p) => p.gender === '-').length
@@ -153,10 +179,6 @@ export function SessionSetup() {
     })()
 
   // 轮转赛的赛程预览：人一勾就重算，让人开局前就知道要打多少场
-  const chosenPlayers = useMemo(
-    () => roster.filter((p) => selected.includes(p.id)),
-    [roster, selected],
-  )
   /** 配对的实力平衡看 MMR，用所有球局的战绩算 */
   const mmrById = useMemo(() => {
     const map = new Map<string, number>()
@@ -187,6 +209,7 @@ export function SessionSetup() {
       venue,
       courtCount,
       playerIds: selected,
+      createdBy: meId ?? undefined,
       defaultType,
       rules: { pointsToWin, winBy2, bestOf, cap: capFor(pointsToWin) },
       format,
@@ -588,7 +611,7 @@ export function SessionSetup() {
               </>
             ) : (
               <p className="text-sm text-ink-500">
-                {preview?.reason ?? t('勾上今晚到场的人，这里就会算出要打几场', 'Tick who is here and the schedule shows up')}
+                {preview?.reason ?? t('把人加进来，这里就会算出要打几场', 'Tick who is here and the schedule shows up')}
               </p>
             )}
           </div>
@@ -596,61 +619,57 @@ export function SessionSetup() {
 
         <SectionTitle
           right={
-            <div className="flex gap-3 text-xs">
-              <button
-                className="text-brand-600"
-                onClick={() =>
-                  setSelected(
-                    selected.length === roster.length ? [] : roster.map((p) => p.id),
-                  )
-                }
-              >
-                {selected.length === roster.length ? t('全不选', 'Clear all') : t('全选', 'Select all')}
-              </button>
-              <button className="text-brand-600" onClick={() => setAddOpen(true)}>
-                {t('+ 新球员', '+ New')}
-              </button>
-            </div>
+            <button className="text-brand-600 text-xs" onClick={() => setAddOpen(true)}>
+              {t('+ 加客人', '+ Add a guest')}
+            </button>
           }
         >
-          {t(`今晚到场（已选 ${selected.length} 人）`, `Here tonight (${selected.length} selected)`)}
+          {t(`场上（${selected.length} 人）`, `On court (${selected.length})`)}
         </SectionTitle>
 
-        {roster.length === 0 ? (
+        {/*
+          这一步不再是「从名册里勾人」。装了 App 的球友会在首页看到
+          你开了局，自己点进来加入 —— 所以这里只列已经在场上的人，
+          你要做的只是把没装 App 的那一两个加进来。
+        */}
+        <p className="text-ink-500 -mt-1 text-caption">
+          {t(
+            '开局之后，装了 App 的球友在首页就能看到这一场，自己点进来加入。',
+            'Once you start, anyone with the app sees this session on their home screen and joins themselves.',
+          )}
+        </p>
+
+        {selected.length === 0 ? (
           <Card className="text-center">
-            <p className="text-ink-700">{t('球员库还是空的', 'No players yet')}</p>
-            <Button
-              variant="primary"
-              className="mt-3"
-              onClick={() => setAddOpen(true)}
-            >
-              {t('加第一个球员', 'Add your first player')}
+            <p className="text-ink-700">
+              {meId
+                ? t('场上还没有人', 'Nobody on court yet')
+                : t('先在「我的」里选一下你是哪一位', 'Pick who you are under “Me” first')}
+            </p>
+            <Button variant="primary" className="mt-3" onClick={() => setAddOpen(true)}>
+              {t('加一个人', 'Add someone')}
             </Button>
           </Card>
         ) : (
           <div className="space-y-2">
-            {roster.map((p) => (
+            {chosenPlayers.map((p) => (
               <PlayerRow
                 key={p.id}
                 player={p}
-                selected={selected.includes(p.id)}
-                onClick={() => toggle(p.id)}
                 right={
-                  <button
-                    onClick={() => toggle(p.id)}
-                    aria-label={selected.includes(p.id) ? t('取消到场', 'Mark as not here') : t('标记到场', 'Mark as here')}
-                    className="flex size-11 shrink-0 items-center justify-center"
-                  >
-                    <span
-                      className={`flex size-6 items-center justify-center rounded-full border text-xs ${
-                        selected.includes(p.id)
-                          ? 'border-brand-solid bg-brand-solid text-on-brand'
-                          : 'border-ink-300 text-transparent'
-                      }`}
-                    >
-                      ✓
+                  p.id === meId ? (
+                    <span className="text-ink-500 shrink-0 text-caption">
+                      {t('你', 'You')}
                     </span>
-                  </button>
+                  ) : (
+                    <button
+                      onClick={() => toggle(p.id)}
+                      aria-label={t('移出场上', 'Remove')}
+                      className="text-ink-500 flex size-11 shrink-0 items-center justify-center text-lg"
+                    >
+                      ×
+                    </button>
+                  )
                 }
               />
             ))}
@@ -682,7 +701,12 @@ export function SessionSetup() {
         )}
       </BottomBar>
 
-      <PlayerEditor open={addOpen} onClose={() => setAddOpen(false)} player={null} />
+      <AddGuest
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        exclude={selected}
+        onPick={(id) => setSelected((cur) => (cur.includes(id) ? cur : [...cur, id]))}
+      />
     </Screen>
   )
 }

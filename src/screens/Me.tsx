@@ -329,7 +329,6 @@ export function Me() {
   const exportBackup = useApp((s) => s.exportBackup)
   const importBackup = useApp((s) => s.importBackup)
   const push = useNav((s) => s.push)
-  const switchTab = useNav((s) => s.switchTab)
   const { theme, setTheme } = useTheme()
 
   const [picking, setPicking] = useState(false)
@@ -519,11 +518,6 @@ export function Me() {
                 )}
                 onClick={() => push({ name: 'profile', playerId: me.id })}
               />
-              <MenuRow
-                title={t('累计排行榜', 'Leaderboard')}
-                hint={t('按球馆分开算', 'Ranked per venue')}
-                onClick={() => push({ name: 'leaderboard' })}
-              />
             </div>
 
             {recent.length > 0 && (
@@ -663,11 +657,6 @@ export function Me() {
                 : t('数据只存在这台手机上，每次打完球导一次', 'Data lives only on this phone — export after every session')
             }
             onClick={() => setBackupOpen(true)}
-          />
-          <MenuRow
-            title={t('球员库', 'Players')}
-            hint={t(`${roster.length} 位球友`, `${roster.length} players`)}
-            onClick={() => switchTab('discover')}
           />
         </div>
 

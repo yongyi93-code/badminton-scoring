@@ -5,13 +5,17 @@ export type Route =
   | { name: 'sessions' }
   | { name: 'discover' }
   | { name: 'me' }
-  | { name: 'players' }
   | { name: 'setup' }
   | { name: 'board'; sessionId: string }
   | { name: 'score'; matchId: string }
   /** 赛后结算：这一场谁赢了、每个人 MMR 变了多少 */
   | { name: 'result'; matchId: string }
-  | { name: 'leaderboard'; sessionId?: string }
+  /*
+   * 排行榜一定带范围：某场球局的，或者某个球馆的。
+   * 没有全员榜 —— 这个 App 不再有「翻一遍所有人」这件事。
+   */
+  | { name: 'leaderboard'; sessionId: string; venue?: undefined }
+  | { name: 'leaderboard'; sessionId?: undefined; venue: string }
   /** 球馆详情。venue 是球局上那段自由文本，归组交给 venueKey */
   | { name: 'venue'; venue: string }
   | { name: 'summary'; sessionId: string }
