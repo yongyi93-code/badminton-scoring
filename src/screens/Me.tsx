@@ -295,12 +295,11 @@ export function Me() {
   const { theme, setTheme } = useTheme()
 
   const [picking, setPicking] = useState(false)
-  const [newSelf, setNewSelf] = useState(false)
   const [selfName, setSelfName] = useState('')
   const [selfGender, setSelfGender] = useState<Gender>('-')
   const addPlayer = useApp((s) => s.addPlayer)
   const claimPlayer = useApp((s) => s.claimPlayer)
-  const releasePlayer = useApp((s) => s.releasePlayer)
+  const updatePlayer = useApp((s) => s.updatePlayer)
   const [authOpen, setAuthOpen] = useState(false)
   const [cloudOpen, setCloudOpen] = useState(false)
   const sync = useSyncStatus()
@@ -331,7 +330,6 @@ export function Me() {
 
   const names = useMemo(() => playerMap(players), [players])
   const me = meId ? names.get(meId) : undefined
-  const roster = players.filter((p) => !p.archived)
 
   const progress = useMemo(
     () => (me ? progressOf(me.id, matches) : null),
@@ -424,8 +422,16 @@ export function Me() {
                     )}
                   </div>
                 </div>
-                <Button size="sm" variant="tertiary" onClick={() => setPicking(true)}>
-                  {t('换人', 'Switch')}
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  onClick={() => {
+                    setSelfName(me.name)
+                    setSelfGender(me.gender)
+                    setPicking(true)
+                  }}
+                >
+                  {t('改名字', 'Edit')}
                 </Button>
               </div>
 
@@ -518,23 +524,16 @@ export function Me() {
           </>
         ) : (
           <Card>
-            <p className="text-title">{t('你是哪一位？', 'Which one are you?')}</p>
+            <p className="text-title">{t('先建一个你自己', 'Create yourself first')}</p>
             <p className="text-ink-500 mt-1 text-label">
               {t(
-                '选一个球员绑在这台手机上，这一页就会显示你自己的段位、战绩和角色。开局时你也会自动在场上。',
-                'Pick a player to link to this phone and this page shows your own rank, record and character. You are also put on court automatically when you start a session.',
+                '填个名字就好。建完这一页会显示你的段位、战绩和角色，开新球局时你也自动在场上。',
+                'Just a name. After that this page shows your rank, record and character, and you are put on court automatically when you start a session.',
               )}
             </p>
-            {/*
-              球员库空着的时候也走同一个入口。原来这里是「先去添加球员」，
-              把人丢到球员库自己想办法 —— 而一个刚注册的新人第一件该做的事
-              是把自己建出来，不是去管理一份名单。
-            */}
             <div className="mt-4">
               <Button block variant="primary" onClick={() => setPicking(true)}>
-                {roster.length === 0
-                  ? t('先建一个「我」', 'Create yourself first')
-                  : t('选一个', 'Pick one')}
+                {t('建一个你自己', 'Create yourself')}
               </Button>
             </div>
           </Card>
@@ -665,126 +664,74 @@ export function Me() {
         </div>
       </Body>
 
-      <Sheet open={picking} onClose={() => setPicking(false)} title={t('你是哪一位？', 'Which one are you?')}>
-        {/*
-          登录之后这一步不只是本机标记了，而是「认领」：
-          账号会写进球员本身、跟着同步出去，别人手机上就知道
-          那个人是有主的，不会再建一个重名的。
-        */}
-        {uid && (
-          <p className="text-ink-500 mb-3 text-caption">
-            {t(
-              '认领之后，别人手机上也能看到这个球员是你，不会再有人重复建一个。',
-              'Once claimed, everyone else sees that this player is you — nobody creates a duplicate.',
-            )}
-          </p>
-        )}
-
-        {newSelf ? (
-          <div className="space-y-4">
-            <Field label={t('你的名字', 'Your name')}>
-              <input
-                className={inputClass}
-                value={selfName}
-                onChange={(e) => setSelfName(e.target.value)}
-                placeholder={t('例如 阿明', 'e.g. Alvin')}
-                autoFocus
-              />
-            </Field>
-            <Field label={t('性别', 'Gender')}>
-              <Segmented
-                value={selfGender}
-                onChange={setSelfGender}
-                options={[
-                  { value: 'M', label: t('男', 'Male') },
-                  { value: 'F', label: t('女', 'Female') },
-                  { value: '-', label: t('不填', 'Skip') },
-                ]}
-              />
-            </Field>
-            <Button
-              variant="primary"
-              block
-              disabled={!selfName.trim()}
-              onClick={() => {
-                const created = addPlayer(selfName.trim(), selfGender)
+      {/*
+        没有「从名单里挑一个」这回事了 —— 谁建的就是谁的。
+        
+        原来这里列出所有球员让你认领自己，是名册时代的做法：
+        那时候是一个人把大家都建好，你再去里面找自己。现在每个人
+        自己注册、自己建自己，这份名单就只剩「让你看见别人」这一个
+        作用了，而那正是要去掉的东西。
+        
+        同一张表单也用来改自己的名字 —— 球员库拿掉之后，
+        这是全 App 唯一能改自己名字的地方，没有它打错一个字就永远错着。
+      */}
+      <Sheet
+        open={picking}
+        onClose={() => setPicking(false)}
+        title={me ? t('改我的名字', 'Edit my name') : t('建一个你自己', 'Create yourself')}
+      >
+        <div className="space-y-4">
+          {!me && (
+            <p className="text-ink-500 text-caption">
+              {t(
+                '填你自己的名字，别人在排行榜和对阵表上看到的就是它。建完就是你的，别人认领不走。',
+                'Use your own name — this is what everyone sees in rankings and line-ups. Once created it is yours; nobody else can take it.',
+              )}
+            </p>
+          )}
+          <Field label={t('你的名字', 'Your name')}>
+            <input
+              className={inputClass}
+              value={selfName}
+              onChange={(e) => setSelfName(e.target.value)}
+              placeholder={t('例如 阿明', 'e.g. Alvin')}
+              autoFocus={!me}
+            />
+          </Field>
+          <Field
+            label={t('性别', 'Gender')}
+            hint={t('混双排场要用，也决定角色是男是女', 'Used for mixed doubles, and it decides your character')}
+          >
+            <Segmented
+              value={selfGender}
+              onChange={setSelfGender}
+              options={[
+                { value: 'M', label: t('男', 'Male') },
+                { value: 'F', label: t('女', 'Female') },
+                { value: '-', label: t('不填', 'Skip') },
+              ]}
+            />
+          </Field>
+          <Button
+            variant="primary"
+            block
+            disabled={!selfName.trim()}
+            onClick={() => {
+              const name = selfName.trim()
+              if (me) {
+                updatePlayer(me.id, { name, gender: selfGender })
+              } else {
+                const created = addPlayer(name, selfGender)
+                // 登录着就把账号写进去：跟着同步出去，别人手机上就知道这个人有主
                 if (uid) claimPlayer(created.id, uid)
                 else setMeId(created.id)
-                setSelfName('')
-                setNewSelf(false)
-                setPicking(false)
-              }}
-            >
-              {t('就是我', "That's me")}
-            </Button>
-            <Button block variant="ghost" onClick={() => setNewSelf(false)}>
-              {t('返回列表', 'Back to the list')}
-            </Button>
-          </div>
-        ) : (
-          <>
-            {roster.length > 0 && (
-              <div className="max-h-[50vh] space-y-2 overflow-y-auto">
-                {roster.map((p) => {
-                  /* 已经被别人认领的不给点 —— 点了也只会把人家挤掉 */
-                  const takenByOther = Boolean(p.ownerId) && p.ownerId !== uid
-                  return (
-                    <button
-                      key={p.id}
-                      disabled={takenByOther}
-                      onClick={() => {
-                        if (uid) claimPlayer(p.id, uid)
-                        else setMeId(p.id)
-                        setPicking(false)
-                      }}
-                      className={
-                        p.id === meId
-                          ? 'border-brand-500 bg-brand-100 flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
-                          : takenByOther
-                            ? 'border-line bg-surface flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left opacity-40'
-                            : 'border-line bg-surface active:bg-fill flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left'
-                      }
-                    >
-                      <Avatar name={p.name} avatar={avatarOf(avatars, p.id)} />
-                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                      {p.id === meId ? (
-                        <Pill tone="brand">{t('就是我', "That's me")}</Pill>
-                      ) : takenByOther ? (
-                        <Pill>{t('别人认领了', 'Taken')}</Pill>
-                      ) : null}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-
-            <Button
-              block
-              variant="primary"
-              className="mt-3"
-              onClick={() => setNewSelf(true)}
-            >
-              {roster.length === 0
-                ? t('建一个球员，就是我', 'Create a player — that is me')
-                : t('都不是，我是新来的', 'None of these — I am new')}
-            </Button>
-
-            {meId && (
-              <Button
-                block
-                variant="soft"
-                className="mt-2"
-                onClick={() => {
-                  if (uid) releasePlayer(uid)
-                  setMeId(null)
-                  setPicking(false)
-                }}
-              >
-                {t('取消绑定', 'Unlink')}
-              </Button>
-            )}
-          </>
-        )}
+              }
+              setPicking(false)
+            }}
+          >
+            {me ? t('保存', 'Save') : t('就是我', "That's me")}
+          </Button>
+        </div>
       </Sheet>
 
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
