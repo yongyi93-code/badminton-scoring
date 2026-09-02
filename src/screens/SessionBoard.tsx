@@ -1,6 +1,6 @@
 import { pick, useT } from '@/lib/i18n'
 import { useEffect, useMemo, useState } from 'react'
-import { rosterForSession, sessionMatches, useApp } from '@/store/useApp'
+import { isFull, rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { matchWinnerBySets } from '@/lib/ranking'
 import {
@@ -14,6 +14,7 @@ import {
   SectionTitle,
   Segmented,
   Sheet,
+  Stepper,
   TopBar,
   cx,
 } from '@/components/ui'
@@ -367,6 +368,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const [showAllFinished, setShowAllFinished] = useState(false)
   const [adding, setAdding] = useState(false)
   const [pairOpen, setPairOpen] = useState(false)
+  const [capOpen, setCapOpen] = useState(false)
 
   // 名册要带上友谊赛的客队 —— 他们不在正式球员名单里，但看板得叫得出名字
   const names = useMemo(
@@ -688,10 +690,12 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
    * 已打场数从 0 算起，公平轮转会优先把他排上去 —— 这正是我们要的。
    */
   const addToSession = (playerId: string) => {
-    const current =
-      useApp.getState().sessions.find((x) => x.id === sessionId)?.playerIds ?? []
-    if (current.includes(playerId)) return
-    updateSession(sessionId, { playerIds: [...current, playerId] })
+    const fresh = useApp.getState().sessions.find((x) => x.id === sessionId)
+    if (!fresh) return
+    if (fresh.playerIds.includes(playerId)) return
+    // 客人一样占位置，上限对他们同样有效
+    if (isFull(fresh)) return
+    updateSession(sessionId, { playerIds: [...fresh.playerIds, playerId] })
     setAdding(false)
   }
 
@@ -789,6 +793,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   }
 
   const courts = Array.from({ length: session.courtCount }, (_, i) => i)
+  const full = isFull(session)
 
   return (
     <Screen>
@@ -972,9 +977,15 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
               <button className="text-brand-600 text-caption" onClick={() => setPairOpen(true)}>
                 {t('配对设置', 'Pairing')}
               </button>
-              <button className="text-brand-600 text-caption" onClick={() => setAdding(true)}>
-                {t('+ 加人', '+ Add')}
-              </button>
+              {full ? (
+                <button className="text-warning-600 text-caption" onClick={() => setCapOpen(true)}>
+                  {t(`已满 ${session.playerIds.length}/${session.maxPlayers}`, `Full ${session.playerIds.length}/${session.maxPlayers}`)}
+                </button>
+              ) : (
+                <button className="text-brand-600 text-caption" onClick={() => setAdding(true)}>
+                  {t('+ 加人', '+ Add')}
+                </button>
+              )}
             </div>
           }
         >
@@ -1209,6 +1220,40 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       </Sheet>
 
       {/* 中途加人 */}
+      {/*
+        人数上限随时改得动：有人临时不来就调小，多订一片场就调大。
+        不做成只有开局的人能改 —— 到了球馆现场，谁手边有手机谁就该能调，
+        为这个加一层权限只会在最忙的时候挡住人。
+      */}
+      <Sheet open={capOpen} onClose={() => setCapOpen(false)} title={t('人数上限', 'Player limit')}>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Stepper
+              value={session.maxPlayers ?? 0}
+              onChange={(v) =>
+                updateSession(sessionId, { maxPlayers: v > 0 ? v : undefined })
+              }
+              min={0}
+              max={40}
+            />
+            <span className="text-ink-500 text-label">
+              {session.maxPlayers
+                ? t(`现在 ${session.playerIds.length}/${session.maxPlayers} 人`, `${session.playerIds.length}/${session.maxPlayers} now`)
+                : t('不限', 'No limit')}
+            </span>
+          </div>
+          <p className="text-ink-500 text-caption">
+            {t(
+              '满了之后别人就加不进来了。调到 0 就是不限。已经在里面的人不会被踢出去 —— 上限调小只是不再放新人进来。',
+              'Nobody can join once it is full. Set it to 0 for no limit. Lowering it never removes anyone already in — it just stops new people joining.',
+            )}
+          </p>
+          <Button block variant="soft" onClick={() => setCapOpen(false)}>
+            {t('好了', 'Done')}
+          </Button>
+        </div>
+      </Sheet>
+
       <Sheet open={pairOpen} onClose={() => setPairOpen(false)} title={t('怎么配对', 'Pairing')}>
         <Segmented
           value={pairingMode}

@@ -75,6 +75,8 @@ export function SessionSetup() {
   const [date, setDate] = useState(todayISO())
   const [venue, setVenue] = useState(lastVenue)
   const [courtCount, setCourtCount] = useState(lastCourts)
+  /** 人数上限，0 = 不限 */
+  const [maxPlayers, setMaxPlayers] = useState(0)
   const [defaultType, setDefaultType] = useState<MatchType>('doubles')
   const [pairingMode, setPairingMode] = useState<PairingMode>('balanced')
   const [pointsToWin, setPointsToWin] = useState(DEFAULT_RULES.pointsToWin)
@@ -209,6 +211,7 @@ export function SessionSetup() {
       venue,
       courtCount,
       playerIds: selected,
+      maxPlayers: maxPlayers > 0 ? maxPlayers : undefined,
       createdBy: meId ?? undefined,
       defaultType,
       rules: { pointsToWin, winBy2, bestOf, cap: capFor(pointsToWin) },
@@ -296,6 +299,47 @@ export function SessionSetup() {
               <Stepper value={courtCount} onChange={setCourtCount} min={1} max={8} />
             </Field>
           </div>
+
+          {/*
+            人数上限。默认不限 —— 大多数时候没人在乎，而一个默认就卡着的
+            上限只会让人到了球馆才发现加不进来。
+            给一个「按场地算」的快捷值：每片场 4 个人是双打排满的数。
+          */}
+          <Field
+            label={t('人数上限', 'Player limit')}
+            hint={
+              maxPlayers > 0
+                ? t(
+                    `满 ${maxPlayers} 人之后别人就加不进来了，随时可以改`,
+                    `Nobody can join past ${maxPlayers}. You can change it any time.`,
+                  )
+                : t(
+                    '不限：谁都能加进来。场地订死了、钱要 AA 的话，设一个上限',
+                    'No limit — anyone can join. Set one if courts are booked or you split the cost.',
+                  )
+            }
+          >
+            <div className="flex items-center gap-3">
+              <Stepper
+                value={maxPlayers}
+                onChange={setMaxPlayers}
+                min={0}
+                max={40}
+                step={1}
+              />
+              <span className="text-ink-500 text-label">
+                {maxPlayers > 0 ? t(`${maxPlayers} 人`, `${maxPlayers} max`) : t('不限', 'No limit')}
+              </span>
+              {maxPlayers !== courtCount * 4 && (
+                <button
+                  className="text-brand-600 ml-auto text-xs"
+                  onClick={() => setMaxPlayers(courtCount * 4)}
+                >
+                  {t(`按场地算（${courtCount * 4} 人）`, `Fit the courts (${courtCount * 4})`)}
+                </button>
+              )}
+            </div>
+          </Field>
 
           <Field
             label={t('球馆', 'Venue')}
