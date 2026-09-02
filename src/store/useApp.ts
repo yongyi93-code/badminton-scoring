@@ -105,6 +105,19 @@ type AppState = {
    * 没有从别人那里认领过来这回事，也就没有松开这一说。
    */
   claimPlayer: (playerId: string, ownerId: string) => void
+  /**
+   * 换了设备之后，重新认出「我是谁」。
+   *
+   * meId 只存在这台设备上，ownerId 则跟着球员同步到云端。换台手机、
+   * 换个浏览器、甚至只是从 Safari 标签页换成主屏幕图标（iOS 上这两者
+   * 的存储是分开的两份），meId 就是空的 —— 而球员本身已经从云端拉
+   * 回来了。少了这一步，界面会说「还没建角色」，人自然就再建一个，
+   * 于是同一个人在排名里出现两次，两边的场次还各算各的。
+   *
+   * 每次拉完云端都调一次：realtime 推过来、切回前台重拉，走的都是
+   * 同一条路，所以这里挂一次就够。
+   */
+  adoptMe: (ownerId: string | null) => void
   addPlayer: (name: string, gender: Gender) => Player
   updatePlayer: (id: string, patch: Partial<Omit<Player, 'id'>>) => void
   setPlayerArchived: (id: string, archived: boolean) => void
@@ -173,6 +186,37 @@ export const useApp = create<AppState>()(
           ),
           meId: playerId,
         }))
+      },
+
+      adoptMe(ownerId) {
+        set((st) => {
+          // 云端有一个人挂着这个账号 —— 那就是我，不管这台设备原来指着谁
+          const mine = ownerId
+            ? st.players.find((p) => p.ownerId === ownerId && !p.archived)
+            : undefined
+          if (mine) return mine.id === st.meId ? {} : { meId: mine.id }
+
+          const current = st.meId ? st.players.find((p) => p.id === st.meId) : undefined
+          // 指着一个云端已经没有的人，就别再指了，让界面老实说「还没建角色」
+          if (st.meId && !current) return { meId: null }
+
+          /*
+           * 这台设备认定的那个人还没有主 —— 多半是「先建角色、后登录」。
+           * 顺手盖个章，下次换设备才认得回来。
+           *
+           * 代价说清楚：要是有人借别人的手机登录自己的账号，而那台手机
+           * 上的人从来没登录过，会被盖成他的。按「谁创建就谁的」这条规则
+           * 这没法完全避免 —— 但比每换一次设备就多出一个自己好得多。
+           */
+          if (ownerId && current && !current.ownerId) {
+            return {
+              players: st.players.map((p) =>
+                p.id === current.id ? { ...p, ownerId } : p,
+              ),
+            }
+          }
+          return {}
+        })
       },
 
       addPlayer(name, gender) {

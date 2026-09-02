@@ -200,6 +200,36 @@ describe('登录之后本机再改', () => {
 
     expect(cloud.upserts).toEqual([])
   })
+
+  /*
+   * 换设备之后认回自己 —— 这一环断过：
+   * 在浏览器里注册好、加入了球局，换到主屏幕图标（iOS 上是另一份存储）
+   * 重新登录，自己的角色就不见了，人只好再建一个，排名里出现两个同名的。
+   *
+   * meId 只在本机，ownerId 跟着球员同步。拉完云端必须把这两头接上。
+   */
+  it('拉完云端会认回挂着这个账号的自己', async () => {
+    await startSync()
+    cloud.session = { user: { id: 'uid-1' } }
+    cloud.rows = [
+      {
+        kind: 'player',
+        id: 'me-1',
+        data: { id: 'me-1', name: 'Yy1', gender: 'M', ownerId: 'uid-1' },
+      },
+      {
+        kind: 'player',
+        id: 'other-1',
+        data: { id: 'other-1', name: '\u963f\u4f1f', gender: 'M', ownerId: 'uid-9' },
+      },
+    ]
+    useApp.setState({ meId: null })
+
+    const { pullAll } = await import('@/lib/sync')
+    await pullAll()
+
+    expect(useApp.getState().meId).toBe('me-1')
+  })
 })
 
 /*

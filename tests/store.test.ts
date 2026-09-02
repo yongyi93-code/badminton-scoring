@@ -276,3 +276,85 @@ describe('球局的人数上限', () => {
     expect(useApp.getState().joinSession(s.id, someone('d'))).toBe(true)
   })
 })
+
+/*
+ * 这一组钉的是一个真实发生过的 bug：
+ *
+ * 在浏览器里注册、建了角色、加入了球局；换到主屏幕图标打开（iOS 上
+ * 那是另一份存储）重新登录之后，自己的角色不见了 —— 球局里那个人
+ * 明明还在。于是又建了一个，排名里出现两个同名的人，场次各算各的。
+ *
+ * 根因：meId 只存在设备本地，从云端拉回来的球员没有任何东西把它
+ * 重新接上。ownerId 一直在球员身上、也一直同步着，只是没人读。
+ */
+describe('换设备之后认回自己', () => {
+  /** 模拟「云端拉下来一批球员，本机的 meId 是空的」 */
+  const arriveFromCloud = (players: ReturnType<typeof useApp.getState>['players']) =>
+    useApp.setState({ players, meId: null })
+
+  it('认得出挂着这个账号的那个人', () => {
+    const me = useApp.getState().addPlayer('Yy1', 'M')
+    useApp.getState().claimPlayer(me.id, 'uid-1')
+    const cloud = useApp.getState().players
+
+    arriveFromCloud(cloud)
+    expect(useApp.getState().meId).toBeNull()
+
+    useApp.getState().adoptMe('uid-1')
+    expect(useApp.getState().meId).toBe(me.id)
+  })
+
+  it('没登录就认不出来，也不会乱认一个', () => {
+    const me = useApp.getState().addPlayer('Yy1', 'M')
+    useApp.getState().claimPlayer(me.id, 'uid-1')
+    arriveFromCloud(useApp.getState().players)
+
+    useApp.getState().adoptMe(null)
+    expect(useApp.getState().meId).toBeNull()
+  })
+
+  it('别人的账号不会把我认走', () => {
+    const a = useApp.getState().addPlayer('阿伟', 'M')
+    useApp.getState().claimPlayer(a.id, 'uid-1')
+    arriveFromCloud(useApp.getState().players)
+
+    useApp.getState().adoptMe('uid-2')
+    expect(useApp.getState().meId).toBeNull()
+  })
+
+  it('先建角色后登录的，顺手盖上章 —— 否则下次换设备照样认不回来', () => {
+    const me = useApp.getState().addPlayer('Yy1', 'M')
+    useApp.getState().setMeId(me.id)   // 没登录，只有本机标记
+    expect(useApp.getState().players[0]?.ownerId).toBeUndefined()
+
+    useApp.getState().adoptMe('uid-1')
+    expect(useApp.getState().players[0]?.ownerId).toBe('uid-1')
+    expect(useApp.getState().meId).toBe(me.id)
+  })
+
+  it('不抢别人已经盖过章的人', () => {
+    const a = useApp.getState().addPlayer('阿伟', 'M')
+    useApp.getState().claimPlayer(a.id, 'uid-1')
+    useApp.setState({ meId: a.id })
+
+    useApp.getState().adoptMe('uid-2')
+    expect(useApp.getState().players.find((p) => p.id === a.id)?.ownerId).toBe('uid-1')
+  })
+
+  it('指着一个云端已经没有的人，就清掉 —— 别让界面拿着空指针', () => {
+    useApp.setState({ players: [], meId: 'player-已经删了' })
+    useApp.getState().adoptMe('uid-1')
+    expect(useApp.getState().meId).toBeNull()
+  })
+
+  it('已经认对了就不动，重复拉云端不会来回改', () => {
+    const me = useApp.getState().addPlayer('Yy1', 'M')
+    useApp.getState().claimPlayer(me.id, 'uid-1')
+    const before = useApp.getState().players
+
+    useApp.getState().adoptMe('uid-1')
+    expect(useApp.getState().meId).toBe(me.id)
+    // 没有产生新的 players 数组 —— 不然每次拉云端都会推一次没意义的改动
+    expect(useApp.getState().players).toBe(before)
+  })
+})

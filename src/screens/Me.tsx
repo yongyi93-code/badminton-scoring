@@ -806,10 +806,25 @@ export function Me() {
               if (me) {
                 updatePlayer(me.id, { name, gender: selfGender })
               } else {
-                const created = addPlayer(name, selfGender)
-                // 登录着就把账号写进去：跟着同步出去，别人手机上就知道这个人有主
-                if (uid) claimPlayer(created.id, uid)
-                else setMeId(created.id)
+                /*
+                 * 建之前先看云端是不是已经有「我」了。
+                 *
+                 * 拉云端要等网络，这几秒里界面显示的是「还没建角色」，
+                 * 人很自然就点了建 —— 于是同一个账号建出第二个自己。
+                 * 这里认一下就能挡掉：有主的那个才是我，名字按刚填的改。
+                 */
+                const existing = uid
+                  ? players.find((p) => p.ownerId === uid && !p.archived)
+                  : undefined
+                if (existing) {
+                  setMeId(existing.id)
+                  updatePlayer(existing.id, { name, gender: selfGender })
+                } else {
+                  const created = addPlayer(name, selfGender)
+                  // 登录着就把账号写进去：跟着同步出去，别人手机上就知道这个人有主
+                  if (uid) claimPlayer(created.id, uid)
+                  else setMeId(created.id)
+                }
               }
               setPicking(false)
             }}

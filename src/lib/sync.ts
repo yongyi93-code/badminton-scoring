@@ -138,6 +138,17 @@ async function needsSignIn(): Promise<string | null> {
   )
 }
 
+/** 当前登录账号的 id。没登录、问不出来都算 null */
+async function currentUid(): Promise<string | null> {
+  if (!supabase) return null
+  try {
+    const { data } = await supabase.auth.getSession()
+    return data.session?.user?.id ?? null
+  } catch {
+    return null
+  }
+}
+
 function readable(message: string): string {
   const m = message.toLowerCase()
   if (m.includes('jwt') || m.includes('not authenticated')) {
@@ -228,6 +239,17 @@ export async function pullAll(): Promise<PullOutcome> {
     pushed = new Map(
       [...rowsOf()].map(([k, r]) => [k, JSON.stringify(r.data)]),
     )
+
+    /*
+     * 认一下「我是谁」。
+     *
+     * 必须放在 applying 关掉、基线也对齐之后：这一步偶尔会给球员盖上
+     * ownerId（先建角色后登录的情况），那是一次真正的本机改动，得让它
+     * 照常推上去。放在 applying 里面的话，订阅会把它当成远端写入跳过，
+     * 章盖了却传不出去，换台设备照样认不出来。
+     */
+    useApp.getState().adoptMe(await currentUid())
+
     pending = 0
     setStatus({ state: 'idle', pending: 0 })
     return { ok: true, empty: false }
