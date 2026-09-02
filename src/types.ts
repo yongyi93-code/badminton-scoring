@@ -203,6 +203,17 @@ export type Session = {
   pairingMode?: PairingMode
   /** 友谊赛的两队信息，format === 'friendly' 时才有 */
   friendly?: FriendlySetup
+
+  /**
+   * 谁开的这个局（球员 id）。
+   *
+   * 球局现在是公开的：任何人开局，所有人都能在首页看见「谁在哪开了局」，
+   * 自己点进去加入。列表上得写清楚是谁开的，不然一堆同一个球馆的局
+   * 根本分不出该进哪个。
+   *
+   * 可选：这之前建的球局没有这个字段，照样能打开。
+   */
+  createdBy?: string
 }
 
 /** 旧数据没有 format 字段，统一从这里取，避免各处散落 ?? 'free' */

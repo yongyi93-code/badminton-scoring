@@ -164,7 +164,22 @@ export function VenueDetail({ venue }: { venue: string }) {
           </button>
         )}
 
-        <SectionTitle>{t('这个馆的排行榜', 'Ranked at this venue')}</SectionTitle>
+        {/*
+          这里是一份速览。想按周期、按 MMR 换口径看的，进完整那一屏 ——
+          球馆榜和球局榜是全 App 仅剩的两个排名入口，得留得住。
+        */}
+        <SectionTitle
+          right={
+            <button
+              className="text-brand-600 text-xs"
+              onClick={() => push({ name: 'leaderboard', venue: key })}
+            >
+              {t('完整排行榜 ›', 'Full leaderboard ›')}
+            </button>
+          }
+        >
+          {t('这个馆的排行榜', 'Ranked at this venue')}
+        </SectionTitle>
         <RankTable
           ranked={ranked}
           playersById={names}

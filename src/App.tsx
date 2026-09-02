@@ -4,7 +4,6 @@ import { Home } from '@/screens/Home'
 import { Sessions } from '@/screens/Sessions'
 import { Discover } from '@/screens/Discover'
 import { Me } from '@/screens/Me'
-import { Players } from '@/screens/Players'
 import { SessionSetup } from '@/screens/SessionSetup'
 import { SessionBoard } from '@/screens/SessionBoard'
 import { ScoreBoard } from '@/screens/ScoreBoard'
@@ -55,8 +54,6 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <Discover />
     case 'me':
       return <Me />
-    case 'players':
-      return <Players />
     case 'setup':
       return <SessionSetup />
     case 'board':
@@ -66,7 +63,11 @@ function screenFor(route: ReturnType<typeof useRoute>) {
     case 'result':
       return <MatchResult matchId={route.matchId} />
     case 'leaderboard':
-      return <Leaderboard sessionId={route.sessionId} />
+      return route.sessionId !== undefined ? (
+        <Leaderboard sessionId={route.sessionId} />
+      ) : (
+        <Leaderboard venue={route.venue} />
+      )
     case 'venue':
       return <VenueDetail venue={route.venue} />
     case 'summary':
