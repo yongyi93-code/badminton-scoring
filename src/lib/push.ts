@@ -127,10 +127,24 @@ function readableDbError(message: string): string {
       'The subscription table does not exist yet — run 002-push.sql in Supabase',
     )
   }
-  if (m.includes('permission denied') || m.includes('row-level security')) {
+  /*
+   * 这两句必须分开说。
+   *
+   * 授权（grant）和策略（policy）是两道不同的门，Postgres 报出来的
+   * 错却很像。合成一句「grant 那句没跑到」的代价是真发生过的：
+   * 那次实际上是策略的问题，而这句话把人指去查授权，查了半天全都
+   * 正常，线索就断在这里。
+   */
+  if (m.includes('permission denied')) {
     return pick(
-      '数据库不让写订阅表 —— 002-push.sql 里的 grant 那句可能没跑到',
-      'The database refused the write — the grant line in 002-push.sql may not have run',
+      '数据库不让碰订阅表 —— 002-push.sql 里的 grant 那几句没跑全，重跑一遍',
+      'The database refused access — the grant lines in 002-push.sql did not all run; re-run it',
+    )
+  }
+  if (m.includes('row-level security')) {
+    return pick(
+      '订阅表的策略挡住了 —— 重跑一遍 002-push.sql（多半是缺了 user_id 那一列）',
+      'A row-level security policy blocked it — re-run 002-push.sql (the user_id column is probably missing)',
     )
   }
   return message
