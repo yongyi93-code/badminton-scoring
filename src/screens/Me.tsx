@@ -1,5 +1,5 @@
 import { LANG_LABELS, type Lang, useLang, useT } from '@/lib/i18n'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { avatarOf, playerMap, useApp, type Backup } from '@/store/useApp'
 import type { Gender } from '@/types'
@@ -28,6 +28,15 @@ import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
 import { cloudReady } from '@/lib/supabase'
 import { signIn, signOut, signUp, useAuth } from '@/store/useAuth'
+import {
+  disablePush,
+  enablePush,
+  initPush,
+  isStandalone,
+  pushConfigured,
+  testNotification,
+  usePushState,
+} from '@/lib/push'
 import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
 
 const ARROW = (
@@ -324,6 +333,12 @@ export function Me() {
   const [backupOpen, setBackupOpen] = useState(false)
   const [confirmWipe, setConfirmWipe] = useState(false)
   const resetAll = useApp((s) => s.resetAll)
+  const pushState = usePushState()
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushNote, setPushNote] = useState<string | null>(null)
+  useEffect(() => {
+    void initPush()
+  }, [])
   const [updating, setUpdating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -618,6 +633,76 @@ export function Me() {
               </div>
             }
           />
+          {/*
+            开局提醒。没配 VAPID 公钥时整行不出现 —— 与其摆一个
+            点了永远失败的开关，不如当它不存在。
+          */}
+          {pushConfigured() && (
+            <MenuRow
+              title={t('开局提醒', 'Session alerts')}
+              hint={
+                pushNote ??
+                (pushState === 'on'
+                  ? t('有人开球局时会通知你', 'You get a notification when someone starts a session')
+                  : pushState === 'denied'
+                    ? t('通知被关掉了，要去手机设置里开', 'Notifications are off — turn them on in your phone settings')
+                    : pushState === 'unsupported'
+                      ? isStandalone()
+                        ? t('这台手机不支持', 'Not supported on this phone')
+                        : t('要从主屏幕那个图标打开才能开', 'Open RALLY from the Home Screen icon to turn this on')
+                      : t('有人开球局时通知我', 'Tell me when someone starts a session'))
+              }
+              right={
+                <Button
+                  size="sm"
+                  variant={pushState === 'on' ? 'soft' : 'primary'}
+                  disabled={pushBusy || pushState === 'denied' || pushState === 'unsupported'}
+                  onClick={() => {
+                    setPushNote(null)
+                    setPushBusy(true)
+                    const job =
+                      pushState === 'on' ? disablePush() : enablePush(meId)
+                    void job.then((r) => {
+                      setPushBusy(false)
+                      if (!r.ok) setPushNote(r.error)
+                    })
+                  }}
+                >
+                  {pushBusy
+                    ? t('稍等…', 'Wait…')
+                    : pushState === 'on'
+                      ? t('关掉', 'Turn off')
+                      : t('打开', 'Turn on')}
+                </Button>
+              }
+            />
+          )}
+          {/*
+            开着的时候给一条自测入口。整条链路有三段（权限 → SW 弹通知
+            → 服务端推过来），这个按钮只走前两段：它弹得出来就说明
+            手机这边没问题，剩下的一定是服务端那一段 —— 出问题时
+            这一刀能省掉大半的猜测。
+          */}
+          {pushConfigured() && pushState === 'on' && (
+            <MenuRow
+              title={t('发一条测试通知', 'Send a test notification')}
+              hint={t('只在这台手机上弹，不惊动别人', 'Only pops on this phone — nobody else is bothered')}
+              right={
+                <Button
+                  size="sm"
+                  variant="soft"
+                  onClick={() => {
+                    setPushNote(null)
+                    void testNotification().then((r) => {
+                      if (!r.ok) setPushNote(r.error)
+                    })
+                  }}
+                >
+                  {t('试一下', 'Try it')}
+                </Button>
+              }
+            />
+          )}
           <MenuRow
             title={t('深色模式', 'Dark mode')}
             hint={theme === 'dark' ? t('现在是深色', 'Currently dark') : t('现在是浅色', 'Currently light')}
