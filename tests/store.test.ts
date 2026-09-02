@@ -209,3 +209,79 @@ describe('自己加入别人开的球局', () => {
     ).toContain(me.id)
   })
 })
+
+/*
+ * 人数上限必须在 store 里挡，不能只在界面上挡：界面那份是同步过来的
+ * 数据算出来的，随时可能过时 —— 两台手机都看到「还剩 1 个位置」是常态。
+ */
+describe('球局的人数上限', () => {
+  const openWithCap = (cap?: number) => {
+    const host = useApp.getState().addPlayer('阿伟', 'M')
+    const s = useApp.getState().createSession({
+      date: '2026-09-02',
+      venue: '中央球馆',
+      courtCount: 1,
+      playerIds: [host.id],
+      defaultType: 'doubles',
+      createdBy: host.id,
+      maxPlayers: cap,
+    })
+    return s
+  }
+  const someone = (name: string) => useApp.getState().addPlayer(name, 'M').id
+
+  it('没设上限就是不限，加多少个都行', () => {
+    const s = openWithCap()
+    for (const n of ['a', 'b', 'c', 'd', 'e']) {
+      expect(useApp.getState().joinSession(s.id, someone(n))).toBe(true)
+    }
+    expect(useApp.getState().sessions[0].playerIds).toHaveLength(6)
+  })
+
+  it('满了就加不进来，而且明确返回 false', () => {
+    const s = openWithCap(3)
+    expect(useApp.getState().joinSession(s.id, someone('b'))).toBe(true)
+    expect(useApp.getState().joinSession(s.id, someone('c'))).toBe(true)
+    // 第 4 个人：满了
+    expect(useApp.getState().joinSession(s.id, someone('d'))).toBe(false)
+    expect(useApp.getState().sessions[0].playerIds).toHaveLength(3)
+  })
+
+  /*
+   * 已经在里面的人再点一次不该被上限挡掉 —— 同步会把同一条改动
+   * 送回来，那时候人数正好是满的，挡掉就等于报一次假的「已满」。
+   */
+  it('满了之后，已经在里面的人再加一次仍然算成功', () => {
+    const s = openWithCap(2)
+    const me = someone('b')
+    expect(useApp.getState().joinSession(s.id, me)).toBe(true)
+    expect(useApp.getState().joinSession(s.id, me)).toBe(true)
+    expect(useApp.getState().sessions[0].playerIds).toHaveLength(2)
+  })
+
+  /*
+   * 上限调小不该把人踢出去：他可能已经打了几场，
+   * 踢出去那些记录就挂着一个不在名单里的人。
+   */
+  it('上限调小，已经在里面的人一个都不会掉', () => {
+    const s = openWithCap(6)
+    const ids = ['b', 'c', 'd'].map(someone)
+    for (const id of ids) useApp.getState().joinSession(s.id, id)
+    expect(useApp.getState().sessions[0].playerIds).toHaveLength(4)
+
+    useApp.getState().updateSession(s.id, { maxPlayers: 2 })
+    expect(useApp.getState().sessions[0].playerIds).toHaveLength(4)
+    // 但新人再也进不来了
+    expect(useApp.getState().joinSession(s.id, someone('e'))).toBe(false)
+  })
+
+  it('有人退出之后位置就空出来了', () => {
+    const s = openWithCap(2)
+    const b = someone('b')
+    expect(useApp.getState().joinSession(s.id, b)).toBe(true)
+    expect(useApp.getState().joinSession(s.id, someone('c'))).toBe(false)
+
+    useApp.getState().leaveSession(s.id, b)
+    expect(useApp.getState().joinSession(s.id, someone('d'))).toBe(true)
+  })
+})

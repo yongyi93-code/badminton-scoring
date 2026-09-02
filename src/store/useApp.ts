@@ -30,6 +30,14 @@ import {
 
 export const STORAGE_KEY = 'badminton-scoring-v1'
 
+/** 人数满了没。maxPlayers 缺失或者 0 都当不限 —— 老数据没有这个字段 */
+export const isFull = (session: Pick<Session, 'playerIds' | 'maxPlayers'>) =>
+  Boolean(session.maxPlayers) && session.playerIds.length >= session.maxPlayers!
+
+/** 还能进几个人；不限时返回 null */
+export const spotsLeft = (session: Pick<Session, 'playerIds' | 'maxPlayers'>) =>
+  session.maxPlayers ? Math.max(0, session.maxPlayers - session.playerIds.length) : null
+
 const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -48,6 +56,8 @@ export type SessionDraft = {
   rotationPerPlayer?: number
   pairingMode?: PairingMode
   friendly?: FriendlySetup
+  /** 最多几个人，0 = 不限 */
+  maxPlayers?: number
   /** 谁开的（球员 id）。首页那份「谁在哪开了局」要显示 */
   createdBy?: string
 }
@@ -106,12 +116,15 @@ type AppState = {
   reopenSession: (id: string) => void
   deleteSession: (id: string) => void
   /**
-   * 自己加入一个别人开的球局。
+   * 自己加入一个别人开的球局。返回加没加进去。
    *
    * 幂等：已经在里面了就什么都不做 —— 两台手机同时点、
    * 或者同步把同一条改动送回来时，不能把人加两遍。
+   *
+   * 人数上限在这里挡，不是只在界面上挡：界面那份是从同步过来的
+   * 数据算的，可能已经过时了，而这里读的是当下的 store。
    */
-  joinSession: (sessionId: string, playerId: string) => void
+  joinSession: (sessionId: string, playerId: string) => boolean
   /** 自己退出（还没打过的情况下）。打过的人退不掉，战绩要对得上 */
   leaveSession: (sessionId: string, playerId: string) => void
 
@@ -234,6 +247,7 @@ export const useApp = create<AppState>()(
           rotationPerPlayer: draft.rotationPerPlayer,
           pairingMode: draft.pairingMode ?? 'balanced',
           friendly: draft.friendly,
+          maxPlayers: draft.maxPlayers,
           createdBy: draft.createdBy,
         }
         set((s) => ({ sessions: [session, ...s.sessions] }))
@@ -283,6 +297,10 @@ export const useApp = create<AppState>()(
       },
 
       joinSession(sessionId, playerId) {
+        const session = get().sessions.find((x) => x.id === sessionId)
+        if (!session) return false
+        if (session.playerIds.includes(playerId)) return true // 已经在里面了
+        if (isFull(session)) return false
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === sessionId && !x.playerIds.includes(playerId)
@@ -290,6 +308,7 @@ export const useApp = create<AppState>()(
               : x,
           ),
         }))
+        return true
       },
 
       leaveSession(sessionId, playerId) {

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useT } from '@/lib/i18n'
-import { useApp } from '@/store/useApp'
+import { isFull, spotsLeft, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Button, Card, Pill, SectionTitle } from '@/components/ui'
 import { formatDate } from '@/lib/format'
@@ -45,9 +45,11 @@ export function OpenSessions() {
 
   return (
     <>
-      <SectionTitle>{t('别人开的局', 'Sessions you can join')}</SectionTitle>
+      <SectionTitle>{t('别人开的局', 'Other sessions')}</SectionTitle>
       {others.map((s) => {
         const host = s.createdBy ? nameOf.get(s.createdBy) : undefined
+        const full = isFull(s)
+        const left = spotsLeft(s)
         return (
           /*
             卡片本身不做成可点的。Card 带 onClick 时渲染的是 <button>，
@@ -67,11 +69,22 @@ export function OpenSessions() {
                   {host
                     ? t(`${host} 开的 · `, `${host} started it · `)
                     : `${formatDate(s.date)} · `}
-                  {t(
-                    `${s.playerIds.length} 人 · 已打 ${playedIn(s.id)} 场`,
-                    `${s.playerIds.length} players · ${playedIn(s.id)} played`,
-                  )}
+                  {s.maxPlayers
+                    ? t(
+                        `${s.playerIds.length}/${s.maxPlayers} 人 · 已打 ${playedIn(s.id)} 场`,
+                        `${s.playerIds.length}/${s.maxPlayers} players · ${playedIn(s.id)} played`,
+                      )
+                    : t(
+                        `${s.playerIds.length} 人 · 已打 ${playedIn(s.id)} 场`,
+                        `${s.playerIds.length} players · ${playedIn(s.id)} played`,
+                      )}
                 </p>
+                {/* 还剩一两个位置的时候说出来，比一个数字更能催人 */}
+                {left !== null && left > 0 && left <= 2 && (
+                  <p className="text-warning-600 mt-0.5 text-caption">
+                    {t(`只剩 ${left} 个位置`, `Only ${left} ${left === 1 ? 'spot' : 'spots'} left`)}
+                  </p>
+                )}
               </button>
               {/*
                 加入是这张卡的重点，不能藏进详情页里 ——
@@ -79,18 +92,23 @@ export function OpenSessions() {
               */}
               <Button
                 size="sm"
-                variant="primary"
+                variant={full ? 'soft' : 'primary'}
                 className="shrink-0"
+                disabled={full}
                 onClick={() => {
                   if (!meId) {
                     switchTab('me')
                     return
                   }
-                  joinSession(s.id, meId)
-                  push({ name: 'board', sessionId: s.id })
+                  /*
+                   * 上限由 store 判定，不看这里算出来的 full ——
+                   * 界面这份是同步过来的数据，可能已经过时；
+                   * 加不进去就别跳转，留在原地能看见「已满」。
+                   */
+                  if (joinSession(s.id, meId)) push({ name: 'board', sessionId: s.id })
                 }}
               >
-                {t('加入', 'Join')}
+                {full ? t('已满', 'Full') : t('加入', 'Join')}
               </Button>
             </div>
             {!meId && (
