@@ -85,6 +85,20 @@ alter table public.records enable row level security;
 -- ------------------------------------------------------------------
 grant select, insert, update on public.records to authenticated;
 
+-- ------------------------------------------------------------------
+-- service_role 也要单独授权 —— 「绕过 RLS」不等于「什么都能碰」
+--
+-- Edge Function 用的是 service_role。它确实绕过 RLS（策略拦不住它），
+-- 但表授权是另一道门，照样拦得住 —— 而报出来的错跟没登录、
+-- 没策略长得一模一样。
+--
+-- 这一条漏掉过一次，代价是开局提醒整个发不出去：函数读不到
+-- push_subscribers，日志里只有一句 permission denied，
+-- 而后台看过去 RLS、策略、grant（给 authenticated 的那几条）
+-- 全都正常。
+-- ------------------------------------------------------------------
+grant select on public.records to service_role;
+
 drop policy if exists "登录的人可以读" on public.records;
 create policy "登录的人可以读"
   on public.records for select
@@ -126,20 +140,22 @@ $$;
 -- 到底成没成 —— 手机上那条「数据库不让写」的错误，根源多半就是
 -- 只跑了建表、权限那几句没跑到。
 --
--- 应该看到 7 行：
---   rls    一行 true
---   grant  三行 SELECT / INSERT / UPDATE（授权，缺了就 permission denied）
---   policy 三行 读 / 新增 / 修改（策略）
+-- 应该看到 8 行：
+--   rls                   一行 true
+--   grant:authenticated   三行 SELECT / INSERT / UPDATE（缺了就 permission denied）
+--   grant:service_role    一行 SELECT（缺了 Edge Function 读不到开局的人叫什么）
+--   policy                三行 读 / 新增 / 修改
 --
--- grant 那三行少了任何一行，写入都会失败 —— 而且失败的样子和
+-- grant 那几行少了任何一行，对应的操作都会失败 —— 而且失败的样子和
 -- 「策略没建好」一模一样，光看手机上的报错分不出来。
 -- ------------------------------------------------------------------
 select 'rls' as 项目, relrowsecurity::text as 值
 from pg_class where oid = 'public.records'::regclass
 union all
-select 'grant', privilege_type
+select 'grant:' || grantee, privilege_type
 from information_schema.role_table_grants
 where table_schema = 'public' and table_name = 'records'
-  and grantee = 'authenticated'
+  and grantee in ('authenticated', 'service_role')
+  and privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
 union all
 select 'policy', polname from pg_policy where polrelid = 'public.records'::regclass;

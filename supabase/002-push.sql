@@ -28,9 +28,26 @@ create table if not exists public.push_subscribers (
 --
 -- 为什么不给 select：订阅表里是每个人的推送地址，属于该藏起来的东西。
 -- 而客户端根本不需要读它 —— 它只管写自己那条。真正要读全表的是
--- Edge Function，那边用 service_role，绕过 RLS。
+-- Edge Function。
 -- ------------------------------------------------------------------
 grant insert, update, delete on public.push_subscribers to authenticated;
+
+-- ------------------------------------------------------------------
+-- service_role：Edge Function 靠它读到所有人的订阅
+--
+-- 这一条最初漏了，推送整个发不出去，而且极难认：
+-- 「service_role 绕过 RLS」是真的，但绕过的只有策略这道门，
+-- 表授权那道门照样把它挡在外面 —— 报的错跟没登录、没策略
+-- 长得一模一样。后台一路看过去 RLS 开着、三条策略齐全、
+-- 给 authenticated 的 grant 也在，全都正常，就是读不到。
+--
+-- delete 也要给：推不动的死订阅（410 Gone）由函数自己清掉。
+-- ------------------------------------------------------------------
+grant select, insert, update, delete on public.push_subscribers to service_role;
+
+-- 让 PostgREST 立刻重新认一遍权限，不用等它自己刷新缓存 ——
+-- 否则刚 grant 完那几分钟，函数拿到的还是「没权限」
+notify pgrst, 'reload schema';
 
 alter table public.push_subscribers enable row level security;
 
@@ -56,13 +73,18 @@ create policy "登录的人可以退订"
 -- ------------------------------------------------------------------
 -- 跑完对一下账
 --
--- 应该看到 4 行：rls 一行 true，grant 三行（INSERT / UPDATE / DELETE）。
--- 没有 SELECT 是对的 —— 见上面。
+-- 应该看到 8 行：
+--   rls                   一行 true
+--   grant:authenticated   三行 INSERT / UPDATE / DELETE
+--                         （没有 SELECT 是对的 —— 客户端不该读别人的订阅）
+--   grant:service_role    四行 SELECT / INSERT / UPDATE / DELETE
+--                         （SELECT 缺了，开局提醒一条都发不出去）
 -- ------------------------------------------------------------------
 select 'rls' as 项目, relrowsecurity::text as 值
 from pg_class where oid = 'public.push_subscribers'::regclass
 union all
-select 'grant', privilege_type
+select 'grant:' || grantee, privilege_type
 from information_schema.role_table_grants
 where table_schema = 'public' and table_name = 'push_subscribers'
-  and grantee = 'authenticated';
+  and grantee in ('authenticated', 'service_role')
+  and privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE');
