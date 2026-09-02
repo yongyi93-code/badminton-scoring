@@ -65,6 +65,26 @@ create trigger records_touch
 -- ------------------------------------------------------------------
 alter table public.records enable row level security;
 
+-- ------------------------------------------------------------------
+-- 先授权，再谈策略 —— 这两件事完全是两回事，缺哪个都写不进去
+--
+-- 授权（grant）管的是「这张表你能不能碰」，
+-- 策略（policy）管的是「表里哪些行你能碰」。
+-- 只写策略不授权，Postgres 在还没轮到策略之前就把你挡了，
+-- 报的是 permission denied for table records。
+--
+-- 这一步曾经漏掉过，症状极难认：后台查出来 RLS 是开的、三条策略
+-- 一条不少，看起来完全正常，手机上就是写不进去。
+--
+-- 之所以容易漏，是因为在老一些的项目里它是自动的：Supabase 给
+-- postgres 配过 alter default privileges，SQL Editor 里新建的表
+-- 会自动授给 anon 和 authenticated。不能指望这条 —— 写出来，
+-- 到哪个项目上都成立。
+--
+-- 注意没有 delete：删除走 deleted = true 那条路，见下面。
+-- ------------------------------------------------------------------
+grant select, insert, update on public.records to authenticated;
+
 drop policy if exists "登录的人可以读" on public.records;
 create policy "登录的人可以读"
   on public.records for select
@@ -106,9 +126,20 @@ $$;
 -- 到底成没成 —— 手机上那条「数据库不让写」的错误，根源多半就是
 -- 只跑了建表、权限那几句没跑到。
 --
--- 应该看到 4 行：rls 一行 true，policy 三行（读 / 新增 / 修改）。
+-- 应该看到 7 行：
+--   rls    一行 true
+--   grant  三行 SELECT / INSERT / UPDATE（授权，缺了就 permission denied）
+--   policy 三行 读 / 新增 / 修改（策略）
+--
+-- grant 那三行少了任何一行，写入都会失败 —— 而且失败的样子和
+-- 「策略没建好」一模一样，光看手机上的报错分不出来。
 -- ------------------------------------------------------------------
 select 'rls' as 项目, relrowsecurity::text as 值
 from pg_class where oid = 'public.records'::regclass
+union all
+select 'grant', privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public' and table_name = 'records'
+  and grantee = 'authenticated'
 union all
 select 'policy', polname from pg_policy where polrelid = 'public.records'::regclass;

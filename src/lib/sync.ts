@@ -144,14 +144,26 @@ function readable(message: string): string {
     return pick('登录过期了，退出重新登录一次', 'Session expired — sign out and back in')
   }
   /*
-   * 走到这里说明已经登录过了（没登录的在 needsSignIn 就拦下了），
-   * 所以剩下的解释只有一个：后台那份 SQL 没跑完，或者只跑了建表
-   * 那几句、权限那几句没跑到。话要说得能照着做。
+   * 数据库拒收有两种，长得像但完全不是一回事，别再合成一句：
+   *
+   *   permission denied for table  = 没给 authenticated 授权。
+   *     连碰这张表的资格都没有，还没轮到策略就被挡了。
+   *   row-level security policy    = 授权有了，是策略不放行。
+   *
+   * 曾经把这两条归成同一句话，结果是：后台查出来 RLS 开着、三条策略
+   * 一条不少，看着完全正常，手机上就是写不进去 —— 因为真正缺的是
+   * grant，而那句话把人往策略上引。分开写，看到哪句就知道去补哪样。
    */
-  if (m.includes('row-level security') || m.includes('permission denied')) {
+  if (m.includes('permission denied')) {
     return pick(
-      '登录了但数据库不让写 —— 去 Supabase 后台 SQL Editor 把 001-records.sql 整段再跑一遍',
-      'Signed in, but the database refuses writes — re-run all of 001-records.sql in the Supabase SQL Editor',
+      '数据库没给这个账号写的权限 —— 去 SQL Editor 跑：grant select, insert, update on public.records to authenticated;',
+      'The database has not granted this account write access — run in the SQL Editor: grant select, insert, update on public.records to authenticated;',
+    )
+  }
+  if (m.includes('row-level security')) {
+    return pick(
+      '权限有了但策略不放行 —— 去 Supabase 后台 SQL Editor 把 001-records.sql 整段再跑一遍',
+      'Access is granted but a policy is blocking it — re-run all of 001-records.sql in the Supabase SQL Editor',
     )
   }
   if (m.includes('relation') && m.includes('does not exist')) {
