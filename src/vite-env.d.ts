@@ -9,6 +9,11 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string
   /** publishable / anon key。公开的，见 lib/supabase.ts 的说明 */
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string
+  /**
+   * 推送用的 VAPID 公钥。公开的 —— 它的作用只是让推送服务
+   * 认得出消息是谁发的，私钥在 Supabase 那边，永远不进这个仓库。
+   */
+  readonly VITE_VAPID_PUBLIC_KEY?: string
 }
 
 interface ImportMeta {

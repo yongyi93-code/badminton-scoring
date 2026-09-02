@@ -106,6 +106,14 @@ export default defineConfig({
          * 拿它当「这次别用缓存」的信号最准。
          */
         navigateFallbackDenylist: [/[?&]_v=/],
+        /*
+         * 把推送的处理逻辑挂进生成的 Service Worker。
+         *
+         * 生成的那个 SW 是构建产物，改不了；importScripts 一句就能把
+         * 自己的 push / notificationclick 挂上去，又不用把整套预缓存
+         * 换成手写模式（injectManifest）—— 那样每加一个资源都要自己维护。
+         */
+        importScripts: ['push-sw.js'],
         // 十张立绘约 220KB，加上代码离线包到 700KB 上下，默认 2MiB 的上限够用
       },
     }),
