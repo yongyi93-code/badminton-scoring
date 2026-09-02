@@ -112,6 +112,30 @@ function urlBase64ToBuffer(base64: string): ArrayBuffer {
 
 export type PushResult = { ok: true } | { ok: false; error: string }
 
+/**
+ * 把数据库那边的报错说成人话。
+ *
+ * 推送要装两半：前端这半跟着 App 自动更新，后台那张表得有人手动建。
+ * 两半之间必然有一段时间对不上 —— 那段时间里点「打开」，
+ * 原样抛一句 relation does not exist 出来，除了写代码的人没人看得懂。
+ */
+function readableDbError(message: string): string {
+  const m = message.toLowerCase()
+  if (m.includes('does not exist') || m.includes('schema cache')) {
+    return pick(
+      '云端还没建订阅表 —— 去 Supabase 后台把 002-push.sql 跑一遍',
+      'The subscription table does not exist yet — run 002-push.sql in Supabase',
+    )
+  }
+  if (m.includes('permission denied') || m.includes('row-level security')) {
+    return pick(
+      '数据库不让写订阅表 —— 002-push.sql 里的 grant 那句可能没跑到',
+      'The database refused the write — the grant line in 002-push.sql may not have run',
+    )
+  }
+  return message
+}
+
 export async function enablePush(playerId: string | null): Promise<PushResult> {
   if (!pushConfigured()) {
     return { ok: false, error: pick('还没配推送', 'Push is not set up') }
@@ -172,7 +196,7 @@ export async function enablePush(playerId: string | null): Promise<PushResult> {
         },
         { onConflict: 'endpoint' },
       )
-      if (error) return { ok: false, error: error.message }
+      if (error) return { ok: false, error: readableDbError(error.message) }
     }
 
     setState('on')
