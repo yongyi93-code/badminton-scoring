@@ -42,6 +42,27 @@ export default defineConfig({
     },
   },
   plugins: [
+    /*
+     * 出一份 version.json，里面只有构建号。
+     *
+     * 页面靠它自己判断「我这份是不是过期了」：启动后拿网络上的这个文件
+     * 和自己编译进来的构建号比一比，对不上就说明手上跑的是旧的。
+     *
+     * 为什么不能问 Service Worker：出问题的时候正是它在骗人 ——
+     * 它端出一份旧的 index.html，页面自己毫不知情。所以这个文件
+     * 故意不进预缓存（globPatterns 里没有 json），fetch 时又带
+     * no-store，问到的必定是服务器上此刻的真相。
+     */
+    {
+      name: 'rally-version-json',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify({ build: buildId }),
+        })
+      },
+    },
     react(),
     tailwindcss(),
     VitePWA({

@@ -57,7 +57,12 @@ export function clearUpdateMarker(): void {
   }
 }
 
-export async function forceUpdate(): Promise<void> {
+/**
+ * 把 Service Worker 和它的缓存清干净。不碰 localStorage。
+ *
+ * forceUpdate 和自动自愈走的是同一段，改一处两边都改到。
+ */
+async function wipeCaches(): Promise<void> {
   try {
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations()
@@ -68,14 +73,73 @@ export async function forceUpdate(): Promise<void> {
       await Promise.all(keys.map((k) => caches.delete(k)))
     }
   } catch {
-    // 清不干净也没关系，下面照样重载，最差就是还得再点一次
+    // 清不干净也没关系，调用方照样会重载，最差就是还得再来一次
   }
-  /*
-   * 带上时间戳绕开浏览器那层 HTTP 缓存。
-   * 用 assign 不用 replace：万一新版本有问题，用户还能靠返回键
-   * 退回上一个能用的页面，不至于卡在原地。
-   */
+}
+
+/**
+ * 重载，带上一个绕开缓存的时间戳。
+ *
+ * 用 assign 不用 replace：万一新版本有问题，用户还能靠返回键退回
+ * 上一个能用的页面，不至于卡在原地。
+ */
+function reloadFresh(): void {
   const url = new URL(location.href)
   url.searchParams.set('_v', String(Date.now()))
   location.assign(url.toString())
+}
+
+/*
+ * 已经为哪个版本自愈过了。
+ *
+ * 存在 sessionStorage 而不是变量里：自愈的动作就是重载，重载之后
+ * 变量全没了。不记这一笔的话，服务器要是因为别的原因一直和本地对不上，
+ * 页面会自己一直重载下去 —— 那比停在旧版本糟糕得多。
+ */
+const HEALED_KEY = 'rally-healed-for'
+
+/**
+ * 看看服务器上现在是哪一版，和自己对不上就自己清掉重来一次。
+ *
+ * 这个 App 反复栽在同一个地方：Service Worker 端出一份旧的 index.html，
+ * 页面上什么都看不出来 —— 「更新完还是旧版本」，严重时那份旧 HTML 引用的
+ * JS 已经不在了，就是一片白。iOS 上没有开发者工具，用户能做的只有猜。
+ *
+ * 所以不再指望 Service Worker 自己守规矩，改成页面主动去问一次网络。
+ * 离线、请求失败、文件不存在（老版本没这个文件）一律当没事发生 ——
+ * 离线可用是这个 App 的底线，绝不能因为问不到版本就把人拦在外面。
+ */
+export async function healIfStale(): Promise<void> {
+  if (!navigator.onLine) return
+  try {
+    const res = await fetch(new URL('./version.json', location.href), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return
+    const remote = String((await res.json())?.build ?? '')
+    if (!remote || remote === BUILD_ID) return
+
+    // 同一个版本只自愈一次，清完还对不上就别再折腾了
+    if (sessionStorage.getItem(HEALED_KEY) === remote) return
+    sessionStorage.setItem(HEALED_KEY, remote)
+
+    await wipeCaches()
+    reloadFresh()
+  } catch {
+    // 问不到就算了，接着用手上这份
+  }
+}
+
+export async function forceUpdate(): Promise<void> {
+  await wipeCaches()
+  /*
+   * 手动点的这次，把自愈的记号也抹掉：用户明确说了「我要最新的」，
+   * 不该因为这一版之前自愈过就跳过检查。
+   */
+  try {
+    sessionStorage.removeItem(HEALED_KEY)
+  } catch {
+    /* 用不了 sessionStorage 也不影响重载 */
+  }
+  reloadFresh()
 }

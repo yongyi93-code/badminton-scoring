@@ -14,9 +14,6 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
     <title>RALLY · 羽球社交竞技平台</title>
-  </head>
-  <body>
-    <div id="root"></div>
 
     <!--
       白屏救急。
@@ -34,10 +31,36 @@
     -->
     <script>
       ;(function () {
-        var WAIT_MS = 8000
-        setTimeout(function () {
+        /*
+         * 15 秒是个「慢也慢不到这份上」的数：手机网络再差，
+         * 这时候还一片空白基本就是真的坏了。宁可等久一点，
+         * 也不要在网速慢的人面前误报一次「没能启动」。
+         *
+         * 主脚本加载失败（旧 index.html 引用的 JS 已经不在了 ——
+         * 这正是最常见的那种坏法）不用等：script 的 error 事件一到就画。
+         */
+        var WAIT_MS = 15000
+        var shown = false
+        setTimeout(show, WAIT_MS)
+
+        /*
+         * 资源加载失败不冒泡，只能在捕获阶段抓。
+         * onerror 属性靠不住 —— vite 打包时会把它丢掉。
+         */
+        window.addEventListener(
+          'error',
+          function (e) {
+            var t = e.target
+            if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) show()
+          },
+          true,
+        )
+
+        function show() {
+          if (shown) return
           var root = document.getElementById('root')
           if (root && root.childElementCount > 0) return // 渲染出来了，收工
+          shown = true
 
           document.body.innerHTML =
             '<div style="font:16px/1.6 -apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;' +
@@ -87,9 +110,13 @@
               location.replace(u.toString())
             })
           }
-        }, WAIT_MS)
+        }
       })()
     </script>
+  </head>
+  <body>
+    <div id="root"></div>
+
 
     <script type="module" src="/src/main.tsx"></script>
   </body>
