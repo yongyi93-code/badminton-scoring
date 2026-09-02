@@ -49,7 +49,17 @@ Deno.serve(async (req) => {
      * records 是一张什么都往里塞的表 —— 每记一分都会更新一条 match，
      * 不挡住的话一晚上能推几十条通知，人只会把推送关掉。
      */
+    /*
+     * 每一步都往日志里写一句。
+     *
+     * 第一版只 return 不 log —— 结果是日志里只有一条 booted，
+     * 看不出它到底走到哪一步、为什么没推出去。而这个函数是整条链路里
+     * 唯一看不见摸不着的一段，恰恰最需要它自己说话。
+     */
+    console.log('收到:', row?.kind, row?.id)
+
     if (row?.kind !== 'session') {
+      console.log('不是球局，跳过')
       return new Response(JSON.stringify({ skipped: 'not a session' }), { status: 200 })
     }
 
@@ -61,6 +71,7 @@ Deno.serve(async (req) => {
       status?: string
     }
     if (data.status && data.status !== 'active') {
+      console.log('球局不是进行中，跳过:', data.status)
       return new Response(JSON.stringify({ skipped: 'not active' }), { status: 200 })
     }
 
@@ -86,6 +97,7 @@ Deno.serve(async (req) => {
       .from('push_subscribers')
       .select('endpoint,p256dh,auth,player_id')
     if (error) throw error
+    console.log('订阅数:', subs?.length ?? 0, '| 开局的人:', hostName || '(没名字)', '| 球馆:', venue)
 
     const payload = JSON.stringify({ title, body: body_, url: './' })
 
@@ -105,7 +117,9 @@ Deno.serve(async (req) => {
              * 权限被关了）。留着只会每次都失败一遍，直接清掉。
              */
             const code = (e as { statusCode?: number }).statusCode
+            console.error('推送失败:', code, (e as Error).message, '| endpoint:', s.endpoint.slice(0, 60))
             if (code === 404 || code === 410) {
+              console.log('订阅已失效，删掉')
               await admin.from('push_subscribers').delete().eq('endpoint', s.endpoint)
             }
             throw e
@@ -114,11 +128,13 @@ Deno.serve(async (req) => {
     )
 
     const sent = results.filter((r) => r.status === 'fulfilled').length
+    console.log('推完:', sent, '成功 /', results.length - sent, '失败')
     return new Response(
       JSON.stringify({ sent, failed: results.length - sent }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     )
   } catch (e) {
+    console.error('整个函数炸了:', e instanceof Error ? e.stack : String(e))
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
       { status: 500, headers: { 'content-type': 'application/json' } },
