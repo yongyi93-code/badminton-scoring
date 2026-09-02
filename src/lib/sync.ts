@@ -374,7 +374,23 @@ export async function startSync(): Promise<PullOutcome> {
 
   // 回到线上先补推一次没推成的
   window.addEventListener('online', scheduleFlush)
+  document.addEventListener('visibilitychange', pullOnResume)
   return outcome
+}
+
+/*
+ * 回到前台就重拉一次。
+ *
+ * 只靠 realtime 是不够的：手机把后台的网页冻结之后长连接就断了，
+ * 睡醒时错过的那些改动没有任何东西会补回来。而这恰恰是最常见的用法 ——
+ * 两个人不会同时开着 app，对方建好角色时你的 app 多半在后台或者根本没开。
+ *
+ * 症状还特别难认：界面上一切正常，只是永远看不到别人。
+ */
+function pullOnResume() {
+  if (document.visibilityState !== 'visible') return
+  if (applying) return
+  void pullAll()
 }
 
 /** 退出登录时收摊，别让上一个账号的订阅留着 */
@@ -387,6 +403,7 @@ export function stopSync() {
     channel = null
   }
   window.removeEventListener('online', scheduleFlush)
+  document.removeEventListener('visibilitychange', pullOnResume)
   if (flushTimer) {
     clearTimeout(flushTimer)
     flushTimer = null

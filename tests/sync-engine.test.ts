@@ -55,6 +55,9 @@ vi.mock('@/lib/supabase', () => {
 
 const { startSync, stopSync } = await import('@/lib/sync')
 
+/** 挂上去的那个 visibilitychange 回调，测试里手动触发 */
+let resume: (() => void) | null = null
+
 /** 推上去的所有行，按 `kind id` 摊平，方便断言 */
 const pushedKeys = () =>
   cloud.upserts.flat().map((r) => `${r.kind} ${r.id}`)
@@ -62,6 +65,12 @@ const pushedKeys = () =>
 beforeEach(() => {
   // sync.ts 会挂 online 事件，node 环境里没有 window
   vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
+  // 回前台重拉那条要挂 visibilitychange，node 环境里没有 document
+  vi.stubGlobal('document', {
+    visibilityState: 'visible',
+    addEventListener(_e: string, fn: () => void) { resume = fn },
+    removeEventListener() { resume = null },
+  })
   vi.useFakeTimers()
   cloud.rows = []
   cloud.upserts = []
@@ -239,6 +248,28 @@ describe('没登录的时候', () => {
     useApp.getState().updatePlayer(p.id, { name: '小林改了名' })
     await vi.advanceTimersByTimeAsync(700)
     expect(pushedKeys()).toContain(`player ${p.id}`)
+  })
+})
+
+/*
+ * 手机把后台的网页冻结之后 realtime 的长连接就断了，睡醒时错过的
+ * 改动没有任何东西会补回来 —— 而两个人不会同时开着 app，
+ * 这恰恰是最常见的情况。症状还特别难认：界面一切正常，只是永远
+ * 看不到别人建的角色。
+ */
+describe('回到前台', () => {
+  it('重拉一次，把睡着时错过的东西补回来', async () => {
+    await startSync()
+    expect(useApp.getState().players).toHaveLength(0)
+
+    // 睡着的这段时间里，别人建了自己的角色
+    cloud.rows = [
+      { kind: 'player', id: 'p9', data: { id: 'p9', name: '新来的', gender: 'M' } },
+    ]
+    resume?.()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(useApp.getState().players.map((p) => p.name)).toEqual(['新来的'])
   })
 })
 
