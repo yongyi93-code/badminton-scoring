@@ -146,9 +146,15 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
  * 云同步
  *
  * 云端为准：那张表是唯一的一份历史，这台手机是它的缓存。
- * 所以这一屏不再是「上传 / 下载」两个方向让人选 —— 平时它自己跑，
- * 这里只负责三件事：说清楚现在同步到哪了、卡住时能手动重来一次、
- * 以及全队重新开始时把东西清干净。
+ * 所以这一屏不再是「上传 / 下载」两个方向让人选。
+ *
+ * 而且它现在是一屏「出事了才进得来」的工具：平时同步自己跑，
+ * 「我的」上根本不会出现入口。摆一个「同步状态」在那，只会让人
+ * 点进来，然后对着「手动推送」「从云端刷新」发愣 —— 那两个按钮
+ * 是卡住时才用的，不是日常功能。
+ *
+ * 「全部清空」也搬走了，挪进了「数据备份与恢复」：清之前必须先导
+ * 一份备份，而导出就在那一屏上面一格。
  * ------------------------------------------------------------------ */
 
 function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -156,12 +162,10 @@ function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const players = useApp((s) => s.players)
   const sessions = useApp((s) => s.sessions)
   const matches = useApp((s) => s.matches)
-  const resetAll = useApp((s) => s.resetAll)
   const status = useSyncStatus()
   const { session } = useAuth()
   const [busy, setBusy] = useState<'pull' | 'push' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [confirmWipe, setConfirmWipe] = useState(false)
 
   const local = t(
     `${players.length} 位球员 · ${sessions.length} 场球局 · ${matches.length} 场比赛`,
@@ -247,47 +251,6 @@ function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         {message && <p className="text-brand-600 text-label">{message}</p>}
 
-        {/* 全队重新开始时用的。放在最下面，而且要点两下 */}
-        <div className="border-line space-y-2 border-t pt-4">
-          {confirmWipe ? (
-            <>
-              <p className="text-danger-600 text-label">
-                {t(
-                  '这会清掉所有球员、球局和比赛 —— 而且因为云端跟着这台手机走，云端那份也会一起没。每个人的手机都会变空。确定吗？',
-                  'This clears every player, session and match — and because the cloud follows this phone, it goes too. Everyone’s phone ends up empty. Sure?',
-                )}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="danger"
-                  className="flex-1"
-                  onClick={() => {
-                    resetAll()
-                    setConfirmWipe(false)
-                    setMessage(t('已经清空，可以重新开始了', 'Cleared — fresh start'))
-                  }}
-                >
-                  {t('确定清空', 'Clear it all')}
-                </Button>
-                <Button variant="ghost" className="flex-1" onClick={() => setConfirmWipe(false)}>
-                  {t('算了', 'Never mind')}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <Button block variant="dangerSoft" onClick={() => setConfirmWipe(true)}>
-                {t('全部清空，重新开始', 'Clear everything and start over')}
-              </Button>
-              <p className="text-ink-500 text-caption">
-                {t(
-                  '清之前先去下面「数据备份与恢复」导一份文件 —— 那是唯一能把历史找回来的东西。',
-                  'Export a file under “Backup” below first — that is the only way to get the history back.',
-                )}
-              </p>
-            </>
-          )}
-        </div>
       </div>
     </Sheet>
   )
@@ -349,10 +312,19 @@ export function Me() {
         : sync.state === 'idle' && sync.pending > 0
           ? t(`还有 ${sync.pending} 条没推上去`, `${sync.pending} still to push`)
           : t('已经和云端一致', 'Up to date')
+  /*
+   * 出事了才把那一行摆出来。
+   * 「同步中」不算出事 —— 那是一闪而过的正常状态，为它冒出一行
+   * 再消失，只会让人以为出了什么问题。
+   */
+  const needsAttention =
+    sync.state === 'error' || (sync.state === 'idle' && sync.pending > 0)
   const { session } = useAuth()
   /** 登录账号 id。没登录就是 null，那时选人只是本机标记 */
   const uid = session?.user.id ?? null
   const [backupOpen, setBackupOpen] = useState(false)
+  const [confirmWipe, setConfirmWipe] = useState(false)
+  const resetAll = useApp((s) => s.resetAll)
   const [updating, setUpdating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -549,8 +521,8 @@ export function Me() {
             <p className="text-title">{t('你是哪一位？', 'Which one are you?')}</p>
             <p className="text-ink-500 mt-1 text-label">
               {t(
-                '选一个球员绑在这台手机上，这一页就会显示你自己的段位、战绩和角色。只是本机的一个标记，不是账号 —— 数据还是整份存在这台手机里。',
-                'Pick a player to link to this phone and this page will show your own rank, record and character. It is just a marker on this device, not an account — all the data still lives on this phone.',
+                '选一个球员绑在这台手机上，这一页就会显示你自己的段位、战绩和角色。开局时你也会自动在场上。',
+                'Pick a player to link to this phone and this page shows your own rank, record and character. You are also put on court automatically when you start a session.',
               )}
             </p>
             {/*
@@ -598,19 +570,31 @@ export function Me() {
                   onClick={() => setAuthOpen(true)}
                 />
               )}
-              {session && (
+              {/*
+                同步好好的时候不显示这一行。
+                
+                同步是背景里的事，正常运转时用户什么都不用知道 ——
+                而摆一个「同步状态」在那，只会让人点进去，然后对着
+                「手动推送」「从云端刷新」「全部清空」发愣。那三个按钮
+                是出事时才用的工具，不是日常功能。
+                
+                出事了才冒出来：这时候它恰恰是最该被看见的一行。
+              */}
+              {session && needsAttention && (
                 <MenuRow
-                  title={t('同步状态', 'Sync')}
+                  title={t('同步遇到问题', 'Sync needs attention')}
                   hint={syncHint}
                   onClick={() => setCloudOpen(true)}
                 />
               )}
             </div>
             <p className="text-ink-500 px-1 text-caption">
-              {t(
-                '登录之后自动同步：你记的分会推上去，别人记的会自己出现。',
-                'Once signed in it syncs on its own — your scores go up, other people’s come down.',
-              )}
+              {session
+                ? syncHint
+                : t(
+                    '登录之后自动同步：你记的分会推上去，别人记的会自己出现。',
+                    'Once signed in it syncs on its own — your scores go up, other people’s come down.',
+                  )}
             </p>
           </>
         )}
@@ -810,8 +794,8 @@ export function Me() {
       <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title={t('数据备份', 'Backup')}>
         <p className="text-ink-700 text-label">
           {t(
-            '所有数据只存在这台手机的浏览器里。清掉浏览器数据或换手机就会丢，建议每次打完球导出一次备份。',
-            'Everything is stored in this phone\u2019s browser only. Clearing browser data or switching phones loses it, so export a backup after every session.',
+            '登录之后云端有一份，换手机登录回来就能拿到。但备份文件是另一层保险 —— 万一云端那份被谁清掉了，只有它能把历史找回来。',
+            'Once you are signed in there is a copy in the cloud, so a new phone gets everything back when you sign in. A backup file is the second layer: if the cloud copy ever gets wiped, this is the only way back.',
           )}
         </p>
         <div className="mt-4 space-y-2">
@@ -838,6 +822,45 @@ export function Me() {
               'Restoring overwrites everything currently on this phone. Export first.',
             )}
           </p>
+        </div>
+
+        {/*
+          全队重新开始。放在这一屏最底下，而不是同步那一屏 ——
+          理由有两个：清之前必须先导一份备份，而导出就在上面一格；
+          而且这是全 App 唯一一个能一键抹掉所有人战绩的按钮，
+          不该出现在任何人日常会点开的地方。仍然要点两下。
+        */}
+        <div className="border-line mt-6 space-y-2 border-t pt-4">
+          {confirmWipe ? (
+            <>
+              <p className="text-danger-600 text-label">
+                {t(
+                  '这会清掉所有球员、球局和比赛 —— 而且因为云端跟着这台手机走，云端那份也会一起没。每个人的手机都会变空。确定吗？',
+                  'This clears every player, session and match — and because the cloud follows this phone, it goes too. Everyone’s phone ends up empty. Sure?',
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  onClick={() => {
+                    resetAll()
+                    setConfirmWipe(false)
+                    setMessage(t('已经清空，可以重新开始了', 'Cleared — fresh start'))
+                  }}
+                >
+                  {t('确定清空', 'Clear it all')}
+                </Button>
+                <Button variant="ghost" className="flex-1" onClick={() => setConfirmWipe(false)}>
+                  {t('算了', 'Never mind')}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Button block variant="dangerSoft" onClick={() => setConfirmWipe(true)}>
+              {t('全部清空，重新开始', 'Clear everything and start over')}
+            </Button>
+          )}
         </div>
         {message && <p className="text-brand-600 mt-3 text-label">{message}</p>}
       </Sheet>
