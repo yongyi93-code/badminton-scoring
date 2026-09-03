@@ -330,6 +330,14 @@ export function Me() {
   const { session } = useAuth()
   /** 登录账号 id。没登录就是 null，那时选人只是本机标记 */
   const uid = session?.user.id ?? null
+
+  /*
+   * 接了云端、但还没登录 —— 这时候不该让人建角色。
+   *
+   * 没接云端（.env 里没配）是另一回事：那种模式下数据本来就只在这台
+   * 手机上，本机建角色是唯一的用法，照旧放行。离线可用是底线。
+   */
+  const mustSignIn = cloudReady && !session
   const [backupOpen, setBackupOpen] = useState(false)
   const [confirmWipe, setConfirmWipe] = useState(false)
   const resetAll = useApp((s) => s.resetAll)
@@ -539,6 +547,38 @@ export function Me() {
               </>
             )}
           </>
+        ) : mustSignIn ? (
+          /*
+           * 接了云端却没登录时，不给建角色。
+           *
+           * 建出来的人只活在这台手机上：下次登录，云端整份盖下来就把他
+           * 冲掉了 —— 名字、角色、金币全没。用户这边看到的是「我明明建过」，
+           * 根本不会联想到是登录这一步。
+           *
+           * 而且「谁建的就是谁的」这条规则要成立，得先知道「谁」是谁。
+           * 没登录的时候这个问题没有答案。
+           */
+          <Card>
+            <p className="text-title">{t('先登录', 'Sign in first')}</p>
+            <p className="text-ink-500 mt-1 text-label">
+              {session === undefined
+                ? t('正在确认登录状态…', 'Checking sign-in…')
+                : t(
+                    '你的角色、战绩和金币都存在云端，换手机也拿得回来。所以得先登录，才知道这个角色是谁的。',
+                    'Your character, record and coins live in the cloud so they follow you to a new phone — which means signing in has to come first.',
+                  )}
+            </p>
+            <div className="mt-4">
+              <Button
+                block
+                variant="primary"
+                disabled={session === undefined}
+                onClick={() => setAuthOpen(true)}
+              >
+                {t('登录 / 注册', 'Sign in or sign up')}
+              </Button>
+            </div>
+          </Card>
         ) : (
           <Card>
             <p className="text-title">{t('先建一个你自己', 'Create yourself first')}</p>

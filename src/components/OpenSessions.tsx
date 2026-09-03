@@ -114,8 +114,8 @@ export function OpenSessions() {
             {!meId && (
               <p className="text-ink-500 mt-2 text-caption">
                 {t(
-                  '先在「我的」里选一下你是哪一位，才能加入',
-                  'Pick who you are under “Me” before joining',
+                  '先在「我的」里登录、建好你自己，才能加入',
+                  'Sign in and create yourself under “Me” before joining',
                 )}
               </p>
             )}
