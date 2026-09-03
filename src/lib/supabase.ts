@@ -18,6 +18,40 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
+/**
+ * 这次打开，地址里是不是真的带着一张登录凭证？
+ *
+ * 「忘记密码」的邮件链接会把令牌带回来，supabase 得去 URL 里捡它 ——
+ * 但那个开关一旦常开，就会把我们自己加的 ?_v=（检查更新用的）也当成
+ * 一次没认出来的登录回调，顺手把存着的会话清掉。那个 bug 出过一次，
+ * 表现是「点完检查更新发现自己被登出了」，很难往这上面想。
+ *
+ * 所以不常开，只在这一次打开确实带着凭证时才开。两种形式都认：
+ *   #access_token=…&type=recovery   旧的隐式流
+ *   ?code=…                          PKCE 流
+ *   #error_code=otp_expired          链接过期，也要让 supabase 接住并报错
+ *
+ * 这个 App 自己只会往地址上加 ?_v=，绝不会加 code / access_token，
+ * 所以看到那几个就一定是从邮件回来的。
+ */
+export function looksLikeAuthCallback(href: string): boolean {
+  try {
+    const url = new URL(href)
+    const hash = url.hash
+    return (
+      /(^|[#&])(access_token|refresh_token|error_code|error_description)=/.test(hash) ||
+      /(^|[#&])type=recovery/.test(hash) ||
+      url.searchParams.has('code')
+    )
+  } catch {
+    return false
+  }
+}
+
+/** 记下来给界面用：这次打开是不是从「忘记密码」邮件点回来的 */
+export const arrivedFromAuthLink =
+  typeof window !== 'undefined' && looksLikeAuthCallback(window.location.href)
+
 /** 配齐了才建客户端；缺一个就当没有云端 */
 export const supabase: SupabaseClient | null =
   url && key
@@ -26,17 +60,18 @@ export const supabase: SupabaseClient | null =
           persistSession: true,
           autoRefreshToken: true,
           /*
-           * 关掉。
+           * 只在这一次打开确实带着凭证时才开，平时一律关着。
            *
-           * 这个开关让 supabase 在启动时去 URL 里找登录令牌 —— 那是给
-           * 邮件魔术链接和 OAuth 回调用的。我们用的是邮箱 + 密码，
-           * URL 里永远不会有令牌，所以它只可能帮倒忙：
+           * 这个开关让 supabase 在启动时去 URL 里找登录令牌。「忘记密码」
+           * 的邮件链接需要它 —— 令牌就在地址里，不捡就没了。
            *
-           * 「检查更新」重载时会往地址上加一个 ?_v=… 绕过缓存，
-           * 它把那个当成一次没认出来的登录回调，顺手就把存着的会话清了 ——
-           * 表现就是点完更新发现自己被登出了。
+           * 但常开会出事：「检查更新」重载时会往地址上加一个 ?_v= 绕过
+           * 缓存，它把那个当成一次没认出来的登录回调，顺手就把存着的
+           * 会话清了 —— 表现是点完更新发现自己被登出。这个 bug 真出过。
+           *
+           * 所以按 URL 决定（见上面 hasAuthCallback），两头都占住。
            */
-          detectSessionInUrl: false,
+          detectSessionInUrl: arrivedFromAuthLink,
         },
       })
     : null

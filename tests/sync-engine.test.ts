@@ -60,6 +60,8 @@ vi.mock('@/lib/supabase', () => {
       },
     },
     cloudReady: true,
+    /* 测试里永远不是从邮件链接进来的 */
+    arrivedFromAuthLink: false,
   }
 })
 

@@ -27,7 +27,7 @@ import { venueLabel } from '@/lib/venues'
 import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
 import { cloudReady } from '@/lib/supabase'
-import { signIn, signOut, signUp, useAuth } from '@/store/useAuth'
+import { sendPasswordReset, signIn, signOut, signUp, useAuth } from '@/store/useAuth'
 import {
   disablePush,
   enablePush,
@@ -55,7 +55,9 @@ const ARROW = (
 
 function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT()
-  const [mode, setMode] = useState<'in' | 'up'>('in')
+  const [mode, setMode] = useState<'in' | 'up' | 'forgot'>('in')
+  /** 重设邮件发出去之后显示的那句话 */
+  const [sent, setSent] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -64,6 +66,24 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const submit = async () => {
     setBusy(true)
     setError(null)
+    setSent(null)
+
+    if (mode === 'forgot') {
+      const res = await sendPasswordReset(email)
+      setBusy(false)
+      if (res.ok) {
+        setSent(
+          t(
+            '邮件发出去了。去收件箱点那个链接，会跳回 RALLY 让你设新密码。找不到就翻一下垃圾邮件。',
+            'Sent. Open the link in your inbox — it comes back to RALLY and lets you set a new password. Check your spam folder if it is not there.',
+          ),
+        )
+      } else {
+        setError(res.error)
+      }
+      return
+    }
+
     const run = mode === 'in' ? signIn : signUp
     const res = await run(email, password)
     setBusy(false)
@@ -75,26 +95,47 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
     }
   }
 
-  const ready = email.trim().length > 3 && password.length >= 6
+  const ready =
+    mode === 'forgot'
+      ? email.trim().length > 3
+      : email.trim().length > 3 && password.length >= 6
 
   return (
     <Sheet
       open={open}
       onClose={onClose}
-      title={mode === 'in' ? t('登录', 'Sign in') : t('注册', 'Create an account')}
+      title={
+        mode === 'forgot'
+          ? t('忘记密码', 'Forgot password')
+          : mode === 'in'
+            ? t('登录', 'Sign in')
+            : t('注册', 'Create an account')
+      }
     >
       <div className="space-y-4">
-        <Segmented
-          value={mode}
-          onChange={(v: 'in' | 'up') => {
-            setMode(v)
-            setError(null)
-          }}
-          options={[
-            { value: 'in', label: t('登录', 'Sign in') },
-            { value: 'up', label: t('注册', 'Sign up') },
-          ]}
-        />
+        {mode !== 'forgot' && (
+          <Segmented
+            value={mode}
+            onChange={(v: 'in' | 'up') => {
+              setMode(v)
+              setError(null)
+              setSent(null)
+            }}
+            options={[
+              { value: 'in', label: t('登录', 'Sign in') },
+              { value: 'up', label: t('注册', 'Sign up') },
+            ]}
+          />
+        )}
+
+        {mode === 'forgot' && (
+          <p className="text-ink-700 text-label">
+            {t(
+              '填注册时用的邮箱，我们发一个链接过去。点开会跳回 RALLY，在那里设新密码。',
+              'Enter the email you signed up with. We send a link that comes back to RALLY, where you set a new password.',
+            )}
+          </p>
+        )}
 
         <Field label={t('邮箱', 'Email')}>
           <input
@@ -109,6 +150,7 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
           />
         </Field>
 
+        {mode !== 'forgot' && (
         <Field
           label={t('密码', 'Password')}
           hint={mode === 'up' ? t('至少 6 位', 'At least 6 characters') : undefined}
@@ -123,8 +165,10 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
             onKeyDown={(e) => e.key === 'Enter' && ready && !busy && void submit()}
           />
         </Field>
+        )}
 
         {error && <p className="text-danger-600 text-label">{error}</p>}
+        {sent && <p className="text-brand-600 text-label">{sent}</p>}
 
         <Button
           variant="primary"
@@ -135,10 +179,38 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         >
           {busy
             ? t('稍等…', 'Working…')
-            : mode === 'in'
-              ? t('登录', 'Sign in')
-              : t('注册并登录', 'Create account')}
+            : mode === 'forgot'
+              ? t('发重设邮件', 'Send reset link')
+              : mode === 'in'
+                ? t('登录', 'Sign in')
+                : t('注册并登录', 'Create account')}
         </Button>
+
+        {/* 忘记密码的入口只在登录那一档出现 —— 注册时问这个没有意义 */}
+        {mode === 'in' && (
+          <button
+            className="text-brand-600 block w-full text-center text-caption"
+            onClick={() => {
+              setMode('forgot')
+              setError(null)
+              setSent(null)
+            }}
+          >
+            {t('忘记密码了？', 'Forgot your password?')}
+          </button>
+        )}
+        {mode === 'forgot' && (
+          <button
+            className="text-ink-500 block w-full text-center text-caption"
+            onClick={() => {
+              setMode('in')
+              setError(null)
+              setSent(null)
+            }}
+          >
+            {t('想起来了，回去登录', 'Never mind — back to sign in')}
+          </button>
+        )}
 
         <p className="text-ink-500 text-caption">
           {t(

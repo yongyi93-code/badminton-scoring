@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { pick } from '@/lib/i18n'
-import { supabase } from '@/lib/supabase'
+import { arrivedFromAuthLink, supabase } from '@/lib/supabase'
 import { flushNow, startSync, stopSync } from '@/lib/sync'
 import { useApp } from '@/store/useApp'
 
@@ -22,9 +22,27 @@ import { useApp } from '@/store/useApp'
 export type AuthState = {
   /** null = 未登录；undefined = 还在问 Supabase，别急着画界面 */
   session: Session | null | undefined
+  /**
+   * 正在走「忘记密码」的流程。
+   *
+   * 点邮件链接回来时，supabase 会用那个令牌建一个临时会话 —— 也就是
+   * 说这个人此刻「已登录」，但他还没有可用的密码。界面必须认出这个
+   * 状态并让他设一个新的，否则他这次关掉 App 就又进不来了。
+   */
+  recovering: boolean
 }
 
-let current: AuthState = { session: supabase ? undefined : null }
+let current: AuthState = {
+  session: supabase ? undefined : null,
+  /*
+   * 从邮件链接进来的，先当成在重设密码。
+   *
+   * 不等 PASSWORD_RECOVERY 事件才置位：那个事件在 supabase 解析完
+   * URL 之后才发，而解析是异步的 —— 中间那几十毫秒界面已经画完了，
+   * 画的是「已登录」的样子，重设密码那一屏根本没出现过。
+   */
+  recovering: supabase !== null && arrivedFromAuthLink,
+}
 const listeners = new Set<() => void>()
 
 const emit = () => listeners.forEach((fn) => fn())
@@ -42,7 +60,7 @@ const set = (next: AuthState) => {
  * 这种情况。
  */
 function follow(session: Session | null) {
-  set({ session })
+  set({ ...current, session })
   if (session) void startSync()
   else stopSync()
 }
@@ -52,9 +70,13 @@ if (supabase) {
   supabase.auth
     .getSession()
     .then(({ data }) => follow(data.session))
-    .catch(() => set({ session: null }))
+    .catch(() => set({ ...current, session: null }))
 
-  supabase.auth.onAuthStateChange((_event, session) => follow(session))
+  supabase.auth.onAuthStateChange((event, session) => {
+    // supabase 认出这是重设密码的回调时会发这个事件，跟着置位
+    if (event === 'PASSWORD_RECOVERY') set({ ...current, recovering: true })
+    follow(session)
+  })
 }
 
 const subscribe = (fn: () => void) => {
@@ -67,7 +89,7 @@ export function useAuth() {
   return useSyncExternalStore(
     subscribe,
     () => current,
-    () => ({ session: null }) as AuthState,
+    () => ({ session: null, recovering: false }) as AuthState,
   )
 }
 
@@ -179,4 +201,72 @@ export async function signOut(): Promise<{ ok: true } | { ok: false; error: stri
   useApp.getState().resetAll()
   await supabase?.auth.signOut()
   return { ok: true }
+}
+
+/**
+ * 发一封重设密码的邮件。
+ *
+ * redirectTo 必须给全 —— 邮件里的链接跳回哪儿由它决定。默认会用后台
+ * 那个 Site URL，而那个多半还是 localhost，点了直接死在一个不存在的
+ * 地址上。origin + pathname 正好是 GitHub Pages 那个子路径的样子。
+ *
+ * 后台 URL Configuration 的 Redirect URLs 里也得有这个地址，
+ * 否则 Supabase 会拒绝跳转 —— 这一条只能在后台配，代码里管不了。
+ */
+export async function sendPasswordReset(email: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+  const redirectTo = `${window.location.origin}${window.location.pathname}`
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
+  return error ? { ok: false, error: readableError(error.message) } : { ok: true }
+}
+
+/**
+ * 设一个新密码。
+ *
+ * 只在「点邮件链接回来」那个临时会话里用得上：那时候人是登录着的，
+ * 但手上没有可用的密码。设完把 recovering 关掉，界面回到正常。
+ */
+export async function setNewPassword(password: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) return { ok: false, error: readableError(error.message) }
+  set({ ...current, recovering: false })
+  scrubAuthParams()
+  return { ok: true }
+}
+
+/** 放弃重设（比如链接过期了想重新来过） */
+export function cancelRecovery(): void {
+  set({ ...current, recovering: false })
+  scrubAuthParams()
+}
+
+/**
+ * 把地址上那截登录凭证抹掉。
+ *
+ * supabase 自己会清掉 hash，但 PKCE 那条路留下的是 ?code=…，它不管。
+ * 留着的后果是刷新一次又被当成一次回调 —— 而那个令牌已经用掉了，
+ * 于是每次刷新都弹一遍「重设密码」，还报链接失效。
+ *
+ * 时机很重要：只能在重设结束之后调。提前抹掉，supabase 还没来得及
+ * 读，人就白点了那封邮件。
+ */
+function scrubAuthParams(): void {
+  try {
+    const url = new URL(location.href)
+    let touched = false
+    for (const k of ['code', 'error', 'error_code', 'error_description']) {
+      if (url.searchParams.has(k)) {
+        url.searchParams.delete(k)
+        touched = true
+      }
+    }
+    if (url.hash) {
+      url.hash = ''
+      touched = true
+    }
+    if (touched) history.replaceState(history.state, '', url.toString())
+  } catch {
+    /* 抹不掉也不影响用 */
+  }
 }

@@ -16,6 +16,7 @@ import { PlayerProfile } from '@/screens/PlayerProfile'
 import { Avatar } from '@/screens/Avatar'
 import { TabBar } from '@/components/TabBar'
 import { ProgressProvider } from '@/store/progress'
+import { RecoverySheet } from '@/components/RecoverySheet'
 
 export default function App() {
   const route = useRoute()
@@ -40,6 +41,11 @@ export default function App() {
     <ProgressProvider>
       {screenFor(route)}
       {tabBar && <TabBar />}
+      {/*
+        「设置新密码」挂在最外层：邮件链接会把人带回上次停在的任何一页，
+        而这件事必须当场做完 —— 那个临时会话是一次性的。
+      */}
+      <RecoverySheet />
     </ProgressProvider>
   )
 }
