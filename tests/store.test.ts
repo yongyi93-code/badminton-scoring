@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useApp, avatarOf, activeSessionOf } from '@/store/useApp'
+import { useApp, avatarOf, activeSessionOf, lastActivityAt } from '@/store/useApp'
 
 /*
  * store 的行为大多是「改一个字段，另一个字段得跟着动」，
@@ -463,5 +463,83 @@ describe('公告', () => {
     useApp.getState().postAnnouncement('测试', me.id)
     useApp.getState().resetAll()
     expect(useApp.getState().announcements).toEqual([])
+  })
+})
+
+/*
+ * 首页要判断「这一局是不是已经散了」—— 球局要靠人按「结束」才收摊，
+ * 而没人记得按。
+ *
+ * 关键是从哪儿开始算：第一版按开局时间算，后果是一场从傍晚打到第二天
+ * 早上的长局，会在还在打的时候从首页消失 —— 而首页正是别人找它加入
+ * 的地方。改成按最后一场比赛算。
+ */
+describe('一局最后一次有动静', () => {
+  const HOUR = 3600_000
+  const T0 = 1_700_000_000_000
+
+  const sess = (over: Partial<import('@/types').Session> = {}) =>
+    ({
+      id: 's1',
+      date: '2026-09-03',
+      venue: '力天',
+      courtCount: 1,
+      playerIds: [],
+      defaultType: 'doubles' as const,
+      rules: { pointsToWin: 21, winBy2: true, cap: 30, bestOf: 1 as const },
+      fee: { courtFee: 0, shuttleCount: 0, shuttleUnitPrice: 0, paidPlayerIds: [] },
+      status: 'active' as const,
+      createdAt: T0,
+      ...over,
+    }) as import('@/types').Session
+
+  const m = (over: Partial<import('@/types').Match>) =>
+    ({
+      id: 'm1',
+      sessionId: 's1',
+      courtIndex: 0,
+      type: 'doubles' as const,
+      teamA: ['a'],
+      teamB: ['b'],
+      games: [],
+      status: 'done' as const,
+      seq: 1,
+      ...over,
+    }) as import('@/types').Match
+
+  it('一场比赛都没有，就是开局时间', () => {
+    expect(lastActivityAt(sess(), [])).toBe(T0)
+  })
+
+  it('取最后打完的那一场', () => {
+    const ms = [
+      m({ id: 'm1', endedAt: T0 + 2 * HOUR }),
+      m({ id: 'm2', endedAt: T0 + 5 * HOUR }),
+    ]
+    expect(lastActivityAt(sess(), ms)).toBe(T0 + 5 * HOUR)
+  })
+
+  /*
+   * 还在打的场次没有 endedAt。只看 endedAt 的话，一场正打得火热的
+   * 球局会被算成「从开局起就没动静」，然后从首页消失。
+   */
+  it('正在打的场次也算动静（它没有 endedAt）', () => {
+    const ms = [m({ id: 'm1', status: 'playing', startedAt: T0 + 9 * HOUR, endedAt: undefined })]
+    expect(lastActivityAt(sess(), ms)).toBe(T0 + 9 * HOUR)
+  })
+
+  it('别的球局的比赛不算数', () => {
+    const ms = [m({ id: 'm1', sessionId: '别的局', endedAt: T0 + 99 * HOUR })]
+    expect(lastActivityAt(sess(), ms)).toBe(T0)
+  })
+
+  /* 这条就是那个 bug：按开局算它会被判死，按最后活动算它还活着 */
+  it('打了 14 小时的长局，最后一场刚打完，仍然算活的', () => {
+    const ms = [m({ id: 'm1', endedAt: T0 + 14 * HOUR })]
+    const last = lastActivityAt(sess(), ms)
+    const cutoff = T0 + 14 * HOUR - 12 * HOUR
+    expect(last).toBeGreaterThanOrEqual(cutoff)
+    // 而按开局时间算的话，早就被判成散了
+    expect(T0).toBeLessThan(cutoff)
   })
 })

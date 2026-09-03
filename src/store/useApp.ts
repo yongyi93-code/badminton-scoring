@@ -53,6 +53,29 @@ export const activeSessionOf = (
     ? sessions.find((s) => s.status === 'active' && s.playerIds.includes(playerId))
     : undefined
 
+/**
+ * 这一局最后一次「有动静」是什么时候。
+ *
+ * 用来判断一场球局是不是已经散了 —— 球局要靠人按「结束」才收摊，
+ * 而没人记得按，打完就各回各家了。
+ *
+ * 为什么不能拿开局时间算：那样一场从傍晚打到第二天早上的长局，会在
+ * 还在打的时候从首页消失 —— 而首页正是别人找它加入的地方。以最后
+ * 一场比赛为准，只要还在打就一直算「活的」，真散了才开始计时。
+ *
+ * 取的是每场比赛身上最新的那个时间戳：还在打的场次没有 endedAt，
+ * 只看 endedAt 的话，一场正打得火热的球局会被当成从开局起就没动静。
+ */
+export function lastActivityAt(session: Session, matches: Match[]): number {
+  let last = session.createdAt
+  for (const m of matches) {
+    if (m.sessionId !== session.id) continue
+    const stamp = Math.max(m.endedAt ?? 0, m.startedAt ?? 0)
+    if (stamp > last) last = stamp
+  }
+  return last
+}
+
 const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()

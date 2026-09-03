@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useT } from '@/lib/i18n'
-import { activeSessionOf, isFull, spotsLeft, useApp } from '@/store/useApp'
+import { activeSessionOf, isFull, lastActivityAt, spotsLeft, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Button, Card, Pill, SectionTitle } from '@/components/ui'
 import { formatDate } from '@/lib/format'
@@ -19,8 +19,14 @@ import { venueLabel } from '@/lib/venues'
  * 不挡的话首页会堆满上个月那些早就散了的局。
  * ------------------------------------------------------------------ */
 
-/** 开了超过这么久还没结束的，当成忘了按结束，首页不再显示 */
-const FRESH_MS = 12 * 60 * 60 * 1000
+/**
+ * 最后一次有动静之后过了这么久，就当这一局已经散了，首页不再显示。
+ *
+ * 按「最后一次有动静」算，不是按开局时间：一场从傍晚打到第二天早上
+ * 的长局，按开局算会在还在打的时候从首页消失 —— 而首页正是别人找它
+ * 加入的地方。
+ */
+const STALE_MS = 12 * 60 * 60 * 1000
 
 /** 就算都新鲜，首页也最多列这么多 —— 首页不是球局列表 */
 const MAX_SHOWN = 5
@@ -50,21 +56,22 @@ export function OpenSessions() {
    * 就各回各家了。于是首页会越堆越长，全是上个月开的、早就散了的局，
    * 真正今晚那一场反而埋在里面。
    *
-   * 12 小时是按羽球的实际节奏定的：一场球局撑死打一晚上，超过半天
-   * 还开着的，一定是忘了按结束，不是还在打。
+   * 计时从「最后一场比赛」起，不是从开局起 —— 只要还在打就一直算
+   * 活的，真散了才开始倒数。12 小时是按羽球的节奏定的：散场之后
+   * 隔了半天还没人碰，那一定是忘了按结束。
    */
   const others = useMemo(() => {
-    const cutoff = Date.now() - FRESH_MS
+    const cutoff = Date.now() - STALE_MS
     return sessions
       .filter(
         (s) =>
           s.status === 'active' &&
           (!meId || !s.playerIds.includes(meId)) &&
-          s.createdAt >= cutoff,
+          lastActivityAt(s, matches) >= cutoff,
       )
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, MAX_SHOWN)
-  }, [sessions, meId])
+  }, [sessions, matches, meId])
 
   if (others.length === 0) return null
 
