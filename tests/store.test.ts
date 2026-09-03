@@ -63,12 +63,6 @@ describe('角色的男女跟着球员资料走', () => {
 })
 
 describe('本机绑定的「我是谁」', () => {
-  it('不进备份 —— 备份恢复到别人手机上不该带着「我是谁」', () => {
-    const p = useApp.getState().addPlayer('Yy', 'M')
-    useApp.getState().setMeId(p.id)
-    expect('meId' in useApp.getState().exportBackup()).toBe(false)
-  })
-
   it('清空数据时一起解绑，不留下指着空气的绑定', () => {
     const p = useApp.getState().addPlayer('Yy', 'M')
     useApp.getState().setMeId(p.id)

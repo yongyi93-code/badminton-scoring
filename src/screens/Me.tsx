@@ -1,7 +1,7 @@
 import { LANG_LABELS, type Lang, useLang, useT } from '@/lib/i18n'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { avatarOf, playerMap, useApp, type Backup } from '@/store/useApp'
+import { avatarOf, playerMap, useApp } from '@/store/useApp'
 import type { Gender } from '@/types'
 import { useNav } from '@/store/useNav'
 import {
@@ -162,8 +162,9 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
  * 点进来，然后对着「手动推送」「从云端刷新」发愣 —— 那两个按钮
  * 是卡住时才用的，不是日常功能。
  *
- * 「全部清空」也搬走了，挪进了「数据备份与恢复」：清之前必须先导
- * 一份备份，而导出就在那一屏上面一格。
+ * 「全部清空」整个拿掉了：它会顺着同步把云端一起清空，也就是把
+ * 所有人的战绩一起抹掉 —— 这种按钮不该放在任何人点得到的地方。
+ * 真要重来，去 Supabase 后台跑一句 SQL。
  * ------------------------------------------------------------------ */
 
 function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -298,8 +299,6 @@ export function Me() {
   const { lang, setLang } = useLang()
   const { players, sessions, matches, avatars, meId } = useApp()
   const setMeId = useApp((s) => s.setMeId)
-  const exportBackup = useApp((s) => s.exportBackup)
-  const importBackup = useApp((s) => s.importBackup)
   const push = useNav((s) => s.push)
   const { theme, setTheme } = useTheme()
 
@@ -338,9 +337,6 @@ export function Me() {
    * 手机上，本机建角色是唯一的用法，照旧放行。离线可用是底线。
    */
   const mustSignIn = cloudReady && !session
-  const [backupOpen, setBackupOpen] = useState(false)
-  const [confirmWipe, setConfirmWipe] = useState(false)
-  const resetAll = useApp((s) => s.resetAll)
   const pushState = usePushState()
   const [pushBusy, setPushBusy] = useState(false)
   const [pushNote, setPushNote] = useState<string | null>(null)
@@ -350,8 +346,6 @@ export function Me() {
     void initPush()
   }, [])
   const [updating, setUpdating] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const names = useMemo(() => playerMap(players), [players])
   const me = meId ? names.get(meId) : undefined
@@ -395,31 +389,6 @@ export function Me() {
         .slice(0, 3),
     [sessions, me],
   )
-
-  function download() {
-    const data = exportBackup()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `RALLY-${t('备份', 'backup')}-${data.exportedAt.slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    setMessage(t('备份文件已导出', 'Backup file exported'))
-  }
-
-  async function upload(file: File) {
-    try {
-      importBackup(JSON.parse(await file.text()) as Backup)
-      setMessage(t('已恢复备份', 'Backup restored'))
-    } catch (err) {
-      setMessage(
-        err instanceof Error
-          ? t(`导入失败：${err.message}`, `Import failed: ${err.message}`)
-          : t('导入失败', 'Import failed'),
-      )
-    }
-  }
 
   const streak = stats ? streakLabel(stats.streak) : ''
 
@@ -781,16 +750,6 @@ export function Me() {
               </Button>
             }
           />
-          <MenuRow
-            title={t('数据备份与恢复', 'Backup and restore')}
-            /* 登录之后数据不再只在这台手机上了，这句话得跟着变 */
-            hint={
-              session
-                ? t('导一份文件留底，清空重来之前尤其要导', 'Export a file to keep — especially before clearing everything')
-                : t('数据只存在这台手机上，每次打完球导一次', 'Data lives only on this phone — export after every session')
-            }
-            onClick={() => setBackupOpen(true)}
-          />
         </div>
 
         {/*
@@ -903,79 +862,6 @@ export function Me() {
 
       <CloudSheet open={cloudOpen} onClose={() => setCloudOpen(false)} />
 
-      <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title={t('数据备份', 'Backup')}>
-        <p className="text-ink-700 text-label">
-          {t(
-            '登录之后云端有一份，换手机登录回来就能拿到。但备份文件是另一层保险 —— 万一云端那份被谁清掉了，只有它能把历史找回来。',
-            'Once you are signed in there is a copy in the cloud, so a new phone gets everything back when you sign in. A backup file is the second layer: if the cloud copy ever gets wiped, this is the only way back.',
-          )}
-        </p>
-        <div className="mt-4 space-y-2">
-          <Button block variant="primary" onClick={download}>
-            {t('导出备份文件', 'Export backup file')}
-          </Button>
-          <Button block variant="ghost" onClick={() => fileRef.current?.click()}>
-            {t('从备份文件恢复', 'Restore from file')}
-          </Button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) void upload(f)
-              e.target.value = ''
-            }}
-          />
-          <p className="text-warning-600 text-caption">
-            {t(
-              '恢复会覆盖当前所有数据，请先导出一次再恢复。',
-              'Restoring overwrites everything currently on this phone. Export first.',
-            )}
-          </p>
-        </div>
-
-        {/*
-          全队重新开始。放在这一屏最底下，而不是同步那一屏 ——
-          理由有两个：清之前必须先导一份备份，而导出就在上面一格；
-          而且这是全 App 唯一一个能一键抹掉所有人战绩的按钮，
-          不该出现在任何人日常会点开的地方。仍然要点两下。
-        */}
-        <div className="border-line mt-6 space-y-2 border-t pt-4">
-          {confirmWipe ? (
-            <>
-              <p className="text-danger-600 text-label">
-                {t(
-                  '这会清掉所有球员、球局和比赛 —— 而且因为云端跟着这台手机走，云端那份也会一起没。每个人的手机都会变空。确定吗？',
-                  'This clears every player, session and match — and because the cloud follows this phone, it goes too. Everyone’s phone ends up empty. Sure?',
-                )}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="danger"
-                  className="flex-1"
-                  onClick={() => {
-                    resetAll()
-                    setConfirmWipe(false)
-                    setMessage(t('已经清空，可以重新开始了', 'Cleared — fresh start'))
-                  }}
-                >
-                  {t('确定清空', 'Clear it all')}
-                </Button>
-                <Button variant="ghost" className="flex-1" onClick={() => setConfirmWipe(false)}>
-                  {t('算了', 'Never mind')}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <Button block variant="dangerSoft" onClick={() => setConfirmWipe(true)}>
-              {t('全部清空，重新开始', 'Clear everything and start over')}
-            </Button>
-          )}
-        </div>
-        {message && <p className="text-brand-600 mt-3 text-label">{message}</p>}
-      </Sheet>
     </Screen>
   )
 }

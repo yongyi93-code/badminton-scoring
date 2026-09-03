@@ -9,6 +9,7 @@ import { SessionBoard } from '@/screens/SessionBoard'
 import { ScoreBoard } from '@/screens/ScoreBoard'
 import { MatchResult } from '@/screens/MatchResult'
 import { VenueDetail } from '@/screens/VenueDetail'
+import { GlobalRanking } from '@/screens/GlobalRanking'
 import { Leaderboard } from '@/screens/Leaderboard'
 import { SessionSummary } from '@/screens/SessionSummary'
 import { PlayerProfile } from '@/screens/PlayerProfile'
@@ -70,6 +71,8 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       )
     case 'venue':
       return <VenueDetail venue={route.venue} />
+    case 'ranking':
+      return <GlobalRanking />
     case 'summary':
       return <SessionSummary sessionId={route.sessionId} />
     case 'profile':

@@ -1,4 +1,3 @@
-import { pick } from '@/lib/i18n'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
@@ -62,22 +61,6 @@ export type SessionDraft = {
   createdBy?: string
 }
 
-/**
- * 导出/导入的备份文件结构。
- * version 3 起是 avatars（v2 的 pets 会被丢弃，那套宠物已经换掉了）。
- * version 4 起女生用分层换装，导入老备份时会自动补上开局那几件。
- * 老字段缺失一律按空处理，v1/v2 的备份照样能导入。
- */
-export type Backup = {
-  app: 'badminton-scoring'
-  version: 1 | 2 | 3 | 4
-  exportedAt: string
-  players: Player[]
-  sessions: Session[]
-  matches: Match[]
-  avatars?: AvatarProfile[]
-}
-
 type AppState = {
   players: Player[]
   sessions: Session[]
@@ -137,8 +120,16 @@ type AppState = {
    * 数据算的，可能已经过时了，而这里读的是当下的 store。
    */
   joinSession: (sessionId: string, playerId: string) => boolean
-  /** 自己退出（还没打过的情况下）。打过的人退不掉，战绩要对得上 */
-  leaveSession: (sessionId: string, playerId: string) => void
+  /**
+   * 自己退出。返回退没退成。
+   *
+   * 打过球的人退不掉：他那几场比赛还在，退了之后那些记录就挂着一个
+   * 不在名单里的人，排行榜和结算都会对不上。
+   *
+   * 返回值是给界面用的 —— 原来这里默默 return，界面上按了没反应，
+   * 人只会以为按钮坏了，而真正的原因（你已经打过了）没有任何地方说。
+   */
+  leaveSession: (sessionId: string, playerId: string) => boolean
 
   addMatch: (match: Omit<Match, 'id' | 'seq'>) => Match
   addMatches: (matches: Omit<Match, 'id' | 'seq'>[]) => Match[]
@@ -155,8 +146,6 @@ type AppState = {
   /** 戴上或脱下某个槽位的装备，itemId 传 null 表示脱下 */
   equipItem: (playerId: string, slot: AvatarSlot, itemId: string | null) => void
 
-  exportBackup: () => Backup
-  importBackup: (backup: Backup) => void
   resetAll: () => void
 }
 
@@ -353,7 +342,7 @@ export const useApp = create<AppState>()(
             m.sessionId === sessionId &&
             (m.teamA.includes(playerId) || m.teamB.includes(playerId)),
         )
-        if (played) return
+        if (played) return false
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === sessionId
@@ -365,6 +354,7 @@ export const useApp = create<AppState>()(
               : x,
           ),
         }))
+        return true
       },
 
       deleteSession(id) {
@@ -463,34 +453,6 @@ export const useApp = create<AppState>()(
             return { ...p, equipped }
           }),
         }))
-      },
-
-      exportBackup() {
-        const { players, sessions, matches, avatars } = get()
-        return {
-          app: 'badminton-scoring',
-          version: 4,
-          exportedAt: new Date().toISOString(),
-          players,
-          sessions,
-          matches,
-          avatars,
-        }
-      },
-
-      importBackup(backup) {
-        if (backup?.app !== 'badminton-scoring') {
-          throw new Error(pick('不是本 App 的备份文件', 'Not a RALLY backup file'))
-        }
-        set({
-          players: backup.players ?? [],
-          sessions: backup.sessions ?? [],
-          matches: backup.matches ?? [],
-          // v1/v2 的备份没有 avatars，按还没建角色处理；
-          // 有的话可能还带着换掉的旧装备 id，一并换成新的，
-          // 再把分层换装那几件补齐 —— 和 migrate 走的是同两个函数
-          avatars: (backup.avatars ?? []).map(retireOldGear).map(grantDressUp),
-        })
       },
 
       resetAll() {

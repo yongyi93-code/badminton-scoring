@@ -18,6 +18,8 @@ export type Route =
   | { name: 'leaderboard'; sessionId?: undefined; venue: string }
   /** 球馆详情。venue 是球局上那段自由文本，归组交给 venueKey */
   | { name: 'venue'; venue: string }
+  /** 全体排名：所有人放在一起，按 MMR 排 */
+  | { name: 'ranking' }
   | { name: 'summary'; sessionId: string }
   | { name: 'profile'; playerId: string }
   | { name: 'avatar'; playerId: string }

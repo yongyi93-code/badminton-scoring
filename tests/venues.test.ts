@@ -9,6 +9,7 @@ import {
   venueKey,
   venueLabel,
   venueSummaries,
+  homeVenues,
 } from '@/lib/venues'
 import { computeStats, rankPlayers } from '@/lib/ranking'
 import { DEFAULT_RULES, type Match, type Session } from '@/types'
@@ -254,5 +255,64 @@ describe('历史球馆快选', () => {
     expect(out).toHaveLength(2)
     expect(out).toEqual(['城中 羽球馆', '北区体育馆'])
     expect(out.map(venueKey)).toEqual([venueKey('城中羽球馆'), venueKey('北区体育馆')])
+  })
+})
+
+/*
+ * 全体排行榜上每一行要显示「这个人是哪个馆的」。MMR 是跨馆累计的，
+ * 光看名次不知道他平时在哪儿打 —— 主场就是补这一句。
+ */
+describe('主场：最常打的球馆', () => {
+  it('取场数最多的那个馆', () => {
+    const a = session({ venue: '城中羽球馆' })
+    const b = session({ venue: '力天羽球馆' })
+    const ms = [
+      match(a.id, ['p1', 'p2'], ['p3', 'p4']),
+      match(a.id, ['p1', 'p2'], ['p3', 'p4']),
+      match(b.id, ['p1', 'p2'], ['p3', 'p4']),
+    ]
+    const home = homeVenues([a, b], ms)
+    expect(home.get('p1')?.label).toBe('城中羽球馆')
+    expect(home.get('p1')?.matches).toBe(2)
+  })
+
+  it('只在一个馆打过就是那个馆', () => {
+    const a = session({ venue: '力天羽球馆' })
+    const home = homeVenues([a], [match(a.id, ['p1', 'p2'], ['p3', 'p4'])])
+    expect(home.get('p3')?.label).toBe('力天羽球馆')
+  })
+
+  it('没打过球的人没有主场', () => {
+    const a = session({ venue: '力天羽球馆' })
+    const home = homeVenues([a], [match(a.id, ['p1', 'p2'], ['p3', 'p4'])])
+    expect(home.get('从来没上过场的人')).toBeUndefined()
+  })
+
+  /*
+   * 没打完的场次不算「在那儿打过」—— 口径要和场馆汇总、排行榜一致，
+   * 否则同一个人在两个地方显示的馆会不一样。
+   */
+  it('没打完的场次不算', () => {
+    const a = session({ venue: '城中羽球馆' })
+    const b = session({ venue: '力天羽球馆' })
+    const ms = [
+      match(a.id, ['p1', 'p2'], ['p3', 'p4'], [21, 15], { status: 'queued', endedAt: undefined }),
+      match(b.id, ['p1', 'p2'], ['p3', 'p4']),
+    ]
+    expect(homeVenues([a, b], ms).get('p1')?.label).toBe('力天羽球馆')
+  })
+
+  /* 并列时结果必须稳定，否则同一份数据每次渲染都可能换一个馆 */
+  it('场数并列时结果稳定', () => {
+    const a = session({ venue: '甲馆' })
+    const b = session({ venue: '乙馆' })
+    const ms = [
+      match(a.id, ['p1', 'p2'], ['p3', 'p4']),
+      match(b.id, ['p1', 'p2'], ['p3', 'p4']),
+    ]
+    const first = homeVenues([a, b], ms).get('p1')?.label
+    for (let i = 0; i < 5; i++) {
+      expect(homeVenues([a, b], ms).get('p1')?.label).toBe(first)
+    }
   })
 })

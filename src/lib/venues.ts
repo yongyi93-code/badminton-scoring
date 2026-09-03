@@ -148,3 +148,61 @@ export function recentVenues(sessions: Session[]): string[] {
   }
   return [...seen.values()].sort((a, b) => b.at - a.at).map((v) => v.label)
 }
+
+/* ------------------------------------------------------------------ *
+ * 主场：一个人最常打的球馆
+ * ------------------------------------------------------------------ */
+
+export type HomeVenue = {
+  key: string
+  label: string
+  /** 在这个馆打完的场数 */
+  matches: number
+}
+
+/**
+ * 每个人打得最多的那个球馆。
+ *
+ * 全体排行榜上要显示「这个人是哪个馆的」—— 而 MMR 是跨馆累计的，
+ * 光看名次不知道他平时在哪儿打。并列时取场数多的；再并列取名字排前的
+ * 那个 key，纯粹为了结果稳定 —— 不定死的话同一份数据每次渲染都可能
+ * 换一个馆，看起来像数据在乱跳。
+ *
+ * 口径和别处一致：只算打完的（decidedMatches），没打完的不算「在那儿打过」。
+ */
+export function homeVenues(
+  sessions: Session[],
+  matches: Match[],
+): Map<string, HomeVenue> {
+  const venueOf = new Map<string, { key: string; label: string }>()
+  for (const s of sessions) {
+    venueOf.set(s.id, { key: venueKey(s.venue), label: venueLabel(s.venue) })
+  }
+
+  /** playerId -> venueKey -> 场数 */
+  const tally = new Map<string, Map<string, number>>()
+  for (const m of decidedMatches(matches)) {
+    const v = venueOf.get(m.sessionId)
+    if (!v) continue
+    for (const id of [...m.teamA, ...m.teamB]) {
+      const byVenue = tally.get(id) ?? new Map<string, number>()
+      byVenue.set(v.key, (byVenue.get(v.key) ?? 0) + 1)
+      tally.set(id, byVenue)
+    }
+  }
+
+  const labelOf = new Map<string, string>()
+  for (const v of venueOf.values()) labelOf.set(v.key, v.label)
+
+  const out = new Map<string, HomeVenue>()
+  for (const [playerId, byVenue] of tally) {
+    let best: HomeVenue | null = null
+    for (const [key, count] of [...byVenue].sort((a, b) => a[0].localeCompare(b[0]))) {
+      if (!best || count > best.matches) {
+        best = { key, label: labelOf.get(key) ?? venueLabel(key), matches: count }
+      }
+    }
+    if (best) out.set(playerId, best)
+  }
+  return out
+}

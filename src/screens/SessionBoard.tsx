@@ -333,6 +333,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const deleteMatch = useApp((s) => s.deleteMatch)
   const updateSession = useApp((s) => s.updateSession)
   const endSession = useApp((s) => s.endSession)
+  const leaveSession = useApp((s) => s.leaveSession)
+  const meId = useApp((s) => s.meId)
 
   const push = useNav((s) => s.push)
   const resetTo = useNav((s) => s.resetTo)
@@ -359,6 +361,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   const [nextType, setNextType] = useState<MatchType | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /** 退不掉时的说明（打过球的人退不掉），按下去必须有回音 */
+  const [leaveNote, setLeaveNote] = useState<string | null>(null)
   const [endOpen, setEndOpen] = useState(false)
   const [managing, setManaging] = useState<Match | null>(null)
   const [swapping, setSwapping] = useState<{ match: Match; playerId: string } | null>(null)
@@ -1095,6 +1099,37 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
           {waiting.length === 0 && onCourtLoads.length === 0 && restingIds.length === 0 && (
             <p className="text-sm text-ink-500">{t('这一局还没有人。', 'Nobody in this session yet.')}</p>
+          )}
+        
+          {/*
+            自己退出。
+
+            加得进来就得退得出去 —— 临时来不了是常事，而原来加进来之后
+            界面上根本没有退出这回事，人只能留在名单里占着位置（球局限了
+            人数的话，那个位置别人还进不来）。
+
+            打过球的人退不掉：那几场比赛还挂着他，退了排行榜和结算都对不上。
+            所以按下去要说清楚为什么，不能默默没反应。
+          */}
+          {meId && session.playerIds.includes(meId) && (
+            <div className="pt-2">
+              <button
+                className="text-danger-600 text-caption"
+                onClick={() => {
+                  if (!leaveSession(session.id, meId)) {
+                    setLeaveNote(
+                      t(
+                        '你已经打过球了，退不掉 —— 那几场比赛还挂在你名下。',
+                        'You have already played — those matches are recorded under your name.',
+                      ),
+                    )
+                  }
+                }}
+              >
+                {t('我今天来不了，退出这个球局', 'I cannot make it — leave this session')}
+              </button>
+              {leaveNote && <p className="text-ink-500 mt-1 text-caption">{leaveNote}</p>}
+            </div>
           )}
         </div>
 
