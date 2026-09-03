@@ -1,477 +1,624 @@
 #!/usr/bin/env python3
 """
-生成 RALLY 使用指南 PDF。
+生成 RALLY 使用指南 PDF（图解版）。
 
     python3 docs/make-guide.py
 
-留着这个脚本而不是只留 PDF：App 一直在改，指南得跟着改。改文字比
-重做一份排版省事得多，而且下次谁来改都看得懂。
+第一版是一份文字说明书，用户的反馈是「太多字了，用图解释」。所以这一版
+反过来：画界面、画箭头、画流程，文字只留标签和一句话。
 
-字体用系统里的文泉驿正黑并且嵌进 PDF —— 不嵌的话，没装中文字体的
-电脑打开会是一片方框，而这份东西多半要发到群里给各种设备打开。
+为什么整页用 canvas 直接画，而不是用 Platypus 的文档流：这份东西的主体
+是示意图 —— 手机框、卡片、箭头、连线，位置都是精确摆的。用文档流去凑
+这种版面，比直接给坐标麻烦得多。
+
+两个踩过的坑，写下来免得再踩：
+
+  1. 文泉驿正黑没有 ✓ 和 ✕（U+2713 / U+2715）。缺字不报错、直接印成
+     空白 —— 上一版就栽在这上面：字体没有 U+2212（真减号），
+     「输一场 −10」印出来变成「输一场 10」，规则当场讲反。
+     所以那两个符号是用矢量线画的，而且每次构建前都跑一遍 check_glyphs()。
+  2. 字体必须嵌进 PDF。不嵌的话没装中文字体的设备打开是一片方框，
+     而这份东西是要发到群里给各种手机电脑打开的。
 """
 
+import os
+
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.pagesizes import A4  # noqa: F401  （只用它的宽度）
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (
-    BaseDocTemplate,
-    Frame,
-    KeepTogether,
-    PageBreak,
-    PageTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-)
+from reportlab.pdfgen import canvas as pdfcanvas
 
+FONT_PATH = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
 FONT = "WQY"
-pdfmetrics.registerFont(
-    TTFont(FONT, "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", subfontIndex=0)
-)
-# 这套字体只有一个字重。把粗体也指到同一个文件，<b> 标签才不会报错，
-# 层级改用字号和颜色来区分。
-pdfmetrics.registerFontFamily(FONT, normal=FONT, bold=FONT, italic=FONT, boldItalic=FONT)
+pdfmetrics.registerFont(TTFont(FONT, FONT_PATH, subfontIndex=0))
 
+# 页面比 A4 矮一截。
+#
+# 这份东西是发到群里、在手机上看的，不是拿去打印的。用 A4 的话每页
+# 底下空掉三成 —— 内容就那么多，纸太长而已。裁短之后每一屏看到的
+# 信息更多，也不用一直往下划。宽度保持 A4，真要打印照样放得下。
+W = A4[0]
+H = 232 * mm
 BRAND = colors.HexColor("#0d8f83")
+BRAND_L = colors.HexColor("#e6f4f2")
 INK = colors.HexColor("#1c2b2a")
-MUTED = colors.HexColor("#6b7d7b")
-LINE = colors.HexColor("#d8e3e1")
-FILL = colors.HexColor("#f1f7f6")
-WARN = colors.HexColor("#b45309")
+MUTED = colors.HexColor("#7a8c8a")
+LINE = colors.HexColor("#cdddda")
+FILL = colors.HexColor("#f4f9f8")
+WARN = colors.HexColor("#c2410c")
+WARN_L = colors.HexColor("#fdf0e6")
+DIM = colors.HexColor("#b9c7c5")
+GOLD = colors.HexColor("#d99a1e")
 
 APP_URL = "https://yongyi93-code.github.io/badminton-scoring/"
 
 
-def style(name, size, leading, color=INK, space_before=0, space_after=0, **kw):
-    return ParagraphStyle(
-        name,
-        fontName=FONT,
-        fontSize=size,
-        leading=leading,
-        textColor=color,
-        spaceBefore=space_before,
-        spaceAfter=space_after,
-        **kw,
-    )
+def Y(top_mm):
+    """从页面顶部量的坐标，换成 reportlab 的左下原点坐标"""
+    return H - top_mm * mm
 
 
-S = {
-    "cover_title": style("ct", 44, 52, BRAND, space_after=6, alignment=TA_CENTER),
-    "cover_sub": style("cs", 13, 20, MUTED, alignment=TA_CENTER),
-    "cover_note": style("cn", 10, 16, MUTED, alignment=TA_CENTER),
-    "h1": style("h1", 19, 26, BRAND, space_before=2, space_after=8),
-    "h2": style("h2", 13, 19, INK, space_before=11, space_after=4),
-    "body": style("b", 10.5, 17, INK, space_after=5),
-    "muted": style("m", 9.5, 15, MUTED, space_after=4),
-    "step": style("s", 10.5, 17, INK, space_after=3, leftIndent=15, firstLineIndent=-15),
-    "cell": style("c", 9.5, 14.5, INK),
-    "cell_key": style("ck", 9.5, 14.5, BRAND),
-    "tip": style("t", 9.5, 15, INK),
-}
+# ------------------------------------------------------------------ #
+# 基础画笔
+# ------------------------------------------------------------------ #
+
+#: 所有真正画到纸上的字符。给 check_glyphs() 用。
+DRAWN = set()
 
 
-def rule_after(title):
+def text(c, x, y, s, size=9, color=INK, align="l"):
+    DRAWN.update(s)
+    c.setFont(FONT, size)
+    c.setFillColor(color)
+    if align == "c":
+        c.drawCentredString(x, y, s)
+    elif align == "r":
+        c.drawRightString(x, y, s)
+    else:
+        c.drawString(x, y, s)
+
+
+def box(c, x, y, w, h, r=3, fill=None, stroke=LINE, lw=0.8):
+    c.setLineWidth(lw)
+    if fill:
+        c.setFillColor(fill)
+    if stroke:
+        c.setStrokeColor(stroke)
+    c.roundRect(x, y, w, h, r, stroke=1 if stroke else 0, fill=1 if fill else 0)
+
+
+def arrow(c, x1, y1, x2, y2, color=BRAND, lw=1.4, head=2.6):
+    """只画横平竖直的箭头 —— 斜的在这种示意图里只会显得乱"""
+    c.setStrokeColor(color)
+    c.setFillColor(color)
+    c.setLineWidth(lw)
+    c.line(x1, y1, x2, y2)
+    if x2 > x1:
+        c.lines([(x2, y2, x2 - head, y2 + head), (x2, y2, x2 - head, y2 - head)])
+    elif x2 < x1:
+        c.lines([(x2, y2, x2 + head, y2 + head), (x2, y2, x2 + head, y2 - head)])
+    elif y2 < y1:
+        c.lines([(x2, y2, x2 - head, y2 + head), (x2, y2, x2 + head, y2 + head)])
+    else:
+        c.lines([(x2, y2, x2 - head, y2 - head), (x2, y2, x2 + head, y2 - head)])
+
+
+def tick(c, x, y, s=4, color=BRAND, lw=1.8):
+    """对勾。字体里没有 ✓，只能画"""
+    c.setStrokeColor(color)
+    c.setLineWidth(lw)
+    c.setLineCap(1)
+    c.lines([
+        (x - s, y, x - s * 0.25, y - s * 0.7),
+        (x - s * 0.25, y - s * 0.7, x + s, y + s * 0.75),
+    ])
+    c.setLineCap(0)
+
+
+def cross(c, x, y, s=4, color=WARN, lw=1.8):
+    """叉。字体里也没有 ✕"""
+    c.setStrokeColor(color)
+    c.setLineWidth(lw)
+    c.setLineCap(1)
+    c.lines([(x - s, y - s, x + s, y + s), (x - s, y + s, x + s, y - s)])
+    c.setLineCap(0)
+
+
+def badge(c, x, y, n, r=5.2, color=BRAND):
+    """步骤编号的实心圆"""
+    c.setFillColor(color)
+    c.circle(x, y, r, stroke=0, fill=1)
+    c.setFont(FONT, r * 1.45)
+    c.setFillColor(colors.white)
+    c.drawCentredString(x, y - r * 0.52, str(n))
+
+
+def note(c, x, y, w, lines, tone="tip"):
     """
-    标题 + 底下那条细线。
-
-    用 KeepTogether 把标题、细线和后面第一段绑在一起 —— 不绑的话，
-    正文自然流动时会出现「标题孤零零留在页底、内容翻到下一页」，
-    那是排版里最显眼的一种难看。
-    """
-    t = Table([[""]], colWidths=[165 * mm], rowHeights=[1.4])
-    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), BRAND)]))
-    return [Spacer(1, 6), KeepTogether([Paragraph(title, S["h1"]), t]), Spacer(1, 9)]
-
-
-def box(lines, tone="tip"):
-    """
-    提示框。颜色只分两档：一般提示用品牌色，会踩坑的用橙色 ——
-    再多就没人分得清哪个更要紧。
+    提示条。只分两档颜色：一般是品牌色，会踩坑的是橙色 ——
+    再多档就没人分得清哪个更要紧。返回这一块的高度。
     """
     edge = WARN if tone == "warn" else BRAND
-    bg = colors.HexColor("#fdf6ec") if tone == "warn" else FILL
-    inner = [[Paragraph(x, S["tip"])] for x in lines]
-    t = Table(inner, colWidths=[157 * mm])
-    t.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), bg),
-                ("LINEBEFORE", (0, 0), (0, -1), 2.5, edge),
-                ("LEFTPADDING", (0, 0), (-1, -1), 9),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 9),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ]
-        )
-    )
-    return [Spacer(1, 3), t, Spacer(1, 7)]
+    bg = WARN_L if tone == "warn" else FILL
+    lh = 5.2 * mm
+    h = lh * len(lines) + 3.5 * mm
+    c.setFillColor(bg)
+    c.roundRect(x, y - h, w, h, 2, stroke=0, fill=1)
+    c.setFillColor(edge)
+    c.rect(x, y - h, 2.2, h, stroke=0, fill=1)
+    for i, ln in enumerate(lines):
+        text(c, x + 6 * mm, y - 5.6 * mm - i * lh, ln, 8.6, INK)
+    return h
 
 
-def kv_table(rows, key_w=42):
-    data = [
-        [Paragraph(k, S["cell_key"]), Paragraph(v, S["cell"])] for k, v in rows
+# ------------------------------------------------------------------ #
+# 手机与界面元件
+# ------------------------------------------------------------------ #
+
+def phone(c, x, y, w=44 * mm, h=80 * mm, label=None):
+    """
+    一台手机的外框，返回屏幕内容区 (sx, sy, sw, sh)。
+
+    画得很简：圆角矩形 + 顶部一道听筒。示意图不需要像素级还原，
+    需要的是「一眼看出这是手机屏幕」。
+    """
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.HexColor("#9fb3b0"))
+    c.setLineWidth(1.1)
+    c.roundRect(x, y, w, h, 5, stroke=1, fill=1)
+    c.setFillColor(colors.HexColor("#c9d6d4"))
+    c.roundRect(x + w / 2 - 6, y + h - 5, 12, 2, 1, stroke=0, fill=1)
+    if label:
+        text(c, x + w / 2, y - 5.5 * mm, label, 8.4, MUTED, "c")
+    pad = 3
+    return x + pad, y + pad, w - pad * 2, h - 8
+
+
+def tabbar(c, sx, sy, sw, highlight=None):
+    """底部五项导航。highlight 传 0-4"""
+    bh = 9 * mm
+    c.setFillColor(colors.HexColor("#fbfdfd"))
+    c.setStrokeColor(LINE)
+    c.setLineWidth(0.5)
+    c.rect(sx, sy, sw, bh, stroke=1, fill=1)
+    names = ["首页", "球局", "", "发现", "我的"]
+    step = sw / 5
+    for i, nm in enumerate(names):
+        cx = sx + step * (i + 0.5)
+        if i == 2:
+            c.setFillColor(BRAND)
+            c.circle(cx, sy + bh * 0.55, 5.2, stroke=0, fill=1)
+            c.setStrokeColor(colors.white)
+            c.setLineWidth(1.3)
+            c.lines([
+                (cx - 2.4, sy + bh * 0.55, cx + 2.4, sy + bh * 0.55),
+                (cx, sy + bh * 0.55 - 2.4, cx, sy + bh * 0.55 + 2.4),
+            ])
+            continue
+        col = BRAND if highlight == i else MUTED
+        c.setFillColor(col)
+        c.circle(cx, sy + bh * 0.68, 1.9, stroke=0, fill=1)
+        text(c, cx, sy + bh * 0.2, nm, 5.6, col, "c")
+    return bh
+
+
+def ui_card(c, x, y, w, h, title, sub=None, btn=None, tone="normal", title_size=7.6):
+    """屏幕里的一张卡片。tone: normal / brand / dim"""
+    bg = {"normal": colors.white, "brand": BRAND_L, "dim": colors.HexColor("#f2f4f4")}[tone]
+    edge = {"normal": LINE, "brand": BRAND, "dim": LINE}[tone]
+    box(c, x, y, w, h, 2.5, fill=bg, stroke=edge, lw=0.7)
+    tcol = DIM if tone == "dim" else INK
+    text(c, x + 2.5 * mm, y + h - 4.6 * mm, title, title_size, tcol)
+    if sub:
+        text(c, x + 2.5 * mm, y + h - 8.4 * mm, sub, 6, DIM if tone == "dim" else MUTED)
+    if btn:
+        label, bt = btn
+        bw, bh = 13 * mm, 5.2 * mm
+        bx, by = x + w - bw - 2.5 * mm, y + (h - bh) / 2
+        fill = {"primary": BRAND, "soft": colors.HexColor("#e4e9e9")}[bt]
+        box(c, bx, by, bw, bh, 2.2, fill=fill, stroke=None)
+        text(c, bx + bw / 2, by + 1.8 * mm, label, 6.4,
+             colors.white if bt == "primary" else MUTED, "c")
+    return h
+
+
+def section(c, top_mm, num, title, sub=None):
+    """一节的大标题 + 底下那条线。返回下一块内容该从哪个 y 开始"""
+    y = Y(top_mm)
+    badge(c, 20 * mm + 5.4, y + 2.4, num, 5.4)
+    text(c, 29 * mm, y, title, 15, BRAND)
+    c.setStrokeColor(BRAND)
+    c.setLineWidth(1.2)
+    c.line(20 * mm, y - 3.4 * mm, W - 20 * mm, y - 3.4 * mm)
+    if sub:
+        text(c, 20 * mm, y - 9 * mm, sub, 8.6, MUTED)
+        return y - 15 * mm
+    return y - 10 * mm
+
+
+def footer(c, page):
+    if page == 0:
+        return
+    c.setStrokeColor(LINE)
+    c.setLineWidth(0.5)
+    c.line(20 * mm, 15 * mm, W - 20 * mm, 15 * mm)
+    text(c, 20 * mm, 11 * mm, "RALLY 使用指南", 7.4, MUTED)
+    text(c, W - 20 * mm, 11 * mm, str(page), 7.4, MUTED, "r")
+
+
+# ------------------------------------------------------------------ #
+# 各页
+# ------------------------------------------------------------------ #
+
+def page_cover(c):
+    c.setFillColor(BRAND)
+    c.rect(0, H - 6 * mm, W, 6 * mm, stroke=0, fill=1)
+
+    text(c, W / 2, Y(30), "RALLY", 46, BRAND, "c")
+    text(c, W / 2, Y(40), "羽球社交竞技平台", 12, MUTED, "c")
+
+    c.setStrokeColor(LINE)
+    c.setLineWidth(0.8)
+    c.line(W / 2 - 20 * mm, Y(47), W / 2 + 20 * mm, Y(47))
+
+    text(c, W / 2, Y(57), "使 用 指 南", 19, INK, "c")
+    text(c, W / 2, Y(65), "全部用图说明", 9.6, MUTED, "c")
+
+    px = W / 2 - 24 * mm
+    py = Y(198)
+    sx, sy, sw, sh = phone(c, px, py, 48 * mm, 118 * mm)
+    text(c, sx + 3 * mm, sy + sh - 5.5 * mm, "RALLY", 9, BRAND)
+    ui_card(c, sx + 2.5 * mm, sy + sh - 32 * mm, sw - 5 * mm, 20 * mm,
+            "今晚去打球？", "开一个球局", tone="brand")
+    ui_card(c, sx + 2.5 * mm, sy + sh - 56 * mm, sw - 5 * mm, 20 * mm,
+            "力天羽球馆", "阿伟开的 · 4/8 人", btn=("加入", "primary"))
+    ui_card(c, sx + 2.5 * mm, sy + sh - 80 * mm, sw - 5 * mm, 20 * mm,
+            "城中羽球馆", "9月3日 · 12 场")
+    tabbar(c, sx, sy, sw, highlight=0)
+
+    text(c, W / 2, Y(212), APP_URL, 8.6, MUTED, "c")
+
+
+def page_start(c):
+    y = section(c, 26, 1, "三步开始", "五分钟以内")
+
+    pw, ph = 52 * mm, 108 * mm
+    gap = (W - 40 * mm - pw * 3) / 2
+    xs = [20 * mm + i * (pw + gap) for i in range(3)]
+    py = y - ph - 16 * mm
+
+    # ① 打开网址
+    sx, sy, sw, sh = phone(c, xs[0], py, pw, ph, "① 手机浏览器打开")
+    box(c, sx + 2 * mm, sy + sh - 10 * mm, sw - 4 * mm, 5.5 * mm, 2.5,
+        fill=colors.HexColor("#eef2f2"), stroke=None)
+    text(c, sx + sw / 2, sy + sh - 8.3 * mm, "github.io/badminton-scoring", 5, MUTED, "c")
+    text(c, sx + sw / 2, sy + sh / 2 - 2 * mm, "RALLY", 20, BRAND, "c")
+
+    # ② 加到主屏幕
+    sx, sy, sw, sh = phone(c, xs[1], py, pw, ph, "② 加到主屏幕")
+    text(c, sx + sw / 2, sy + sh - 18 * mm, "分享", 10, MUTED, "c")
+    arrow(c, sx + sw / 2, sy + sh - 23 * mm, sx + sw / 2, sy + sh - 34 * mm)
+    box(c, sx + 4 * mm, sy + sh - 48 * mm, sw - 8 * mm, 12 * mm, 2.5, fill=BRAND_L, stroke=BRAND)
+    text(c, sx + sw / 2, sy + sh - 44 * mm, "加入主屏幕", 9.4, BRAND, "c")
+    arrow(c, sx + sw / 2, sy + sh - 51 * mm, sx + sw / 2, sy + sh - 62 * mm)
+    c.setFillColor(BRAND)
+    c.roundRect(sx + sw / 2 - 8 * mm, sy + 20 * mm, 16 * mm, 16 * mm, 4, stroke=0, fill=1)
+    text(c, sx + sw / 2, sy + 25 * mm, "R", 19, colors.white, "c")
+    text(c, sx + sw / 2, sy + 14 * mm, "RALLY", 7.4, MUTED, "c")
+
+    # ③ 注册 + 建自己
+    sx, sy, sw, sh = phone(c, xs[2], py, pw, ph, "③ 注册，建一个你自己")
+    box(c, sx + 3 * mm, sy + sh - 22 * mm, sw - 6 * mm, 7 * mm, 1.5, fill=colors.white, stroke=LINE)
+    text(c, sx + 5 * mm, sy + sh - 19.5 * mm, "邮箱", 7.4, MUTED)
+    box(c, sx + 3 * mm, sy + sh - 34 * mm, sw - 6 * mm, 7 * mm, 1.5, fill=colors.white, stroke=LINE)
+    text(c, sx + 5 * mm, sy + sh - 31.5 * mm, "密码（至少 6 位）", 7.4, MUTED)
+    box(c, sx + 3 * mm, sy + sh - 48 * mm, sw - 6 * mm, 8.5 * mm, 2, fill=BRAND, stroke=None)
+    text(c, sx + sw / 2, sy + sh - 45 * mm, "注册并登录", 8.6, colors.white, "c")
+    arrow(c, sx + sw / 2, sy + sh - 52 * mm, sx + sw / 2, sy + sh - 64 * mm)
+    box(c, sx + 3 * mm, sy + sh - 78 * mm, sw - 6 * mm, 11 * mm, 2, fill=BRAND_L, stroke=BRAND)
+    text(c, sx + sw / 2, sy + sh - 74 * mm, "建一个你自己", 9.4, BRAND, "c")
+    text(c, sx + sw / 2, sy + 14 * mm, "填名字 · 选男女", 7.6, MUTED, "c")
+
+    for i in range(2):
+        ax = xs[i] + pw + gap / 2
+        arrow(c, ax - 4.5 * mm, py + ph / 2, ax + 4.5 * mm, py + ph / 2, lw=1.8, head=3.4)
+
+    note(c, 20 * mm, py - 16 * mm, W - 40 * mm, [
+        "iPhone 一定要做第 ② 步：只有从主屏幕那个图标打开，才收得到「有人开球局」的通知。",
+        "第 ③ 步要先登录再建角色 —— 不登录建的人只活在这台手机上，下次登录会被覆盖掉。",
+    ], tone="warn")
+
+
+def page_nav(c):
+    y = section(c, 26, 2, "底下五个按钮", "四个是地方，中间那个是动作")
+
+    pw, ph = 60 * mm, 128 * mm
+    px = 22 * mm
+    py = y - ph - 12 * mm
+    sx, sy, sw, sh = phone(c, px, py, pw, ph)
+    text(c, sx + 3 * mm, sy + sh - 5.5 * mm, "RALLY", 9, BRAND)
+    ui_card(c, sx + 2.5 * mm, sy + sh - 32 * mm, sw - 5 * mm, 19 * mm,
+            "最新消息", "阿伟：周五改去力天")
+    ui_card(c, sx + 2.5 * mm, sy + sh - 56 * mm, sw - 5 * mm, 19 * mm,
+            "力天羽球馆", "进行中 · 6 人", tone="brand")
+    ui_card(c, sx + 2.5 * mm, sy + sh - 80 * mm, sw - 5 * mm, 19 * mm,
+            "城中羽球馆", "小林开的 · 2/8", btn=("加入", "primary"))
+    bh = tabbar(c, sx, sy, sw)
+
+    items = [
+        ("首页", "最新消息、你在的球局、别人开的局"),
+        ("球局", "全部球局，翻历史用这里"),
+        ("＋", "开一场新球局"),
+        ("发现", "全体排名、你常去的球馆"),
+        ("我的", "段位战绩、角色、登录、开局提醒"),
     ]
-    t = Table(data, colWidths=[key_w * mm, (165 - key_w) * mm])
-    t.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.6, LINE),
-                ("BACKGROUND", (0, 0), (0, -1), FILL),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]
-        )
-    )
-    return [Spacer(1, 2), t, Spacer(1, 8)]
+    step = sw / 5
+    lx = px + pw + 12 * mm
+    top = y - 22 * mm
+    row = 23 * mm
+    for i, (nm, desc) in enumerate(items):
+        ty = top - i * row
+        c.setStrokeColor(LINE)
+        c.setLineWidth(0.6)
+        c.setDash(1.5, 1.5)
+        c.line(sx + step * (i + 0.5), sy + bh + 1.5 * mm, lx - 5 * mm, ty + 1.2 * mm)
+        c.setDash()
+        c.setFillColor(BRAND if i == 2 else colors.HexColor("#dfeceb"))
+        c.circle(lx - 2.4 * mm, ty + 1.4 * mm, 1.8 * mm, stroke=0, fill=1)
+        text(c, lx + 1.5 * mm, ty, nm, 10.5, BRAND)
+        text(c, lx + 1.5 * mm, ty - 5.2 * mm, desc, 8, MUTED)
 
 
-def steps(items):
-    return [Paragraph(f"{i + 1}.&nbsp;&nbsp;{x}", S["step"]) for i, x in enumerate(items)]
+def page_session(c):
+    y = section(c, 26, 3, "开局 · 加入")
+
+    text(c, 20 * mm, y, "点中间的 ＋ ，四步走完就开局", 10, INK)
+    bw = (W - 40 * mm - 3 * 5 * mm) / 4
+    by = y - 27 * mm
+    four = [("在哪打", ["球馆 · 场地数", "人数上限"]),
+            ("怎么打", ["自由 / 轮转", "双打 / 单打"]),
+            ("规矩", ["多少分一局", "几局几胜"]),
+            ("谁来了", ["勾到场的人", "后到的自己加"])]
+    for i, (t1, t2) in enumerate(four):
+        bx = 20 * mm + i * (bw + 5 * mm)
+        box(c, bx, by, bw, 21 * mm, 3, fill=FILL, stroke=LINE)
+        badge(c, bx + 6 * mm, by + 15.5 * mm, i + 1, 4.4)
+        text(c, bx + 11 * mm, by + 14 * mm, t1, 9.4, INK)
+        for j, ln in enumerate(t2):
+            text(c, bx + 4 * mm, by + 8 * mm - j * 4.4 * mm, ln, 7, MUTED)
+        if i < 3:
+            arrow(c, bx + bw + 0.8 * mm, by + 10.5 * mm, bx + bw + 4.2 * mm, by + 10.5 * mm, lw=1.2)
+
+    note(c, 20 * mm, by - 5 * mm, W - 40 * mm, [
+        "一个人就能开局 —— 开了之后别人在自己首页看得见，会自己加进来。",
+    ])
+
+    y2 = by - 24 * mm
+    text(c, 20 * mm, y2, "别人开了局，你首页就会出现", 10, INK)
+    cw = 84 * mm
+    cy = y2 - 21 * mm
+    ui_card(c, 20 * mm, cy, cw, 16 * mm, "力天羽球馆", "阿伟开的 · 4/8 人",
+            btn=("加入", "primary"), title_size=9)
+    arrow(c, 20 * mm + cw + 4 * mm, cy + 8 * mm, 20 * mm + cw + 13 * mm, cy + 8 * mm, lw=1.6, head=3)
+    tick(c, 20 * mm + cw + 21 * mm, cy + 8 * mm, 4.5)
+    text(c, 20 * mm + cw + 28 * mm, cy + 6.4 * mm, "点一下就进去了", 9, INK)
+
+    y3 = cy - 16 * mm
+    text(c, 20 * mm, y3, "同一时间只能在一场球局里", 10, INK)
+    cw2 = 78 * mm
+    cy2 = y3 - 21 * mm
+    ui_card(c, 20 * mm, cy2, cw2, 16 * mm, "力天羽球馆", "你在这一场", tone="brand", title_size=9)
+    tick(c, 20 * mm + cw2 - 7 * mm, cy2 + 8 * mm, 3.6)
+    x2 = 20 * mm + cw2 + 13 * mm
+    ui_card(c, x2, cy2, cw2, 16 * mm, "城中羽球馆", "小林开的 · 3/8",
+            btn=("加不了", "soft"), tone="dim", title_size=9)
+    cross(c, x2 - 6.5 * mm, cy2 + 8 * mm, 3.2)
+
+    note(c, 20 * mm, cy2 - 5 * mm, W - 40 * mm, [
+        "临时来不了：进球局页面，名单最下面点「我今天来不了，退出这个球局」。",
+        "已经打过球的人退不掉 —— 那几场比赛还挂在你名下。",
+    ])
 
 
-def bullets(items):
-    return [Paragraph(f"·&nbsp;&nbsp;{x}", S["step"]) for x in items]
+def page_play(c):
+    y = section(c, 26, 4, "打球 · 结束", "排场 → 记分 → 结算")
+
+    pw, ph = 52 * mm, 112 * mm
+    gap = (W - 40 * mm - pw * 3) / 2
+    xs = [20 * mm + i * (pw + gap) for i in range(3)]
+    py = y - ph - 14 * mm
+
+    # ① 排下一场
+    sx, sy, sw, sh = phone(c, xs[0], py, pw, ph, "① 点「排下一场」")
+    text(c, sx + 3 * mm, sy + sh - 5.5 * mm, "谁该上场", 8, INK)
+    for i in range(4):
+        yy = sy + sh - 20 * mm - i * 11 * mm
+        box(c, sx + 2.5 * mm, yy, sw - 5 * mm, 9 * mm, 1.8, fill=colors.white, stroke=LINE)
+        c.setFillColor(colors.HexColor("#dfeceb"))
+        c.circle(sx + 6.5 * mm, yy + 4.5 * mm, 2.6 * mm, stroke=0, fill=1)
+        text(c, sx + 11 * mm, yy + 3 * mm, ["阿伟", "小林", "阿明", "Yy"][i], 8, INK)
+        text(c, sx + sw - 3.5 * mm, yy + 3 * mm, f"打了 {3 - i} 场", 6.4, MUTED, "r")
+    box(c, sx + 2.5 * mm, sy + 5 * mm, sw - 5 * mm, 9 * mm, 2, fill=BRAND, stroke=None)
+    text(c, sx + sw / 2, sy + 8 * mm, "排下一场", 9, colors.white, "c")
+    text(c, sx + sw / 2, sy + 18 * mm, "按休息久、水平搭自动配", 6.4, MUTED, "c")
+
+    # ② 记分
+    sx, sy, sw, sh = phone(c, xs[1], py, pw, ph, "② 得分点一下")
+    text(c, sx + sw / 2, sy + sh - 6 * mm, "1 号场", 6.4, MUTED, "c")
+    hw = (sw - 6 * mm) / 2
+    box(c, sx + 2.5 * mm, sy + sh - 56 * mm, hw, 44 * mm, 2.5,
+        fill=colors.HexColor("#eef5fb"), stroke=colors.HexColor("#a8c8e4"))
+    text(c, sx + 2.5 * mm + hw / 2, sy + sh - 32 * mm, "21", 27, colors.HexColor("#2f6690"), "c")
+    text(c, sx + 2.5 * mm + hw / 2, sy + sh - 50 * mm, "阿伟 / 小林", 6.6, MUTED, "c")
+    box(c, sx + sw / 2 + 0.5 * mm, sy + sh - 56 * mm, hw, 44 * mm, 2.5,
+        fill=colors.HexColor("#fdeeee"), stroke=colors.HexColor("#e4a8a8"))
+    text(c, sx + sw / 2 + 0.5 * mm + hw / 2, sy + sh - 32 * mm, "18", 27, colors.HexColor("#9e3b3b"), "c")
+    text(c, sx + sw / 2 + 0.5 * mm + hw / 2, sy + sh - 50 * mm, "阿明 / Yy", 6.6, MUTED, "c")
+    text(c, sx + sw / 2, sy + 16 * mm, "记错了？", 8.6, INK, "c")
+    text(c, sx + sw / 2, sy + 9 * mm, "有退回按钮，一分一分退", 7, MUTED, "c")
+
+    # ③ 结算
+    sx, sy, sw, sh = phone(c, xs[2], py, pw, ph, "③ 右上角「结束」")
+    text(c, sx + sw / 2, sy + sh - 6 * mm, "今晚结算", 8.4, BRAND, "c")
+    for i, (k, v) in enumerate([("出席", "6 人"), ("打了", "12 场"), ("人均", "RM 15")]):
+        yy = sy + sh - 18 * mm - i * 9 * mm
+        text(c, sx + 4 * mm, yy, k, 8, MUTED)
+        text(c, sx + sw - 4 * mm, yy, v, 8, INK, "r")
+    box(c, sx + 2.5 * mm, sy + sh - 62 * mm, sw - 5 * mm, 14 * mm, 2, fill=BRAND_L, stroke=BRAND)
+    c.setFillColor(GOLD)
+    c.circle(sx + 8.5 * mm, sy + sh - 55 * mm, 3.2 * mm, stroke=0, fill=1)
+    text(c, sx + 14 * mm, sy + sh - 57 * mm, "今晚 MVP　阿伟", 8.4, INK)
+    text(c, sx + 4 * mm, sy + sh - 72 * mm, "今晚排名", 8, MUTED)
+    for i in range(3):
+        yy = sy + sh - 80 * mm - i * 7 * mm
+        text(c, sx + 4 * mm, yy, f"{i + 1}.", 7.4, MUTED)
+        text(c, sx + 10 * mm, yy, ["阿伟", "Yy", "小林"][i], 7.4, INK)
+
+    for i in range(2):
+        ax = xs[i] + pw + gap / 2
+        arrow(c, ax - 4.5 * mm, py + ph / 2, ax + 4.5 * mm, py + ph / 2, lw=1.8, head=3.4)
+
+    note(c, 20 * mm, py - 16 * mm, W - 40 * mm, [
+        "记得按「结束」—— 不按的话这一场会一直挂在「进行中」，也不会出结算。",
+    ], tone="warn")
 
 
-# ------------------------------------------------------------------ #
-# 页眉页脚
-# ------------------------------------------------------------------ #
+def page_rank(c):
+    y = section(c, 26, 5, "排名 · 段位 · 金币")
 
-def decorate(canvas, doc):
-    canvas.saveState()
-    page = canvas.getPageNumber()
-    if page > 1:
-        canvas.setFont(FONT, 8)
-        canvas.setFillColor(MUTED)
-        canvas.drawString(22 * mm, 12 * mm, "RALLY 使用指南")
-        canvas.drawRightString(188 * mm, 12 * mm, str(page - 1))
-        canvas.setStrokeColor(LINE)
-        canvas.setLineWidth(0.5)
-        canvas.line(22 * mm, 16 * mm, 188 * mm, 16 * mm)
-    canvas.restoreState()
+    text(c, 20 * mm, y, "每打完一场", 10, INK)
+    ry = y - 21 * mm
+    cw = 52 * mm
+    box(c, 20 * mm, ry, cw, 16 * mm, 3, fill=colors.HexColor("#eef7f2"), stroke=BRAND)
+    text(c, 20 * mm + 6 * mm, ry + 8.8 * mm, "赢", 13, BRAND)
+    text(c, 20 * mm + 17 * mm, ry + 9.6 * mm, "MMR +10", 10, INK)
+    text(c, 20 * mm + 17 * mm, ry + 3.6 * mm, "金币 +10", 8, GOLD)
+
+    bx2 = 20 * mm + cw + 8 * mm
+    box(c, bx2, ry, cw, 16 * mm, 3, fill=colors.HexColor("#f7f0f0"),
+        stroke=colors.HexColor("#c98b8b"))
+    text(c, bx2 + 6 * mm, ry + 8.8 * mm, "输", 13, colors.HexColor("#9e3b3b"))
+    text(c, bx2 + 17 * mm, ry + 9.6 * mm, "MMR -10", 10, INK)
+    text(c, bx2 + 17 * mm, ry + 3.6 * mm, "金币不扣", 8, MUTED)
+
+    note(c, 20 * mm, ry - 5 * mm, W - 40 * mm, [
+        "MMR 最低到 0 为止，不会变成负数。赢比自己强的队伍算「爆冷」，加倍给分。",
+    ])
+
+    y2 = ry - 27 * mm
+    text(c, 20 * mm, y2, "MMR 到了就自动升段", 10, INK)
+    tiers = [("先锋", 0), ("卫士", 50), ("中军", 100), ("统帅", 150),
+             ("传奇", 300), ("万古", 400), ("超凡", 500), ("冠绝", 700)]
+    tcolors = ["#8fa07d", "#9fb0bf", "#5fb8a8", "#7fc47f",
+               "#e3b344", "#b98cd8", "#7fb3ff", "#ff8a3d"]
+    bw = (W - 40 * mm) / 8
+    base = y2 - 42 * mm
+    for i, ((nm, mn), col) in enumerate(zip(tiers, tcolors)):
+        bx = 20 * mm + i * bw
+        bh = 5 * mm + i * 3.3 * mm
+        c.setFillColor(colors.HexColor(col))
+        c.roundRect(bx + 1.6 * mm, base, bw - 3.2 * mm, bh, 1.5, stroke=0, fill=1)
+        text(c, bx + bw / 2, base + bh + 2 * mm, nm, 7.6, INK, "c")
+        text(c, bx + bw / 2, base - 4.6 * mm, str(mn), 6.4, MUTED, "c")
+    text(c, W / 2, base - 10 * mm, "↑ 升上去需要的 MMR", 6.6, MUTED, "c")
+
+    y3 = base - 20 * mm
+    text(c, 20 * mm, y3, "三种排行榜，口径不一样", 10, INK)
+    cols = [("今晚排名", "只算这一场", "按胜率"),
+            ("球馆排行榜", "只算那个馆", "按胜率"),
+            ("全体排名", "所有人一起", "按 MMR")]
+    cw2 = (W - 40 * mm - 2 * 6 * mm) / 3
+    cy = y3 - 27 * mm
+    for i, (t1, t2, t3) in enumerate(cols):
+        bx = 20 * mm + i * (cw2 + 6 * mm)
+        hl = i == 2
+        box(c, bx, cy, cw2, 21 * mm, 3, fill=BRAND_L if hl else FILL, stroke=BRAND if hl else LINE)
+        text(c, bx + cw2 / 2, cy + 14.5 * mm, t1, 9.4, BRAND if hl else INK, "c")
+        text(c, bx + cw2 / 2, cy + 9 * mm, t2, 7.4, MUTED, "c")
+        text(c, bx + cw2 / 2, cy + 3.5 * mm, t3, 8, INK, "c")
+
+    note(c, 20 * mm, cy - 5 * mm, W - 40 * mm, [
+        "同一个人在不同榜上名次不一样，是正常的 —— 胜率离开范围就没意义。",
+    ])
+
+
+def page_faq(c):
+    y = section(c, 26, 6, "遇到问题")
+
+    rows = [
+        ("换手机 / 换浏览器",
+         "登录一下就全回来了。不要重新建角色 —— 那会变成两个你。"),
+        ("忘记密码",
+         "登录弹层点「忘记密码了？」→ 收件箱点链接（翻一下垃圾邮件）→ 设新密码。"),
+        ("界面怪怪的",
+         "「我的」拉到最底下 → 点「检查更新」。版本号变了就是新版。"),
+        ("看不到别人刚做的改动",
+         "把 App 切到后台再切回来，会自动重新同步一次。"),
+        ("加不进球局",
+         "写「已满」= 人满了；写「加不了」= 你已经在别的球局里。"),
+        ("退不出球局",
+         "你已经在这一场里打过球了，那几场比赛还挂在你名下。"),
+    ]
+    rh = 19 * mm
+    for i, (q, a) in enumerate(rows):
+        yy = y - 4 * mm - i * (rh + 4 * mm) - rh
+        box(c, 20 * mm, yy, W - 40 * mm, rh, 3, fill=colors.white, stroke=LINE)
+        c.setFillColor(BRAND_L)
+        c.roundRect(20 * mm, yy, 5 * mm, rh, 3, stroke=0, fill=1)
+        c.setFillColor(BRAND)
+        c.circle(22.5 * mm, yy + rh / 2, 1.6 * mm, stroke=0, fill=1)
+        text(c, 29 * mm, yy + rh - 7 * mm, q, 10.4, INK)
+        text(c, 29 * mm, yy + 5.5 * mm, a, 8.4, MUTED)
+
+    last = y - 4 * mm - len(rows) * (rh + 4 * mm) - 6 * mm
+    note(c, 20 * mm, last, W - 40 * mm, [
+        "所有记录都在云端，每个人登录后看到的是同一份。",
+        "手机没网照样能记分，联网之后自动补传上去。",
+    ])
+    text(c, W / 2, last - 21 * mm, "还有搞不定的，直接在群里问。", 9, MUTED, "c")
+
+
+PAGES = [page_cover, page_start, page_nav, page_session, page_play, page_rank, page_faq]
 
 
 def build(path):
-    doc = BaseDocTemplate(
-        path,
-        pagesize=A4,
-        leftMargin=22 * mm,
-        rightMargin=22 * mm,
-        topMargin=20 * mm,
-        bottomMargin=20 * mm,
-        title="RALLY 使用指南",
-        author="RALLY",
-        subject="羽球社交竞技平台 · 使用指南",
-    )
-    frame = Frame(
-        doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="main",
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
-    )
-    doc.addPageTemplates([PageTemplate(id="all", frames=[frame], onPage=decorate)])
-    doc.build(story())
+    c = pdfcanvas.Canvas(path, pagesize=(W, H))
+    c.setTitle("RALLY 使用指南")
+    c.setAuthor("RALLY")
+    c.setSubject("羽球社交竞技平台 · 图解使用指南")
+    for i, fn in enumerate(PAGES):
+        fn(c)
+        footer(c, i)
+        c.showPage()
+    c.save()
 
 
-# ------------------------------------------------------------------ #
-# 正文
-# ------------------------------------------------------------------ #
+def check_glyphs():
+    """
+    检查真正画上去的字，字体里有没有。
 
-def story():
-    f = []
+    缺字不会报错，直接印成空白 —— 上一版就栽在这上面：字体没有
+    U+2212（真减号），「输一场 −10」印出来变成「输一场 10」，
+    规则当场讲反。
 
-    # ---- 封面 ----
-    f += [
-        Spacer(1, 58 * mm),
-        Paragraph("RALLY", S["cover_title"]),
-        Paragraph("羽球社交竞技平台", S["cover_sub"]),
-        Spacer(1, 4),
-        Paragraph("使用指南", S["cover_sub"]),
-        Spacer(1, 26 * mm),
-        Paragraph(
-            "开局、加入、记分、排名、升段 —— 一处完成", S["cover_note"]
-        ),
-        Spacer(1, 8),
-        Paragraph(APP_URL, S["cover_note"]),
-        PageBreak(),
-    ]
+    只看 DRAWN（text() 实际画过的字），不扫源码 —— 扫源码会把注释里
+    举例用的那几个字符也算进来，误报一堆。
+    """
+    from fontTools.ttLib import TTCollection
 
-    # ---- 1 第一次使用 ----
-    f += rule_after("一、第一次使用")
-    f += [Paragraph("三步就能开始，五分钟以内。", S["body"])]
-    f += [Paragraph("第 1 步　打开网址", S["h2"])]
-    f += [Paragraph(f"用手机浏览器打开：{APP_URL}", S["body"])]
-
-    f += [Paragraph("第 2 步　加到主屏幕", S["h2"])]
-    f += bullets(
-        [
-            "<b>iPhone</b>：Safari 底部「分享」按钮 → 往下找「加入主屏幕」→ 添加",
-            "<b>Android</b>：Chrome 右上角「三个点」的菜单→「添加到主屏幕」",
-        ]
-    )
-    f += box(
-        [
-            "<b>这一步别跳过。</b>iPhone 上只有从主屏幕那个图标打开，才收得到「有人开球局」的通知 —— "
-            "Safari 标签页里根本没有这个能力，这是苹果的限制，不是 App 的问题。",
-            "而且加到主屏幕之后打开更快、没有浏览器地址栏，用起来就跟一个正经 App 一样。",
-        ],
-        tone="warn",
-    )
-
-    f += [Paragraph("第 3 步　注册，建一个你自己", S["h2"])]
-    f += steps(
-        [
-            "点右下角「我的」",
-            "点「登录 / 注册」→ 切到「注册」→ 填邮箱和密码（至少 6 位）→ 注册并登录",
-            "回到「我的」，点「建一个你自己」→ 填名字、选男女 → 完成",
-        ]
-    )
-    f += box(
-        [
-            "<b>为什么要先登录再建角色：</b>你的名字、战绩、金币、角色都存在云端，换手机登录回来就都在。"
-            "不登录建出来的人只活在这台手机上，下次登录会被云端覆盖掉。",
-            "<b>名字建完能改：</b>「我的」页面右上角「改名字」。",
-        ]
-    )
-
-
-    # ---- 2 界面 ----
-    f += rule_after("二、底下那五个按钮")
-    f += kv_table(
-        [
-            ("首页", "最新消息、你当前的球局、别人开的局、最近打过的几场"),
-            ("球局", "所有球局的完整列表，翻历史用这里"),
-            ("＋（中间）", "开一场新球局。它不是一个页面，是直接开始一条流程"),
-            ("发现", "全体排名、你常去的球馆（每个馆有自己的排行榜）"),
-            ("我的", "你的段位和战绩、角色换装、登录、开局提醒、语言、深色模式"),
-        ],
-        key_w=32,
-    )
-
-    # ---- 3 开局 ----
-    f += rule_after("三、开一场球局")
-    f += [Paragraph("点中间的「＋」，四步走完就开局了。", S["body"])]
-    f += kv_table(
-        [
-            ("① 在哪打", "球馆名字、几片场地、最多几个人（可以不限）"),
-            ("② 怎么打", "自由模式还是轮转赛、默认双打还是单打"),
-            ("③ 规矩", "多少分一局、要不要净胜两分、几局几胜"),
-            ("④ 谁来了", "先把已经到的人勾上就行，后到的人自己加进来"),
-        ],
-        key_w=30,
-    )
-    f += box(
-        [
-            "<b>一个人就能开局。</b>不用等凑够四个人 —— 开了之后其他人在自己首页就看得见，会自己加进来。",
-            "<b>人数上限。</b>场地订好了、钱是 AA 的时候特别有用：满了别人就加不进来，不会来了一堆人在旁边坐着。"
-            "上限随时能在球局页面里改，改小也不会把已经在里面的人踢出去。",
-        ]
-    )
-
-    # ---- 4 加入 ----
-    f += rule_after("四、加入别人开的球局")
-    f += [
-        Paragraph(
-            "别人开了局，你首页的「别人开的局」那一块就会出现 —— 谁开的、在哪、几个人了。"
-            "点右边「加入」，直接进去。",
-            S["body"],
-        )
-    ]
-    f += box(
-        [
-            "<b>同一时间只能在一场球局里。</b>已经在一场里的时候，别的球局按钮是灰的「加不了」，"
-            "底下会写着你人在哪一场 —— 点那行字就直接跳过去。",
-            "<b>临时来不了？</b>进球局页面，人员名单最下面有一行「我今天来不了，退出这个球局」。"
-            "已经打过球的人退不掉：那几场比赛还挂在你名下，退了排名和分账就对不上。",
-        ]
-    )
-    f += box(
-        [
-            "<b>没装 App 的球友怎么办：</b>在球局页面点「+ 加人」，直接填名字。"
-            "系统会列出「以前来过的」，从里面挑同一个人，他的战绩才不会每周重新算。",
-        ]
-    )
-
-
-    # ---- 5 打球 ----
-    f += rule_after("五、打球时：排场和记分")
-    f += steps(
-        [
-            "球局页面点「排下一场」，系统按「谁休息得久、水平怎么搭」自动配对",
-            "想提前安排就点「预排一场」，让大家知道下一场是谁",
-            "上场后点那一场进记分页，左右两边各是一队，得分点一下加一分",
-            "打完自动跳到结算，显示谁赢了、每个人 MMR 加减、有没有升段",
-        ]
-    )
-    f += box(
-        [
-            "<b>记错分了？</b>记分页上有退回按钮，一分一分退得回去。已经结束的比赛也能改 —— "
-            "球局页面「已打完」那一栏点进去就行。按错「结束」是最常发生的事，所以留了这条路。",
-            "<b>有人要休息几场？</b>在「谁该上场」名单里点他的名字，可以标成休息中，排场就会跳过他。",
-        ]
-    )
-
-    # ---- 6 结束 ----
-    f += rule_after("六、打完：结束球局")
-    f += [
-        Paragraph(
-            "球局页面右上角「结束」。结束之后会出一张结算：出席几人、打了几场、"
-            "人均多少钱、今晚 MVP、今晚排名。还能生成一张图片发到群里。",
-            S["body"],
-        )
-    ]
-    f += box(
-        [
-            "<b>记得按结束。</b>不按的话这一场会一直挂在「进行中」。"
-            "（首页对超过 12 小时没动静的球局会自动不显示，但它仍然没有结算 —— "
-            "去「球局」那一页 找到它，补按一次结束就行。）",
-            "<b>结束了还能改。</b>结算页可以重新打开球局，改完再结束一次。",
-        ],
-        tone="warn",
-    )
-
-
-    # ---- 7 排名 ----
-    f += rule_after("七、排名是怎么算的")
-    f += [Paragraph("MMR：你的长期水平分", S["h2"])]
-    f += bullets(
-        [
-            "赢一场 <b>+10</b>，输一场 <b>-10</b>",
-            "最低到 <b>0</b> 为止，不会变成负数 —— 打得再差也是从头爬，不至于挖个坑",
-            "赢比自己强的队伍算「爆冷」，加倍给分",
-            "跨球馆累计：换个球馆打，MMR 不变",
-        ]
-    )
-
-    f += [Paragraph("段位（跟着 MMR 走，会自动升）", S["h2"])]
-    f += kv_table(
-        [
-            ("先锋 Herald", "MMR 0 起"),
-            ("卫士 Guardian", "50 起"),
-            ("中军 Crusader", "100 起"),
-            ("统帅 Archon", "150 起"),
-            ("传奇 Legend", "300 起"),
-            ("万古 Ancient", "400 起"),
-            ("超凡 Divine", "500 起"),
-            ("冠绝 Immortal", "700 起"),
-        ],
-        key_w=48,
-    )
-
-    f += [Paragraph("三种排行榜，口径不一样", S["h2"])]
-    f += kv_table(
-        [
-            ("今晚排名", "只算这一场球局的比赛，按胜率排"),
-            ("球馆排行榜", "只算在那个馆打的比赛，按胜率排（发现页 → 点那个球馆）"),
-            ("全体排名", "所有人放在一起，按 MMR 排（发现页 → 全体排名）"),
-        ],
-        key_w=32,
-    )
-    f += box(
-        [
-            "<b>同一个人在不同榜上名次不一样，是正常的。</b>胜率离开范围就没意义 —— "
-            "在强队里打的五成和在弱队里打的五成不是一回事。所以「全体」那一榜只能按 MMR 排。",
-        ]
-    )
-
-
-    # ---- 8 角色 ----
-    f += rule_after("八、角色和金币")
-    f += bullets(
-        [
-            "<b>赢一场 = 10 金币</b>（输了不扣金币，只扣 MMR）",
-            "金币在「我的 → 我的角色」里花，买背景、头像框、称号",
-            "段位升上去，角色形象会自动跟着换 —— 新手 → 进阶 → 精英 → 高手 → 传奇",
-            "角色的男女跟着你资料里填的性别走，改资料角色就跟着改，买过的东西一件不少",
-        ]
-    )
-
-    # ---- 9 通知 ----
-    f += rule_after("九、开局提醒（有人开局就通知你）")
-    f += steps(
-        [
-            "确认你是从<b>主屏幕图标</b>打开的（不是浏览器标签页）",
-            "「我的」→ 找到「开局提醒」→ 点「打开」",
-            "系统弹出询问时选「允许」",
-        ]
-    )
-    f += box(
-        [
-            "开局的人自己不会收到通知 —— 按下按钮的就是他本人。所以要试的话得两台手机。",
-            "点错了「不允许」就弹不出来了，得去手机的<b>系统设置</b>里找到 RALLY 把通知打开。",
-        ]
-    )
-
-
-    # ---- 10 常见问题 ----
-    f += rule_after("十、常见问题")
-    f += kv_table(
-        [
-            (
-                "换手机了 / 换浏览器了",
-                "登录一下就全回来了。你的角色是跟着账号的，不是跟着手机。"
-                "<b>不要重新建一个角色</b> —— 那会变成两个你，战绩各算各的。",
-            ),
-            (
-                "忘记密码",
-                "登录弹层里点「忘记密码了？」→ 填邮箱 → 收件箱点那个链接（<b>记得翻垃圾邮件</b>）"
-                "→ 会跳回 RALLY 让你设新密码。",
-            ),
-            (
-                "界面怪怪的",
-                "「我的」页面拉到最底下，点「检查更新」。版本号变了就是拿到新版了。",
-            ),
-            (
-                "看不到别人刚做的改动",
-                "把 App 切到后台再切回来，会自动重新同步一次。手机把后台网页冻结之后，"
-                "实时更新会断掉，这是正常现象。",
-            ),
-            (
-                "加不进球局",
-                "两个原因：<b>已满</b>（按钮显示「已满」），或者<b>你已经在别的球局里</b>"
-                "（按钮显示「加不了」，底下会写是哪一场）。",
-            ),
-            (
-                "退不出球局",
-                "你已经在这一场里打过球了。那几场比赛还挂在你名下，退了排名和 AA 分账就对不上。",
-            ),
-            (
-                "「登录」点了没反应",
-                "先看看网络。还是不行的话，「我的」→ 检查更新，再试一次。",
-            ),
-        ],
-        key_w=44,
-    )
-
-    f += [Spacer(1, 6)]
-    f += box(
-        [
-            "<b>数据存在哪：</b>所有记录都在云端，每个人登录后看到的是同一份。"
-            "手机没网的时候照样能记分，联网之后会自动补传上去。",
-        ]
-    )
-
-    f += [
-        Spacer(1, 12),
-        Paragraph(
-            "还有搞不定的，直接在群里问。",
-            S["muted"],
-        ),
-    ]
-    return f
+    cmap = set(TTCollection(FONT_PATH).fonts[0].getBestCmap())
+    return sorted(ch for ch in DRAWN if ord(ch) not in cmap and ch not in "\n\t")
 
 
 if __name__ == "__main__":
-    import os
-
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RALLY-使用指南.pdf")
     build(out)
-    print("生成:", out)
+    miss = check_glyphs()
+    if miss:
+        raise SystemExit(
+            "这些字符字体里没有，纸上会是空白："
+            + " ".join(f"{ch}(U+{ord(ch):04X})" for ch in miss)
+        )
+    print("生成:", out, f"（画了 {len(DRAWN)} 种字符，全部有字形）")
