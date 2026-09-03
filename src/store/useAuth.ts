@@ -2,7 +2,8 @@ import { useSyncExternalStore } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { pick } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
-import { startSync, stopSync } from '@/lib/sync'
+import { flushNow, startSync, stopSync } from '@/lib/sync'
+import { useApp } from '@/store/useApp'
 
 /* ------------------------------------------------------------------ *
  * 登录状态
@@ -148,6 +149,34 @@ export async function signUp(email: string, password: string): Promise<AuthResul
   return { ok: true }
 }
 
-export async function signOut(): Promise<void> {
+/**
+ * 退出登录：连本机那份缓存一起清掉。
+ *
+ * 为什么要清：这份数据属于那个账号，不属于这台手机。不清的话，
+ * 退出之后「我的」页面还挂着上一个人的名字和角色 —— 而下一个人
+ * 在这台手机上登录，看到的第一屏是别人的战绩。
+ *
+ * 四步的顺序是有讲究的：
+ *
+ *   1) 先把没推上去的推干净。第 3 步会清掉本机缓存，没推的就没了
+ *   2) 再断掉同步。同步是「订阅整个 store 算差异」，同步开着的时候
+ *      清空 store，差异算出来就是「这个人把所有东西都删了」，然后
+ *      老老实实推上去，把云端所有人的数据一起抹掉 —— 「全部清空，
+ *      重新开始」正是靠这个行为把云端一起清掉的，同一个机制用在
+ *      退出登录上就是事故。tests 里有一条把这件事钉成了可执行的。
+ *   3) 清本机缓存
+ *   4) 最后才真的登出
+ *
+ * 说句老实的：2 和 3 就算写反了，今天也不会出事 —— stopSync 会在
+ * 同一个 tick 里把攒着的那个防抖定时器清掉，推送根本没机会发出去。
+ * 但那是运气不是设计，中间只要多一个 await 就不成立了。
+ */
+export async function signOut(): Promise<{ ok: true } | { ok: false; error: string }> {
+  const flushed = await flushNow()
+  if (!flushed.ok) return flushed
+
+  stopSync()
+  useApp.getState().resetAll()
   await supabase?.auth.signOut()
+  return { ok: true }
 }

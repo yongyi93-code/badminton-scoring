@@ -415,6 +415,24 @@ function pullOnResume() {
   void pullAll()
 }
 
+/**
+ * 把攒着还没推的改动立刻推完，等推完再返回。
+ *
+ * 退出登录要用：登出之后本机那份缓存会被清掉，没推上去的东西就
+ * 再也找不回来了。所以先推干净；推不动就把话说出来，别让人退。
+ */
+export async function flushNow(): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!supabase || !started) return { ok: true }
+  if (flushTimer) {
+    clearTimeout(flushTimer)
+    flushTimer = null
+  }
+  if (changedRows().length === 0) return { ok: true }
+  await flush()
+  if (status.state === 'error') return { ok: false, error: status.message }
+  return { ok: true }
+}
+
 /** 退出登录时收摊，别让上一个账号的订阅留着 */
 export function stopSync() {
   started = false

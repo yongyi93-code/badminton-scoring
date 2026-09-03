@@ -336,6 +336,8 @@ export function Me() {
   const pushState = usePushState()
   const [pushBusy, setPushBusy] = useState(false)
   const [pushNote, setPushNote] = useState<string | null>(null)
+  /* 退出登录失败时的说明。message 那个只画在备份弹层里，退出时看不见 */
+  const [signOutNote, setSignOutNote] = useState<string | null>(null)
   useEffect(() => {
     void initPush()
   }, [])
@@ -569,7 +571,27 @@ export function Me() {
                   title={t('已登录', 'Signed in')}
                   hint={session.user.email ?? undefined}
                   right={
-                    <Button size="sm" variant="soft" onClick={() => void signOut()}>
+                    <Button
+                      size="sm"
+                      variant="soft"
+                      onClick={() => {
+                        /*
+                         * 退出会清掉本机缓存，所以没推上去的东西必须先推完。
+                         * 推不动（多半是离线）就不退，把原因说出来 ——
+                         * 默默退掉的话，那几场刚记的分就永远找不回来了。
+                         */
+                        void signOut().then((r) => {
+                          if (!r.ok) {
+                            setSignOutNote(
+                              t(
+                                `还有东西没同步上去，先连上网再退出：${r.error}`,
+                                `Some changes are not synced yet — get back online before signing out: ${r.error}`,
+                              ),
+                            )
+                          }
+                        })
+                      }}
+                    >
                       {t('退出', 'Sign out')}
                     </Button>
                   }
@@ -602,6 +624,9 @@ export function Me() {
                 />
               )}
             </div>
+            {signOutNote && (
+              <p className="text-danger-600 px-1 text-caption">{signOutNote}</p>
+            )}
             <p className="text-ink-500 px-1 text-caption">
               {session
                 ? syncHint

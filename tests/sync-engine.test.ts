@@ -20,6 +20,8 @@ const cloud = vi.hoisted(() => ({
   upserts: [] as { kind: string; id: string; deleted: boolean }[][],
   /** 想让读取失败时填这个 */
   selectError: null as { message: string } | null,
+  /** 想让写入失败时填这个 */
+  upsertError: null as { message: string } | null,
   /** 有没有登录。RLS 只认登录的人，没登录时一个请求都不该发出去 */
   session: {} as object | null,
 }))
@@ -35,6 +37,7 @@ vi.mock('@/lib/supabase', () => {
         ),
     }),
     upsert: (rows: { kind: string; id: string; deleted: boolean }[]) => {
+      if (cloud.upsertError) return Promise.resolve({ error: cloud.upsertError })
       cloud.upserts.push(rows)
       return Promise.resolve({ error: null })
     },
@@ -47,6 +50,13 @@ vi.mock('@/lib/supabase', () => {
       removeChannel: () => Promise.resolve('ok'),
       auth: {
         getSession: () => Promise.resolve({ data: { session: cloud.session } }),
+        signOut: () => {
+          cloud.session = null
+          return Promise.resolve({ error: null })
+        },
+        onAuthStateChange: () => ({
+          data: { subscription: { unsubscribe: () => {} } },
+        }),
       },
     },
     cloudReady: true,
@@ -313,5 +323,79 @@ describe('退出登录', () => {
     await vi.advanceTimersByTimeAsync(700)
 
     expect(cloud.upserts).toEqual([])
+  })
+})
+
+/*
+ * 退出登录会清掉本机缓存 —— 而同步是「订阅整个 store 算差异」。
+ * 两件事撞在一起的后果不是「界面不对」，是把云端所有人的数据一起抹掉：
+ * 清空会被算成「这个人删了所有东西」，然后老老实实推上去。
+ *
+ * 这一组钉的是结果：退出之后本机确实清干净了，而云端一条删除都没收到。
+ * （顺序本身钉不住 —— 见下面那个 describe，那条才说明白为什么要先断。）
+ */
+describe('退出登录', () => {
+  it('清本机，但绝不把清空当成删除推上去', async () => {
+    cloud.session = { user: { id: 'uid-1' } }
+    await startSync()
+    useApp.getState().addPlayer('阿伟', 'M')
+    await vi.advanceTimersByTimeAsync(700)
+    expect(cloud.upserts.length).toBeGreaterThan(0)
+    cloud.upserts = []
+
+    const { signOut } = await import('@/store/useAuth')
+    const res = await signOut()
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(res.ok).toBe(true)
+    // 本机清干净了
+    expect(useApp.getState().players).toEqual([])
+    expect(useApp.getState().meId).toBeNull()
+    // 而且一条 deleted 都没推出去
+    const deletions = cloud.upserts.flat().filter((r) => r.deleted)
+    expect(deletions).toEqual([])
+  })
+
+  it('还有没推上去的东西时不让退，本机数据原样留着', async () => {
+    cloud.session = { user: { id: 'uid-1' } }
+    await startSync()
+    useApp.getState().addPlayer('小林', 'M')
+    // 推的时候数据库拒收
+    cloud.upsertError = { message: 'Failed to fetch' }
+
+    const { signOut } = await import('@/store/useAuth')
+    const res = await signOut()
+
+    expect(res.ok).toBe(false)
+    // 没推成功就没退，人还在
+    expect(useApp.getState().players.length).toBe(1)
+    cloud.upsertError = null
+  })
+})
+
+/*
+ * 这条不是在测某个功能，是把「为什么退出登录必须先断同步」写成可执行的。
+ *
+ * 同步的挂钩方式是订阅整个 store 算差异。所以在同步还开着的时候清空
+ * store，差异算出来就是「这个人把所有东西都删了」—— 然后老老实实推
+ * 上去，把云端所有人的数据一起抹掉。
+ *
+ * 这不是假想：「全部清空，重新开始」正是靠这个行为把云端一起清掉的。
+ * 同一个机制，用在退出登录上就是事故。
+ */
+describe('清空 store 和同步撞在一起', () => {
+  it('同步开着时清空，删除会被推上去 —— 所以退出必须先 stopSync', async () => {
+    cloud.session = { user: { id: 'uid-1' } }
+    await startSync()
+    useApp.getState().addPlayer('阿伟', 'M')
+    await vi.advanceTimersByTimeAsync(700)
+    cloud.upserts = []
+
+    // 故意不 stopSync，直接清
+    useApp.getState().resetAll()
+    await vi.advanceTimersByTimeAsync(700)
+
+    const deletions = cloud.upserts.flat().filter((r) => r.deleted)
+    expect(deletions.length).toBeGreaterThan(0)
   })
 })
