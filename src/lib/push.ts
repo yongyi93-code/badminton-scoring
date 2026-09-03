@@ -243,35 +243,3 @@ export async function disablePush(): Promise<PushResult> {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 }
-
-/**
- * 给自己弹一条测试通知。
- *
- * 整条链路有三段：浏览器权限 → Service Worker 弹通知 → 服务端推过来。
- * 这个按钮只走前两段，不碰网络 —— 它的用处是把问题切成两半：
- * 这条弹得出来，那么手机这边是好的，剩下的问题一定在服务端那一段。
- *
- * 沙箱里连不上推送服务，真机是唯一能验的地方，所以这个入口留在界面上。
- */
-export async function testNotification(): Promise<PushResult> {
-  if (!pushSupported()) {
-    return { ok: false, error: pick('这台手机不支持通知', 'Notifications are not supported here') }
-  }
-  try {
-    if (Notification.permission !== 'granted') {
-      const p = await Notification.requestPermission()
-      if (p !== 'granted') {
-        return { ok: false, error: pick('没有允许通知', 'Notifications were not allowed') }
-      }
-    }
-    const reg = await navigator.serviceWorker.ready
-    await reg.showNotification(pick('RALLY 测试', 'RALLY test'), {
-      body: pick('看到这条就说明通知没问题', 'If you can see this, notifications work'),
-      icon: './icon-192.png',
-      tag: 'rally-test',
-    })
-    return { ok: true }
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) }
-  }
-}

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useT } from '@/lib/i18n'
-import { isFull, spotsLeft, useApp } from '@/store/useApp'
+import { activeSessionOf, isFull, spotsLeft, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Button, Card, Pill, SectionTitle } from '@/components/ui'
 import { formatDate } from '@/lib/format'
@@ -15,7 +15,15 @@ import { venueLabel } from '@/lib/venues'
  * 这一块取代了原来「一个人管名册、开局时替所有人勾到场」的做法。
  * 那种做法的毛病不是麻烦，是它要求开局的人知道今晚谁会来；
  * 而实际上人是陆陆续续到的。
+ * 只显示「还新鲜的」几场：球局要靠人按「结束」才收摊，而没人记得按，
+ * 不挡的话首页会堆满上个月那些早就散了的局。
  * ------------------------------------------------------------------ */
+
+/** 开了超过这么久还没结束的，当成忘了按结束，首页不再显示 */
+const FRESH_MS = 12 * 60 * 60 * 1000
+
+/** 就算都新鲜，首页也最多列这么多 —— 首页不是球局列表 */
+const MAX_SHOWN = 5
 
 export function OpenSessions() {
   const t = useT()
@@ -32,14 +40,31 @@ export function OpenSessions() {
   const playedIn = (sessionId: string) =>
     matches.filter((m) => m.sessionId === sessionId && m.status === 'done').length
 
-  /** 进行中、而且我不在里面的 —— 我在里面的那场首页上面已经有大卡片了 */
-  const others = useMemo(
-    () =>
-      sessions
-        .filter((s) => s.status === 'active' && (!meId || !s.playerIds.includes(meId)))
-        .sort((a, b) => b.createdAt - a.createdAt),
-    [sessions, meId],
-  )
+  /** 我现在在哪一场里。在的话，别的局一概加不进去 */
+  const mine = useMemo(() => activeSessionOf(sessions, meId), [sessions, meId])
+
+  /*
+   * 进行中、我不在里面、而且还「新鲜」的那几场。
+   *
+   * 新鲜是关键：球局要靠人按「结束」才会收摊，而没人记得按 —— 打完
+   * 就各回各家了。于是首页会越堆越长，全是上个月开的、早就散了的局，
+   * 真正今晚那一场反而埋在里面。
+   *
+   * 12 小时是按羽球的实际节奏定的：一场球局撑死打一晚上，超过半天
+   * 还开着的，一定是忘了按结束，不是还在打。
+   */
+  const others = useMemo(() => {
+    const cutoff = Date.now() - FRESH_MS
+    return sessions
+      .filter(
+        (s) =>
+          s.status === 'active' &&
+          (!meId || !s.playerIds.includes(meId)) &&
+          s.createdAt >= cutoff,
+      )
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, MAX_SHOWN)
+  }, [sessions, meId])
 
   if (others.length === 0) return null
 
@@ -92,23 +117,23 @@ export function OpenSessions() {
               */}
               <Button
                 size="sm"
-                variant={full ? 'soft' : 'primary'}
+                variant={full || mine ? 'soft' : 'primary'}
                 className="shrink-0"
-                disabled={full}
+                disabled={full || Boolean(mine)}
                 onClick={() => {
                   if (!meId) {
                     switchTab('me')
                     return
                   }
                   /*
-                   * 上限由 store 判定，不看这里算出来的 full ——
-                   * 界面这份是同步过来的数据，可能已经过时；
-                   * 加不进去就别跳转，留在原地能看见「已满」。
+                   * 上限和「已经在别的局里」都由 store 判定，不看这里
+                   * 算出来的 full / mine —— 界面这份是同步过来的数据，
+                   * 可能已经过时；加不进去就别跳转，留在原地能看见原因。
                    */
                   if (joinSession(s.id, meId)) push({ name: 'board', sessionId: s.id })
                 }}
               >
-                {full ? t('已满', 'Full') : t('加入', 'Join')}
+                {full ? t('已满', 'Full') : mine ? t('加不了', 'Busy') : t('加入', 'Join')}
               </Button>
             </div>
             {!meId && (
@@ -118,6 +143,21 @@ export function OpenSessions() {
                   'Sign in and create yourself under “Me” before joining',
                 )}
               </p>
+            )}
+            {/*
+              已经在别的局里 —— 按钮灰着不说原因，人只会以为坏了。
+              这句话还得带上是哪一场，否则他不知道该去哪儿退。
+            */}
+            {meId && mine && (
+              <button
+                className="text-brand-600 mt-2 block text-left text-caption"
+                onClick={() => push({ name: 'board', sessionId: mine.id })}
+              >
+                {t(
+                  `你还在「${venueLabel(mine.venue)}」那一场里 —— 先结束或退出才能加别的`,
+                  `You are still in the session at ${venueLabel(mine.venue)} — end or leave it first`,
+                )}
+              </button>
             )}
           </Card>
         )

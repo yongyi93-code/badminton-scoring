@@ -300,3 +300,21 @@ export type PlayerStats = {
 
 /** 上榜所需最少场次 */
 export const RANK_MIN_GAMES = 3
+
+/**
+ * 一条人工发的公告。
+ *
+ * 首页那条快讯全部是从比赛记录现算的 —— 谁升段、谁连胜、哪个馆谁是
+ * 第一。算得出来的东西不用人操心，但「这周五改去力天」「下周暂停一次」
+ * 这类事情算不出来，只能有人说。
+ *
+ * 和快讯的区别也在这儿：快讯没有作者、删不掉（数据变了它自己就变），
+ * 公告有作者、能删。
+ */
+export type Announcement = {
+  id: string
+  text: string
+  /** 谁发的（球员 id） */
+  authorId: string
+  createdAt: number
+}

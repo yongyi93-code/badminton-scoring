@@ -3,7 +3,7 @@ import { pick } from './i18n'
 import { supabase } from './supabase'
 import { useApp } from '@/store/useApp'
 import type { AvatarProfile } from './avatar'
-import type { Match, Player, Session } from '@/types'
+import type { Announcement, Match, Player, Session } from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 同步引擎：云端为准
@@ -24,7 +24,7 @@ import type { Match, Player, Session } from '@/types'
  * 操作函数 —— 那样每加一个新操作都要记得补一句推送，迟早漏。
  * ------------------------------------------------------------------ */
 
-export type Kind = 'player' | 'session' | 'match' | 'avatar'
+export type Kind = 'player' | 'session' | 'match' | 'avatar' | 'announcement'
 
 export type Row = { kind: Kind; id: string; data: unknown; deleted: boolean }
 
@@ -33,7 +33,7 @@ export const keyOf = (kind: Kind, id: string) => `${kind} ${id}`
 
 /** 当前本机状态摊平成行 */
 function rowsOf(): Map<string, Row> {
-  const { players, sessions, matches, avatars } = useApp.getState()
+  const { players, sessions, matches, avatars, announcements } = useApp.getState()
   const out = new Map<string, Row>()
   const put = (kind: Kind, id: string, data: unknown) =>
     out.set(keyOf(kind, id), { kind, id, data, deleted: false })
@@ -43,6 +43,7 @@ function rowsOf(): Map<string, Row> {
   for (const m of matches) put('match', m.id, m)
   // 角色一人一个，用 playerId 当主键
   for (const a of avatars) put('avatar', a.playerId, a)
+  for (const a of announcements) put('announcement', a.id, a)
   return out
 }
 
@@ -230,6 +231,9 @@ export async function pullAll(): Promise<PullOutcome> {
         sessions: rows.filter((r) => r.kind === 'session').map((r) => r.data as Session),
         matches: rows.filter((r) => r.kind === 'match').map((r) => r.data as Match),
         avatars: rows.filter((r) => r.kind === 'avatar').map((r) => r.data as AvatarProfile),
+        announcements: rows
+          .filter((r) => r.kind === 'announcement')
+          .map((r) => r.data as Announcement),
       })
     } finally {
       applying = false

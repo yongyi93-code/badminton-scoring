@@ -34,7 +34,6 @@ import {
   initPush,
   isStandalone,
   pushConfigured,
-  testNotification,
   usePushState,
 } from '@/lib/push'
 import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
@@ -779,32 +778,6 @@ export function Me() {
                     : pushState === 'on'
                       ? t('关掉', 'Turn off')
                       : t('打开', 'Turn on')}
-                </Button>
-              }
-            />
-          )}
-          {/*
-            开着的时候给一条自测入口。整条链路有三段（权限 → SW 弹通知
-            → 服务端推过来），这个按钮只走前两段：它弹得出来就说明
-            手机这边没问题，剩下的一定是服务端那一段 —— 出问题时
-            这一刀能省掉大半的猜测。
-          */}
-          {pushConfigured() && pushState === 'on' && (
-            <MenuRow
-              title={t('发一条测试通知', 'Send a test notification')}
-              hint={t('只在这台手机上弹，不惊动别人', 'Only pops on this phone — nobody else is bothered')}
-              right={
-                <Button
-                  size="sm"
-                  variant="soft"
-                  onClick={() => {
-                    setPushNote(null)
-                    void testNotification().then((r) => {
-                      if (!r.ok) setPushNote(r.error)
-                    })
-                  }}
-                >
-                  {t('试一下', 'Try it')}
                 </Button>
               }
             />

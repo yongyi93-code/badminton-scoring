@@ -401,3 +401,22 @@ describe('清空 store 和同步撞在一起', () => {
     expect(deletions.length).toBeGreaterThan(0)
   })
 })
+
+/*
+ * 公告要跟着同步走，否则「发给大家」只发给了自己那台手机 ——
+ * 而这正是它存在的全部意义。
+ */
+describe('公告也要同步', () => {
+  it('发一条公告会推上去', async () => {
+    cloud.session = { user: { id: 'uid-1' } }
+    await startSync()
+    cloud.upserts = []
+
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    useApp.getState().postAnnouncement('这周五改去力天', me.id)
+    await vi.advanceTimersByTimeAsync(700)
+
+    const kinds = cloud.upserts.flat().map((r) => r.kind)
+    expect(kinds).toContain('announcement')
+  })
+})

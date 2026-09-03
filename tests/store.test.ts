@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useApp, avatarOf } from '@/store/useApp'
+import { useApp, avatarOf, activeSessionOf } from '@/store/useApp'
 
 /*
  * store 的行为大多是「改一个字段，另一个字段得跟着动」，
@@ -350,5 +350,118 @@ describe('换设备之后认回自己', () => {
     expect(useApp.getState().meId).toBe(me.id)
     // 没有产生新的 players 数组 —— 不然每次拉云端都会推一次没意义的改动
     expect(useApp.getState().players).toBe(before)
+  })
+})
+
+/*
+ * 一个人同一时间只能在一场球局里。
+ *
+ * 真实发生过的样子：在首页加入了 A 局，又看到 B 局也加了进去。首页
+ * 只显示「我不在里面的局」，所以那一屏上看不出他已经在 A 里；而
+ * 「我的」那页的最近球局把两场都列了出来。两个界面各说各话，根子在
+ * store 从来没挡过这件事。
+ */
+describe('同一时间只能在一场球局里', () => {
+  const openAt = (venue: string, host: string) =>
+    useApp.getState().createSession({
+      date: '2026-09-03',
+      venue,
+      courtCount: 1,
+      playerIds: [host],
+      defaultType: 'doubles',
+      createdBy: host,
+    })
+
+  it('已经在一场里，就加不进另一场', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    const a = openAt('城中羽球馆', 'host-a')
+    const b = openAt('力天羽球馆', 'host-b')
+
+    expect(useApp.getState().joinSession(a.id, me.id)).toBe(true)
+    expect(useApp.getState().joinSession(b.id, me.id)).toBe(false)
+
+    const after = useApp.getState().sessions
+    expect(after.find((s) => s.id === a.id)!.playerIds).toContain(me.id)
+    expect(after.find((s) => s.id === b.id)!.playerIds).not.toContain(me.id)
+  })
+
+  it('退出之后就能加另一场了', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    const a = openAt('城中羽球馆', 'host-a')
+    const b = openAt('力天羽球馆', 'host-b')
+
+    useApp.getState().joinSession(a.id, me.id)
+    useApp.getState().leaveSession(a.id, me.id)
+    expect(useApp.getState().joinSession(b.id, me.id)).toBe(true)
+  })
+
+  it('上一场结束了也能加新的', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    const a = openAt('城中羽球馆', 'host-a')
+    const b = openAt('力天羽球馆', 'host-b')
+
+    useApp.getState().joinSession(a.id, me.id)
+    useApp.getState().endSession(a.id)
+    expect(useApp.getState().joinSession(b.id, me.id)).toBe(true)
+  })
+
+  /* 幂等不能被这条挡掉：同步把同一条改动送回来时会再调一次 */
+  it('重复加入自己已经在的那一场，仍然算成功', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    const a = openAt('城中羽球馆', 'host-a')
+
+    expect(useApp.getState().joinSession(a.id, me.id)).toBe(true)
+    expect(useApp.getState().joinSession(a.id, me.id)).toBe(true)
+  })
+
+  it('activeSessionOf 找得出他在哪一场', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    const a = openAt('城中羽球馆', 'host-a')
+    useApp.getState().joinSession(a.id, me.id)
+
+    expect(activeSessionOf(useApp.getState().sessions, me.id)?.id).toBe(a.id)
+    expect(activeSessionOf(useApp.getState().sessions, '不存在的人')).toBeUndefined()
+    expect(activeSessionOf(useApp.getState().sessions, null)).toBeUndefined()
+  })
+})
+
+/*
+ * 首页那条滚动快讯全部是算出来的（谁升段、谁连胜）。公告是「有人说的」
+ * 那一半 —— 改场地、暂停一次这类事算不出来，只能有人发。
+ */
+describe('公告', () => {
+  it('发出去之后带着作者和时间', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    const a = useApp.getState().postAnnouncement('这周五改去力天', me.id)
+
+    expect(a).not.toBeNull()
+    expect(a!.authorId).toBe(me.id)
+    expect(a!.text).toBe('这周五改去力天')
+    expect(useApp.getState().announcements).toHaveLength(1)
+  })
+
+  it('空白的不发 —— 否则手滑就会冒出一条空消息', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    expect(useApp.getState().postAnnouncement('   ', me.id)).toBeNull()
+    expect(useApp.getState().announcements).toHaveLength(0)
+  })
+
+  it('前后空白去掉', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    expect(useApp.getState().postAnnouncement('  记得带钱  ', me.id)!.text).toBe('记得带钱')
+  })
+
+  it('撤得掉', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    const a = useApp.getState().postAnnouncement('下周暂停', me.id)!
+    useApp.getState().deleteAnnouncement(a.id)
+    expect(useApp.getState().announcements).toHaveLength(0)
+  })
+
+  it('清空数据时一起清掉', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    useApp.getState().postAnnouncement('测试', me.id)
+    useApp.getState().resetAll()
+    expect(useApp.getState().announcements).toEqual([])
   })
 })

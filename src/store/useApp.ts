@@ -25,6 +25,7 @@ import {
   type Rules,
   type Session,
   type SessionFormat,
+  type Announcement,
 } from '@/types'
 
 export const STORAGE_KEY = 'badminton-scoring-v1'
@@ -36,6 +37,21 @@ export const isFull = (session: Pick<Session, 'playerIds' | 'maxPlayers'>) =>
 /** 还能进几个人；不限时返回 null */
 export const spotsLeft = (session: Pick<Session, 'playerIds' | 'maxPlayers'>) =>
   session.maxPlayers ? Math.max(0, session.maxPlayers - session.playerIds.length) : null
+
+/**
+ * 这个人现在在哪一场进行中的球局里。不在就是 undefined。
+ *
+ * 一个人同一时间只能在一场球局里 —— 他只有一副身子，同时出现在两个
+ * 场馆的名单上没有任何现实含义，而排场、休息轮次、AA 分账全都按
+ * 「名单上的人此刻都在这儿」算的。
+ */
+export const activeSessionOf = (
+  sessions: Session[],
+  playerId: string | null | undefined,
+): Session | undefined =>
+  playerId
+    ? sessions.find((s) => s.status === 'active' && s.playerIds.includes(playerId))
+    : undefined
 
 const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -66,6 +82,8 @@ type AppState = {
   sessions: Session[]
   matches: Match[]
   avatars: AvatarProfile[]
+  /** 人工发的公告。首页快讯里那些是算出来的，这些是有人说的 */
+  announcements: Announcement[]
 
   /**
    * 这台手机是谁在用 —— 「我的」那一页要显示谁的战绩、首页要跟谁打招呼。
@@ -118,6 +136,9 @@ type AppState = {
    *
    * 人数上限在这里挡，不是只在界面上挡：界面那份是从同步过来的
    * 数据算的，可能已经过时了，而这里读的是当下的 store。
+   *
+   * 已经在另一场进行中的球局里也会被挡（见 activeSessionOf）——
+   * 一个人同一时间只能在一场里。
    */
   joinSession: (sessionId: string, playerId: string) => boolean
   /**
@@ -146,6 +167,11 @@ type AppState = {
   /** 戴上或脱下某个槽位的装备，itemId 传 null 表示脱下 */
   equipItem: (playerId: string, slot: AvatarSlot, itemId: string | null) => void
 
+  /** 发一条公告。空字符串不发，返回发出去的那条（没发就是 null） */
+  postAnnouncement: (text: string, authorId: string) => Announcement | null
+  /** 撤掉一条公告 */
+  deleteAnnouncement: (id: string) => void
+
   resetAll: () => void
 }
 
@@ -156,6 +182,7 @@ export const useApp = create<AppState>()(
       sessions: [],
       matches: [],
       avatars: [],
+      announcements: [],
       meId: null,
 
       setMeId(playerId) {
@@ -325,6 +352,18 @@ export const useApp = create<AppState>()(
         if (!session) return false
         if (session.playerIds.includes(playerId)) return true // 已经在里面了
         if (isFull(session)) return false
+        /*
+         * 同一时间只能在一场球局里。
+         *
+         * 挡在这里而不是只在界面上挡：界面那份名单是同步过来的，可能
+         * 已经过时；而且首页只显示「我不在里面的局」，人在另一场里的
+         * 事实在那一屏上根本看不见 —— 于是点了就进去了，两边的名单
+         * 各显示一半，「我的」那页却两场都列着。
+         *
+         * 现实里也只有一个解释：他只有一副身子。排场、休息轮次、AA
+         * 分账全都按「名单上的人此刻都在这儿」算的。
+         */
+        if (activeSessionOf(get().sessions, playerId)) return false
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === sessionId && !x.playerIds.includes(playerId)
@@ -455,8 +494,32 @@ export const useApp = create<AppState>()(
         }))
       },
 
+      postAnnouncement(text, authorId) {
+        const body = text.trim()
+        if (!body) return null
+        const item: Announcement = {
+          id: newId(),
+          text: body,
+          authorId,
+          createdAt: Date.now(),
+        }
+        set((s) => ({ announcements: [...s.announcements, item] }))
+        return item
+      },
+
+      deleteAnnouncement(id) {
+        set((s) => ({ announcements: s.announcements.filter((a) => a.id !== id) }))
+      },
+
       resetAll() {
-        set({ players: [], sessions: [], matches: [], avatars: [], meId: null })
+        set({
+          players: [],
+          sessions: [],
+          matches: [],
+          avatars: [],
+          announcements: [],
+          meId: null,
+        })
       },
     }),
     {
@@ -489,6 +552,7 @@ export const useApp = create<AppState>()(
         sessions: s.sessions,
         matches: s.matches,
         avatars: s.avatars,
+        announcements: s.announcements,
         meId: s.meId,
       }),
     },

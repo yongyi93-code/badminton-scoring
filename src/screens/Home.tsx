@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { OpenSessions } from '@/components/OpenSessions'
+import { Announcements } from '@/components/Announcements'
 import { Body, Button, Card, Pill, Screen, SectionTitle } from '@/components/ui'
 import { Ticker } from '@/components/Ticker'
 import { formatDate } from '@/lib/format'
@@ -136,6 +137,13 @@ export function Home() {
 
       <Body>
         {feed.length > 0 && <Ticker items={feed} onPick={openFeed} />}
+
+        {/*
+          人工发的消息摆在滚动快讯下面、主行动卡上面。
+          快讯是算出来的（谁升段、谁连胜），这些是有人说的（改场地、
+          暂停一次）—— 后者更要紧，所以位置更靠上、不滚动。
+        */}
+        <Announcements />
 
         {/* 主行动卡：任何时候都能一次点击回到当前球局 */}
         {active ? (
