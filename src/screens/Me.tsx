@@ -376,7 +376,6 @@ export function Me() {
   const { theme, setTheme } = useTheme()
 
   const [picking, setPicking] = useState(false)
-  const [managing, setManaging] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
   /** 已经装了就是 'installed'，那一行不用出现 */
   const installHow = useInstallHow() === 'installed' ? null : true
@@ -386,7 +385,6 @@ export function Me() {
   const claimPlayer = useApp((s) => s.claimPlayer)
   const updatePlayer = useApp((s) => s.updatePlayer)
   const setAvatarSex = useApp((s) => s.setAvatarSex)
-  const setPlayerArchived = useApp((s) => s.setPlayerArchived)
   const [authOpen, setAuthOpen] = useState(false)
   const [cloudOpen, setCloudOpen] = useState(false)
   const sync = useSyncStatus()
@@ -842,14 +840,6 @@ export function Me() {
               onClick={() => setInstallOpen(true)}
             />
           )}
-          <MenuRow
-            title={t('管理球员', 'Manage players')}
-            hint={t(
-              '把不打了的人收起来，不影响历史战绩',
-              'Put people who stopped playing away — their record stays',
-            )}
-            onClick={() => setManaging(true)}
-          />
         </div>
 
         {/*
@@ -974,67 +964,6 @@ export function Me() {
           >
             {me ? t('保存', 'Save') : t('就是我', "That's me")}
           </Button>
-        </div>
-      </Sheet>
-
-      {/*
-        管理球员。
-
-        为什么归档而不是删：比赛记录里存的是球员 id，硬删会让跟他打过的
-        每一场都变成「已删除的球员」，而 MMR 和排行榜是靠重放所有比赛
-        算出来的 —— 删一个人，所有和他交手过的人的战绩跟着变。归档只是
-        从名单里收起来，账还在。
-
-        谁能归档谁：
-          自己          —— 随时（不打了）
-          没人认领的     —— 谁都能收，那是代建的访客，本来就没有主
-          别人认领了的   —— 不行。那要一个「管理员」的概念，这个 App
-                           现在还没有。在那之前只能去数据库改。
-      */}
-      <Sheet
-        open={managing}
-        onClose={() => setManaging(false)}
-        title={t('管理球员', 'Manage players')}
-      >
-        <div className="space-y-3">
-          <p className="text-ink-500 text-caption">
-            {t(
-              '收起来的人不再出现在排名和选人列表里，历史战绩一条不动，随时能放回来。',
-              'Someone put away drops out of rankings and pick lists. Their record is untouched, and you can bring them back any time.',
-            )}
-          </p>
-          <div className="border-line rounded-card overflow-hidden border">
-            {[...players]
-              .sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name))
-              .map((p) => {
-                const isMe = p.id === meId
-                const mine = isMe || !p.ownerId
-                return (
-                  <MenuRow
-                    key={p.id}
-                    title={p.name + (isMe ? t('（你）', ' (you)') : '')}
-                    hint={
-                      p.archived
-                        ? t('已收起', 'Put away')
-                        : mine
-                          ? undefined
-                          : t('别人的账号，只能他自己收', 'Someone else’s account — only they can put it away')
-                    }
-                    right={
-                      mine ? (
-                        <Button
-                          size="sm"
-                          variant={p.archived ? 'soft' : 'ghost'}
-                          onClick={() => setPlayerArchived(p.id, !p.archived)}
-                        >
-                          {p.archived ? t('放回来', 'Bring back') : t('收起来', 'Put away')}
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                )
-              })}
-          </div>
         </div>
       </Sheet>
 
