@@ -421,6 +421,27 @@ export function Me() {
   const names = useMemo(() => playerMap(players), [players])
   const me = meId ? names.get(meId) : undefined
 
+  /*
+   * 注册完直接把名字问了，不用自己去找「建一个你自己」。
+   *
+   * 时机是这里唯一要小心的事：必须等云端拉完（state === 'idle'）再问。
+   * 拉之前本机是空的，老用户在新手机上登录，头几秒看起来也像「还没有
+   * 角色」—— 这时候弹出来，他就会再建一个自己，于是排行榜上出现两个
+   * 同名的人。之前踩过这个坑，是同一个原因。
+   *
+   * 'error' 也不问：拉失败时我们根本不知道云端有没有他。
+   *
+   * 只问一次。人要是关掉了，那是他的选择，不该每次切回这一屏又弹一遍
+   * —— 入口一直在下面那张卡上。
+   */
+  const [autoAsked, setAutoAsked] = useState(false)
+  useEffect(() => {
+    if (autoAsked || me || !uid) return
+    if (sync.state !== 'idle') return
+    setAutoAsked(true)
+    setPicking(true)
+  }, [autoAsked, me, uid, sync.state])
+
   const progress = useMemo(
     () => (me ? progressOf(me.id, matches) : null),
     [me, matches],
