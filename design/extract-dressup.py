@@ -177,6 +177,7 @@ def main(src_dir: str, out_dir: str) -> None:
     W, H = canvas.size
 
     items = {}
+    visible = {}
     for path in sorted(src.glob('*.png')):
         item_id = path.stem
         if item_id == 'base':
@@ -222,9 +223,22 @@ def main(src_dir: str, out_dir: str) -> None:
             'w': layer.width,
             'h': layer.height,
         }
+
+        # 取景要按「真看得见的那一块」，不能按上面这个框。
+        # 两者能差很远：发光的装备，辉光糊在绿幕上被抠像判成背景，
+        # 于是区域框比图层实际画出来的东西宽出几十像素的空白。
+        # 拿区域框去取景，全身像就为了一圈透明的边而整体缩小。
+        vys, vxs = np.where(alpha > 8)
+        if len(vxs):
+            visible[item_id] = {
+                'x': int((x0 + int(vxs.min())) * SCALE),
+                'y': int((y0 + int(vys.min())) * SCALE),
+                'w': int((int(vxs.max()) - int(vxs.min()) + 1) * SCALE),
+                'h': int((int(vys.max()) - int(vys.min()) + 1) * SCALE),
+            }
         print(f'{item_id:12s} {items[item_id]}  实心占比 {alpha.mean() / 255:.0%}')
 
-    body, head = framing(base_a, items, W, H)
+    body, head = framing(base_a, visible, W, H)
     (out / 'meta.json').write_text(
         json.dumps(
             {'size': [W, H], 'items': items, 'body': body, 'head': head},
@@ -237,12 +251,16 @@ def main(src_dir: str, out_dir: str) -> None:
     print(f'头肩取景 {head}')
 
 
-def framing(base_alpha: np.ndarray, items: dict, W: int, H: int):
+def framing(base_alpha: np.ndarray, visible: dict, W: int, H: int):
     """算两个取景框，写进 meta 里，省得每换一套素材就回去改代码里的常量。
 
     画布两边留了大片空白（画的时候要给球拍留地方），
     按整张画布缩放的话人小得看不清脸 —— 所以全身要框到人身上，
     头像还要再往里框到头肩，不然缩进小圆圈里认不出是谁。
+
+    传进来的是每件装备「真画出来的那一块」，不是它的区域框。
+    区域框会比实际画面大一圈：发光装备的辉光糊在绿幕上，抠像判成背景
+    抠掉了，区域却还算它在内。按区域取景，就为了一圈透明的边把人缩小。
     """
     ys, xs = np.where(base_alpha > 128)
     px0, px1 = int(xs.min() * SCALE), int(xs.max() * SCALE)
@@ -251,7 +269,7 @@ def framing(base_alpha: np.ndarray, items: dict, W: int, H: int):
     # 全身：人 + 所有装备图层的并集。装备会伸到人形之外 ——
     # 球拍往左挥、发光的鞋往下探，只框人形会把它们切掉
     x0, y0, x1, y1 = px0, py0, px1, py1
-    for b in items.values():
+    for b in visible.values():
         x0, y0 = min(x0, b['x']), min(y0, b['y'])
         x1, y1 = max(x1, b['x'] + b['w']), max(y1, b['y'] + b['h'])
     pad = round(H * 0.02)
