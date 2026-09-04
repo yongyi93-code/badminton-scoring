@@ -237,29 +237,44 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                 .map((m) => {
                   const side = sideOf(m, playerId)!
                   const won = matchWinnerBySets(m) === side
-                  const mates = (side === 'A' ? m.teamA : m.teamB).filter(
-                    (id) => id !== playerId,
-                  )
+                  /*
+                    两边都完整列出来，包括我自己 —— 原来写成
+                    「搭 X 对 Y/Z」，一行读下来要自己在脑子里拆成两队。
+                    左右两个框摆开，谁跟谁一队一眼就看到，赢的那边高亮。
+                  */
+                  const ours = side === 'A' ? m.teamA : m.teamB
                   const foes = side === 'A' ? m.teamB : m.teamA
+                  const teamBox = (ids: string[], isWinner: boolean) => (
+                    <div
+                      className={cx(
+                        'min-w-0 flex-1 rounded-lg border px-2 py-1.5',
+                        isWinner
+                          ? 'border-brand-500 bg-brand-100'
+                          : 'border-line bg-fill/50',
+                      )}
+                    >
+                      {ids.map((id) => (
+                        <p
+                          key={id}
+                          className={cx(
+                            'truncate text-sm leading-snug',
+                            id === playerId ? 'font-semibold' : 'text-ink-700',
+                          )}
+                        >
+                          {names.get(id)?.name ?? t('已删除', 'Deleted')}
+                        </p>
+                      ))}
+                    </div>
+                  )
                   return (
                     <Card key={m.id}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm">
-                            {mates.length > 0 && (
-                              <span className="text-ink-500">
-                                {t('搭 ', 'with ')}
-                  {mates.map((id) => names.get(id)?.name).join('/')}{' '}
-                              </span>
-                            )}
-                            <span className="text-ink-500">{t('对 ', 'vs ')}</span>
-                            <span>{foes.map((id) => names.get(id)?.name).join('/')}</span>
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-ink-500">
-                            {venueOf(m.sessionId)}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
+                      <div className="flex items-center gap-2">
+                        {teamBox(ours, won)}
+                        <span className="shrink-0 text-caption font-semibold text-ink-500">
+                          {t('对', 'VS')}
+                        </span>
+                        {teamBox(foes, !won)}
+                        <div className="w-12 shrink-0 text-right">
                           <span
                             className={cx(
                               'text-sm font-semibold',
@@ -277,6 +292,9 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                           </p>
                         </div>
                       </div>
+                      <p className="mt-1.5 truncate text-center text-xs text-ink-500">
+                        {venueOf(m.sessionId)}
+                      </p>
                     </Card>
                   )
                 })}

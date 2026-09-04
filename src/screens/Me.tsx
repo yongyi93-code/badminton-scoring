@@ -288,7 +288,7 @@ function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title={t('云同步', 'Cloud sync')}>
+    <Sheet open={open} onClose={onClose} title={t('登录', 'Sign in')}>
       <div className="space-y-4">
         <div className="bg-fill rounded-xl px-4 py-3">
           <p className="font-semibold">{local}</p>
@@ -637,12 +637,16 @@ export function Me() {
         )}
 
         {/*
-          云同步。没接云端（.env 里没配）时整块不显示 ——
+          登录。没接云端（.env 里没配）时整块不显示 ——
           与其摆一个点了没反应的入口，不如干脆不出现。
+
+          这里叫「登录」不叫「云同步」：同步是它顺带做的事，
+          用户想的是「我要登入我的账号」。拿实现细节当标题，
+          人只会想「我不需要同步啊」然后跳过它 —— 结果换手机就丢档。
         */}
         {cloudReady && (
           <>
-            <SectionTitle>{t('云同步', 'Cloud sync')}</SectionTitle>
+            <SectionTitle>{t('登录', 'Sign in')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">
               {session === undefined ? (
                 <MenuRow title={t('正在检查登录状态…', 'Checking sign-in…')} />

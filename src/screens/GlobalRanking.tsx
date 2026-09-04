@@ -77,43 +77,76 @@ export function GlobalRanking() {
               const played = r.progress.wins + r.progress.losses
               const isMe = r.player.id === meId
               return (
+                /*
+                  一行里有两个去处：点人进他的个人页，点主场进那个馆的
+                  排行榜。所以整行不能做成一个大按钮 —— 里面再塞一个
+                  按钮就是按钮套按钮，HTML 不合法，浏览器会把外层拆掉，
+                  两个点击一起乱。改成上下两块，各是各的按钮。
+                */
                 <div
                   key={r.player.id}
                   className={cx(
-                    'flex items-center gap-3 rounded-xl border px-3 py-2.5',
+                    'rounded-xl border px-3 py-2.5',
                     isMe ? 'border-brand-500 bg-brand-100' : 'border-line bg-surface',
                   )}
                 >
-                  <span className="tnum w-7 shrink-0 text-center text-sm font-semibold text-ink-500">
-                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
-                  </span>
-                  <Avatar name={r.player.name} avatar={avatarsById.get(r.player.id)} />
-                  <span className="w-7 shrink-0">
-                    <RankMedal level={r.progress.level} className="size-7" compact />
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="tnum w-7 shrink-0 text-center text-sm font-semibold text-ink-500">
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                    </span>
 
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {r.player.name}
-                      {isMe && t('（你）', ' (you)')}
-                    </span>
-                    <span className="flex items-baseline gap-1.5 text-xs">
-                      <span
-                        className="font-semibold"
-                        style={{ color: r.progress.level.tier.color }}
-                      >
-                        {r.progress.level.display}
-                        {r.progress.level.star !== null && ` ${r.progress.level.star}★`}
-                      </span>
-                      <span className="tnum text-ink-500">MMR {r.progress.mmr}</span>
-                    </span>
                     {/*
-                      主场。点得动 —— 「他是哪个馆的」下一个问题必然是
-                      「那个馆的排名长什么样」，让人自己找入口是多此一举。
+                      头像、段位、名字连成一个按钮 —— 排行榜上看到一个人，
+                      下一个动作就是「他是谁、打得怎么样」。头像也要点得动：
+                      名单里大家先认脸，再认字。
                     */}
+                    <button
+                      onClick={() => push({ name: 'profile', playerId: r.player.id })}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <Avatar name={r.player.name} avatar={avatarsById.get(r.player.id)} />
+                      <span className="w-7 shrink-0">
+                        <RankMedal level={r.progress.level} className="size-7" compact />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">
+                          {r.player.name}
+                          {isMe && t('（你）', ' (you)')}
+                        </span>
+                        <span className="flex items-baseline gap-1.5 text-xs">
+                          <span
+                            className="font-semibold"
+                            style={{ color: r.progress.level.tier.color }}
+                          >
+                            {r.progress.level.display}
+                            {r.progress.level.star !== null && ` ${r.progress.level.star}★`}
+                          </span>
+                          <span className="tnum text-ink-500">MMR {r.progress.mmr}</span>
+                        </span>
+                      </span>
+                    </button>
+
+                    <span className="tnum shrink-0 text-right">
+                      <span className="block text-sm font-semibold">
+                        {r.progress.wins}
+                        <span className="text-ink-500">
+                          {t('胜', 'W')}
+                        </span>
+                      </span>
+                      <span className="block text-xs text-ink-500">
+                        {t(`${played} 场`, `${played} played`)}
+                      </span>
+                    </span>
+                  </div>
+
+                  {/*
+                    主场另起一行，缩进对齐名字。点得动 —— 「他是哪个馆的」
+                    下一个问题必然是「那个馆的排名长什么样」。
+                  */}
+                  <div className="mt-1 pl-10">
                     {r.home ? (
                       <button
-                        className="text-brand-600 mt-0.5 block max-w-full truncate text-caption"
+                        className="text-brand-600 block max-w-full truncate text-caption"
                         onClick={() => push({ name: 'leaderboard', venue: r.home!.label })}
                       >
                         {t(
@@ -122,23 +155,11 @@ export function GlobalRanking() {
                         )}
                       </button>
                     ) : (
-                      <span className="text-ink-500 mt-0.5 block text-caption">
+                      <span className="text-ink-500 block text-caption">
                         {t('还没打过球', 'Has not played yet')}
                       </span>
                     )}
-                  </span>
-
-                  <span className="tnum shrink-0 text-right">
-                    <span className="block text-sm font-semibold">
-                      {r.progress.wins}
-                      <span className="text-ink-500">
-                        {t('胜', 'W')}
-                      </span>
-                    </span>
-                    <span className="block text-xs text-ink-500">
-                      {t(`${played} 场`, `${played} played`)}
-                    </span>
-                  </span>
+                  </div>
                 </div>
               )
             })}
