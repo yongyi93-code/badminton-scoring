@@ -479,6 +479,22 @@ function ShopPanel({
   balance: number
   onBuy: (item: ShopItem) => void
 }) {
+  /*
+   * 商店按槽位分页，一次只看一类。
+   *
+   * 原来是四类全展开、上下接成一长条 —— 想看球拍要先滚过三十件衣服，
+   * 而买东西的人心里想的是「我要一把拍」，不是「我要逛完全部」。
+   *
+   * 页签从「真的有东西卖」的槽位算出来，不写死：以后加了称号、背景，
+   * 页签自己会多一个；某一类清空了也不会留一个点进去是空的页签。
+   */
+  const slots = SLOT_ORDER.filter(
+    (s) => slotIsDressable(s) && catalog.some((i) => i.slot === s && i.price > 0),
+  )
+  const [slot, setSlot] = useState<AvatarSlot>(slots[0] ?? 'top')
+  const shown = slots.includes(slot) ? slot : (slots[0] ?? 'top')
+  const items = catalog.filter((i) => i.slot === shown && i.price > 0)
+
   return (
     <>
       <Card className="flex items-center justify-between">
@@ -491,13 +507,34 @@ function ShopPanel({
         <span className="tnum text-2xl font-bold text-brand-600">{balance}</span>
       </Card>
 
-      {SLOT_ORDER.filter(slotIsDressable).map((slot) => {
-        const items = catalog.filter((i) => i.slot === slot && i.price > 0)
-        if (items.length === 0) return null
-        return (
-          <div key={slot}>
-            <SectionTitle>{pick(...SLOT_LABELS[slot])}</SectionTitle>
-            <div className="space-y-2">
+      {/*
+        页签横向滚动，不用 Segmented。
+        Segmented 把宽度平分给每一项 —— 实测有七类在卖，390 宽的手机上
+        每个只剩五十几像素，「Background」直接挤成一团。这里改成按内容
+        撑开、一排滚过去，再多几类也不会挤。
+      */}
+      {slots.length > 1 && (
+        <div className="-mx-5 overflow-x-auto px-5">
+          <div className="flex w-max gap-1.5 pb-1">
+            {slots.map((s) => (
+              <button
+                key={s}
+                onClick={() => setSlot(s)}
+                className={cx(
+                  'shrink-0 rounded-full border px-3.5 py-1.5 text-label whitespace-nowrap',
+                  s === shown
+                    ? 'border-brand-500 bg-brand-100 font-semibold text-brand-600'
+                    : 'border-line bg-surface text-ink-500',
+                )}
+              >
+                {pick(...SLOT_LABELS[s])}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
               {items.map((item) => {
                 const block = buyBlocker(item, avatar, progress)
                 const need = PET_LEVELS[item.minLevel]
@@ -544,10 +581,7 @@ function ShopPanel({
                   </Card>
                 )
               })}
-            </div>
-          </div>
-        )
-      })}
+      </div>
 
       <p className="pb-4 text-xs leading-relaxed text-ink-500">
         {pick(
