@@ -379,6 +379,7 @@ export function Me() {
   const addPlayer = useApp((s) => s.addPlayer)
   const claimPlayer = useApp((s) => s.claimPlayer)
   const updatePlayer = useApp((s) => s.updatePlayer)
+  const setAvatarSex = useApp((s) => s.setAvatarSex)
   const [authOpen, setAuthOpen] = useState(false)
   const [cloudOpen, setCloudOpen] = useState(false)
   const sync = useSyncStatus()
@@ -877,6 +878,12 @@ export function Me() {
               autoFocus={!me}
             />
           </Field>
+          {/*
+            性别必填，没有「不填」这一档。
+            它有两个下家：混双排场按它分边，立绘角色按它画男女。
+            留一个「不填」等于让人跳过一个后面两处都要的信息 ——
+            跳过的人最后还是要回来补，只是那时候他已经忘了在哪补。
+          */}
           <Field
             label={t('性别', 'Gender')}
             hint={t('混双排场要用，也决定角色是男是女', 'Used for mixed doubles, and it decides your character')}
@@ -887,18 +894,24 @@ export function Me() {
               options={[
                 { value: 'M', label: t('男', 'Male') },
                 { value: 'F', label: t('女', 'Female') },
-                { value: '-', label: t('不填', 'Skip') },
               ]}
             />
           </Field>
           <Button
             variant="primary"
             block
-            disabled={!selfName.trim()}
+            disabled={!selfName.trim() || selfGender === '-'}
             onClick={() => {
               const name = selfName.trim()
+              /* 到这里 selfGender 一定是 M 或 F —— 上面的 disabled 挡住了 '-' */
+              const sex = selfGender === 'F' ? 'f' : 'm'
               if (me) {
                 updatePlayer(me.id, { name, gender: selfGender })
+                /*
+                 * 老球员可能还没有立绘（角色是后来加的）。updatePlayer 里
+                 * 那段只在「已有角色但性别不一致」时才换，不会补建。
+                 */
+                setAvatarSex(me.id, sex)
               } else {
                 /*
                  * 建之前先看云端是不是已经有「我」了。
@@ -913,11 +926,18 @@ export function Me() {
                 if (existing) {
                   setMeId(existing.id)
                   updatePlayer(existing.id, { name, gender: selfGender })
+                  setAvatarSex(existing.id, sex)
                 } else {
                   const created = addPlayer(name, selfGender)
                   // 登录着就把账号写进去：跟着同步出去，别人手机上就知道这个人有主
                   if (uid) claimPlayer(created.id, uid)
                   else setMeId(created.id)
+                  /*
+                   * 立绘角色一起建好，不用再去「挑一个角色」。
+                   * setAvatarSex 在角色不存在时就是「建一个」——
+                   * 性别刚填过，这里已经知道该建男还是女。
+                   */
+                  setAvatarSex(created.id, sex)
                 }
               }
               setPicking(false)
