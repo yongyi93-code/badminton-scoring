@@ -37,6 +37,8 @@ import {
   usePushState,
 } from '@/lib/push'
 import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
+import { InstallSheet } from '@/components/InstallCard'
+import { useInstallHow } from '@/lib/install'
 
 const ARROW = (
   <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
@@ -375,6 +377,9 @@ export function Me() {
 
   const [picking, setPicking] = useState(false)
   const [managing, setManaging] = useState(false)
+  const [installOpen, setInstallOpen] = useState(false)
+  /** 已经装了就是 'installed'，那一行不用出现 */
+  const installHow = useInstallHow() === 'installed' ? null : true
   const [selfName, setSelfName] = useState('')
   const [selfGender, setSelfGender] = useState<Gender>('-')
   const addPlayer = useApp((s) => s.addPlayer)
@@ -823,6 +828,20 @@ export function Me() {
               </Button>
             }
           />
+          {/*
+            首页那张卡能划掉，划掉不等于永远不想装 —— 这里是长期入口。
+            已经装了就不显示：那时候说什么都是废话。
+          */}
+          {installHow !== null && (
+            <MenuRow
+              title={t('装到手机上', 'Put RALLY on your phone')}
+              hint={t(
+                '桌面一个图标点开就用，还能收开局提醒',
+                'One tap from your home screen, and you get session alerts',
+              )}
+              onClick={() => setInstallOpen(true)}
+            />
+          )}
           <MenuRow
             title={t('管理球员', 'Manage players')}
             hint={t(
@@ -1018,6 +1037,8 @@ export function Me() {
           </div>
         </div>
       </Sheet>
+
+      <InstallSheet open={installOpen} onClose={() => setInstallOpen(false)} />
 
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
 

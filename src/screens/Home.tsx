@@ -4,6 +4,7 @@ import { playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { OpenSessions } from '@/components/OpenSessions'
 import { Announcements } from '@/components/Announcements'
+import { InstallCard } from '@/components/InstallCard'
 import { Body, Button, Card, Pill, Screen, SectionTitle } from '@/components/ui'
 import { Ticker } from '@/components/Ticker'
 import { formatDate } from '@/lib/format'
@@ -137,6 +138,13 @@ export function Home() {
           暂停一次）—— 后者更要紧，所以位置更靠上、不滚动。
         */}
         <Announcements />
+
+        {/*
+          「装到手机上」。放在主行动卡上面，因为对一个还没装的人来说，
+          这是这一屏最要紧的一件事 —— 不装的话他下次根本找不回来。
+          装过、或者他划掉过，这块自己不出现。
+        */}
+        <InstallCard />
 
         {/* 主行动卡：任何时候都能一次点击回到当前球局 */}
         {active ? (
