@@ -8,7 +8,6 @@ import { Body, Button, Card, Pill, Screen, SectionTitle } from '@/components/ui'
 import { Ticker } from '@/components/Ticker'
 import { formatDate } from '@/lib/format'
 import { buildFeed, type FeedItem } from '@/lib/feed'
-import { computeStats, decidedMatches, matchWinnerBySets, sideOf } from '@/lib/ranking'
 import { progressOf } from '@/lib/avatar'
 import { RankChip } from '@/components/RankMedal'
 import { scoreLine } from '@/lib/scoring'
@@ -99,23 +98,17 @@ export function Home() {
     else push({ name: 'summary', sessionId: l.sessionId })
   }
 
-  /* 我的进度：段位、MMR、近 5 场胜负 */
+  /*
+   * 只留段位，给右上角那枚徽章用。
+   *
+   * 详细的进度（MMR、近 5 场胜负）不在首页重复一遍 —— 那是「我的」
+   * 那一屏的内容，首页放一份只是把同一件事说两次。首页要回答的是
+   * 「现在有什么可以参加」，不是「我打得怎么样」。
+   */
   const myProgress = useMemo(
     () => (me ? progressOf(me.id, matches) : null),
     [me, matches],
   )
-  const myStats = useMemo(
-    () => (me ? computeStats(matches, [me.id])[0] : null),
-    [me, matches],
-  )
-  const last5 = useMemo(() => {
-    if (!me) return [] as boolean[]
-    return decidedMatches(matches)
-      .filter((m) => sideOf(m, me.id) !== null)
-      .slice(-5)
-      .reverse()
-      .map((m) => matchWinnerBySets(m) === sideOf(m, me.id))
-  }, [matches, me])
 
   return (
     <Screen tabBar>
@@ -209,39 +202,6 @@ export function Home() {
             >
               {t('开新球局', 'New session')}
             </Button>
-          </Card>
-        )}
-
-        {/* 我的进度 */}
-        {me && myProgress && myStats && (
-          <Card onClick={() => push({ name: 'profile', playerId: me.id })}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-ink-500 text-label">{t('我的进度', 'My progress')}</p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <RankChip level={myProgress.level} />
-                  <span className="tnum text-title">MMR {myProgress.mmr}</span>
-                </div>
-                {last5.length > 0 && (
-                  <div className="mt-2 flex items-center gap-1.5">
-                    <span className="text-ink-500 text-caption">{t('近 5 场', 'Last 5')}</span>
-                    {last5.map((won, i) => (
-                      <span
-                        key={i}
-                        className={
-                          won
-                            ? 'bg-success-50 text-success-600 flex size-5 items-center justify-center rounded-md text-caption font-semibold'
-                            : 'bg-danger-50 text-danger-600 flex size-5 items-center justify-center rounded-md text-caption font-semibold'
-                        }
-                      >
-                        {won ? t('胜', 'W') : t('负', 'L')}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {ARROW}
-            </div>
           </Card>
         )}
 

@@ -208,6 +208,22 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
   const updateSession = useApp((s) => s.updateSession)
   const reopenSession = useApp((s) => s.reopenSession)
   const deleteSession = useApp((s) => s.deleteSession)
+  const meId = useApp((s) => s.meId)
+
+  /*
+   * 删除只留给开局的人。
+   *
+   * 删一个球局会连着删掉里面所有比赛，累计排行榜跟着变 —— 这不是
+   * 「清理我自己的东西」，是动了所有参与者的战绩。谁开的局谁负责，
+   * 别人顶多退出。
+   *
+   * 没记开局人的是老数据（createdBy 是后来才加的字段），那些仍然
+   * 谁都能删 —— 否则它们永远清不掉。
+   *
+   * 这里只是把按钮藏起来。真正拦住的是数据库那一层：现在 RLS 是
+   * using(true)，谁都能绕过界面直接删。那条在上线前的关卡里改。
+   */
+  const canDelete = !session?.createdBy || session.createdBy === meId
 
   const resetTo = useNav((s) => s.resetTo)
   const push = useNav((s) => s.push)
@@ -732,12 +748,14 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="w-full pb-4 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
-          >
-            {t('删除这个球局', 'Delete this session')}
-          </button>
+          canDelete && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="w-full pb-4 text-center text-sm text-ink-500 underline decoration-line underline-offset-4"
+            >
+              {t('删除这个球局', 'Delete this session')}
+            </button>
+          )
         )}
       </Body>
 

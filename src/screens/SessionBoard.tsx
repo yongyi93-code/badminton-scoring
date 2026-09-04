@@ -24,6 +24,7 @@ import { activeGameIndex, gamesWon } from '@/lib/scoring'
 import { duration } from '@/lib/format'
 import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
 import { progressByPlayer } from '@/lib/avatar'
+import { RankChip } from '@/components/RankMedal'
 import {
   buildSchedule,
   courtHolder,
@@ -350,11 +351,20 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
     [avatars],
   )
 
+  /*
+   * 全场人的段位和 MMR，一次算完。
+   *
+   * progressByPlayer 是把所有比赛按时间重放一遍算出来的 —— 十几个人
+   * 各调一次就是重放十几遍。这里存整份 Progress，排场逻辑要的 mmr
+   * 和等待区要显示的段位都从这一份里取。
+   */
+  const progressById = useMemo(() => progressByPlayer(allMatches), [allMatches])
+
   const mmrById = useMemo(() => {
     const map = new Map<string, number>()
-    for (const [id, prog] of progressByPlayer(allMatches)) map.set(id, prog.mmr)
+    for (const [id, prog] of progressById) map.set(id, prog.mmr)
     return map
-  }, [allMatches])
+  }, [progressById])
 
   // 配对模式跟着球局走，打到一半也能换 —— 后面排的场立刻按新口径来
   const pairingMode = session ? pairingModeOf(session) : 'balanced'
@@ -1043,8 +1053,23 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 </span>
                 <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{p.name}</span>
+                  {/*
+                    名字后面跟段位和 MMR：等着上场的时候，大家最想知道的
+                    就是「下一场会碰到谁、水平差多少」。名字和头像答不了
+                    这个问题，得把实力摆出来。
+                  */}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-medium">{p.name}</span>
+                    {/* 名字长的时候该被截断的是名字，不是徽章 —— 徽章不许压缩 */}
+                    {progressById.get(p.id) && (
+                      <span className="shrink-0">
+                        <RankChip level={progressById.get(p.id)!.level} />
+                      </span>
+                    )}
+                  </span>
                   <span className="text-xs text-ink-500">
+                    {progressById.get(p.id) &&
+                      t(`MMR ${progressById.get(p.id)!.mmr} · `, `MMR ${progressById.get(p.id)!.mmr} · `)}
                     {t(`已打 ${l.games} 场`, `${l.games} played`)}
                     {l.restRounds > 0 && t(` · 休息 ${l.restRounds} 轮`, ` · rested ${l.restRounds}`)}
                   </span>
