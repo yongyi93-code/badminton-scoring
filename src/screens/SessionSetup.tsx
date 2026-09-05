@@ -23,6 +23,7 @@ import { todayISO } from '@/lib/format'
 import { buildSchedule, matchInput } from '@/lib/sessionFormat'
 import { progressByPlayer } from '@/lib/avatar'
 import { recentVenues, venueKey } from '@/lib/venues'
+import { VenueAddressLine } from '@/components/VenueAddress'
 import {
   capFor,
   DEFAULT_ROTATION_PER_PLAYER,
@@ -369,6 +370,17 @@ export function SessionSetup() {
               </div>
             )}
           </Field>
+
+          {/*
+            地址摆在球馆那一格底下，而不是格子里面 —— 格子里的那句
+            提示（「同一个场馆尽量用同一个名字」）说的是名字，得紧挨着
+            输入框，不该被地址挤到下面去。
+
+            这一步才是填地址最该出现的地方：球友是在你开完局之后才看到
+            这个局的，地址得在那之前就有。等他们点进来再问「在哪」，
+            这个功能就白做了。
+          */}
+          <VenueAddressLine venue={venue} />
         </Card>
         )}
 
