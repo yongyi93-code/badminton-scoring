@@ -147,8 +147,20 @@ type AppState = {
    */
   clubsChecked: boolean
 
+  /**
+   * 上一次问「我在哪些群」为什么没问成。null = 问成了。
+   *
+   * 和 clubsChecked 分开的理由，是一次事故：「我问不到」被记成了
+   * 「你一个群都没有」，于是一个只是网络抽了一下的人，看到的是
+   * 引导页和一个「建一个球群」的按钮。他按了。
+   *
+   * 两件事的出路完全相反 —— 一个是重试，一个是建群。绝不能混。
+   */
+  clubsError: string | null
+
   setClubs: (clubs: Club[]) => void
   setClubsChecked: (checked: boolean) => void
+  setClubsError: (error: string | null) => void
   /**
    * 换一个球群来看。
    *
@@ -250,6 +262,7 @@ export const useApp = create<AppState>()(
       clubs: [],
       clubId: null,
       clubsChecked: false,
+      clubsError: null,
 
       setClubs(clubs) {
         set({ clubs })
@@ -259,8 +272,29 @@ export const useApp = create<AppState>()(
         set({ clubsChecked })
       },
 
+      setClubsError(clubsError) {
+        set({ clubsError })
+      },
+
       setClubId(clubId) {
         if (get().clubId === clubId) return
+
+        /*
+         * 「一个群都不在」不清数据。
+         *
+         * 这一条是花了代价学来的：上线当天有个人没被算进成员（他注册过
+         * 但从没认领角色，迁移脚本靠 ownerId 收人，收不到他），打开 App
+         * 就落到引导页。而当时这里连本机那份一起清了 —— 那可能是全世界
+         * 最后一份副本。
+         *
+         * 没进群的时候引导页盖住整个 App，本机留着的那份根本不会显示，
+         * 清它一点好处都没有；真进了别的群，下面那一段自然会清。
+         */
+        if (clubId === null) {
+          set({ clubId: null })
+          return
+        }
+
         /*
          * 换群 = 换一整份数据。本机那份属于上一个群，一条都不能留。
          *
@@ -617,6 +651,7 @@ export const useApp = create<AppState>()(
           clubs: [],
           clubId: null,
           clubsChecked: false,
+          clubsError: null,
         })
       },
     }),

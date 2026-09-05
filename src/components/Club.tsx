@@ -9,6 +9,7 @@ import {
   joinAndEnterClub,
   leaveClub,
   renameClub,
+  retryClubs,
 } from '@/lib/sync'
 import {
   Body,
@@ -48,11 +49,27 @@ function ClubForms({ onDone }: { onDone?: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /*
+   * 这台手机上还剩着多少东西。
+   *
+   * 建群时要不要把它们带进新群，是个人必须自己回答的问题 ——
+   * 代码猜不出来：「我自己先玩了两天」和「我刚被挡在群外面」，
+   * 在数据上长得一模一样。猜错一次的代价是把整个球群的战绩
+   * 搬进一个新群，原来那个一行不剩。上线当天就发生过。
+   */
+  const localPlayers = useApp((s) => s.players.length)
+  const localMatches = useApp((s) => s.matches.length)
+  const hasLocal = localPlayers > 0 || localMatches > 0
+  /** 默认不带。带错的后果比不带严重得多，而不带是可以补救的 */
+  const [bringLocal, setBringLocal] = useState(false)
+
   const submit = async () => {
     setBusy(true)
     setError(null)
     const res =
-      mode === 'new' ? await createAndEnterClub(name) : await joinAndEnterClub(code)
+      mode === 'new'
+        ? await createAndEnterClub(name, hasLocal && bringLocal)
+        : await joinAndEnterClub(code)
     setBusy(false)
     if (!res.ok) {
       setError(res.error)
@@ -117,6 +134,45 @@ function ClubForms({ onDone }: { onDone?: () => void }) {
         </Field>
       )}
 
+      {/*
+        本机有数据、又要建新群 —— 这一步必须问清楚。
+
+        不问的后果实测过：整个球群一年的战绩被搬进一个刚建的空群，
+        原来的群一行不剩。所以默认不带，而且把「什么时候才该带」
+        写在旁边，不让人凭感觉勾。
+      */}
+      {mode === 'new' && hasLocal && (
+        <div className="border-line rounded-xl border p-3.5">
+          <p className="text-label">
+            {t(
+              `这台手机上有 ${localPlayers} 名球员、${localMatches} 场比赛。`,
+              `This phone has ${localPlayers} players and ${localMatches} matches on it.`,
+            )}
+          </p>
+          <div className="mt-3">
+            <Segmented
+              value={bringLocal ? 'yes' : 'no'}
+              onChange={(v) => setBringLocal(v === 'yes')}
+              options={[
+                { value: 'no', label: t('不带过去', 'Leave them') },
+                { value: 'yes', label: t('带进新群', 'Bring them') },
+              ]}
+            />
+          </div>
+          <p className="text-ink-500 mt-2 text-caption">
+            {bringLocal
+              ? t(
+                  '只有当这些是你自己一个人先记着玩的，才选这个。如果它们是从某个球群同步下来的，带过去等于把那个群的数据复制一份。',
+                  'Only if you recorded all of this on your own before joining anyone. If it came from a club, bringing it copies that club’s data.',
+                )
+              : t(
+                  '它们不会丢 —— 还在这台手机上，也还在原来那个球群的云端。',
+                  'Nothing is lost — it stays on this phone, and in the cloud of whichever club it came from.',
+                )}
+          </p>
+        </div>
+      )}
+
       {error && <p className="text-danger-600 text-label">{error}</p>}
 
       <Button block variant="primary" disabled={busy || !ready} onClick={() => void submit()}>
@@ -139,6 +195,62 @@ function ClubForms({ onDone }: { onDone?: () => void }) {
  */
 export function ClubGate() {
   const t = useT()
+  /*
+   * 本机还留着一整份数据，人却被挡在这一屏 —— 这多半不是「新用户」，
+   * 是「本来在某个群里，现在读不到了」。那种时候最不该做的就是建新群。
+   */
+  const stranded = useApp((s) => s.players.length > 0)
+  const failed = useApp((s) => s.clubsError)
+  const [retrying, setRetrying] = useState(false)
+
+  /*
+   * 问不到球群 —— 这一屏绝不能出现建群按钮。
+   *
+   * 这是那次事故的正解：当时「问不到」和「你没有群」共用了同一屏，
+   * 而那一屏上有个「建一个球群」。一个只是令牌过期的人按了它，
+   * 整个球群的数据跟着搬进了新群。
+   *
+   * 问不到的时候唯一该给的出路是重试。
+   */
+  if (failed) {
+    return (
+      <Screen>
+        <Body className="pt-16">
+          <div className="text-center">
+            <div className="text-5xl">📡</div>
+            <h1 className="mt-4 text-xl font-semibold">
+              {t('暂时读不到你的球群', 'Cannot reach your club right now')}
+            </h1>
+            <p className="text-ink-500 mx-auto mt-2 max-w-sm text-label">
+              {t(
+                '不是你被踢了，是这一下没问到。数据都在云端，连上就回来。',
+                'You have not been removed — this one request just did not get through. Everything is still in the cloud.',
+              )}
+            </p>
+            <p className="text-ink-500 mx-auto mt-2 max-w-sm text-caption">{failed}</p>
+          </div>
+          <Button
+            block
+            variant="primary"
+            disabled={retrying}
+            onClick={() => {
+              setRetrying(true)
+              void retryClubs().finally(() => setRetrying(false))
+            }}
+          >
+            {retrying ? t('正在重试…', 'Retrying…') : t('再试一次', 'Try again')}
+          </Button>
+          <button
+            onClick={() => void signOut()}
+            className="text-ink-500 active:text-ink-900 w-full py-2 text-center text-caption"
+          >
+            {t('退出登录', 'Sign out')}
+          </button>
+        </Body>
+      </Screen>
+    )
+  }
+
   return (
     <Screen>
       <Body className="pt-16">
@@ -154,6 +266,25 @@ export function ClubGate() {
             )}
           </p>
         </div>
+        {stranded && (
+          <div className="border-warning-600/30 bg-warning-50 rounded-card border p-4">
+            <p className="text-title">
+              {t('你本来是在一个球群里的', 'You were in a club before')}
+            </p>
+            <p className="text-ink-700 mt-1 text-label">
+              {t(
+                '这台手机上还留着那个群的球员和比赛。会看到这一屏，多半是你被移出了球群，或者一时读不到 —— 找群里的人要邀请码进回去就好。',
+                'This phone still holds that club’s players and matches. Seeing this screen usually means you were removed, or it just cannot be reached right now — ask someone for the invite code and come back in.',
+              )}
+            </p>
+            <p className="text-ink-700 mt-2 text-label font-semibold">
+              {t(
+                '别在这里建新群 —— 那会另起一份，原来的战绩不会跟过来。',
+                'Do not start a new club here — it begins an empty one, and your record does not follow.',
+              )}
+            </p>
+          </div>
+        )}
         <Card>
           <ClubForms />
         </Card>
@@ -185,7 +316,13 @@ export function useClubGate(): boolean {
   const { session } = useAuth()
   const clubId = useApp((s) => s.clubId)
   const checked = useApp((s) => s.clubsChecked)
-  return cloudReady && !!session && checked && !clubId
+  const failed = useApp((s) => s.clubsError)
+  /*
+   * 问失败也要挡：没有球群这个 App 是坏的（记的分推不上去），
+   * 让人以为能用比挡住更糟。但挡住之后给的是重试，不是建群 ——
+   * 那一屏自己会按 clubsError 分岔。
+   */
+  return cloudReady && !!session && (checked || failed !== null) && !clubId
 }
 
 /** 邀请码那一行：点一下复制，发给球友 */

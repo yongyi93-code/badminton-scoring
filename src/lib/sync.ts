@@ -550,6 +550,7 @@ export function stopSync() {
    * 上一个账号问出来的答案一点都不算数。
    */
   useApp.getState().setClubsChecked(false)
+  useApp.getState().setClubsError(null)
   setStatus({ state: 'off' })
 }
 
@@ -741,20 +742,27 @@ export async function refreshClubs(): Promise<ClubOutcome<Club[]>> {
   const res = await listMyClubs()
   if (!res.ok) {
     /*
-     * 问不到（多半是断网）。这时候不动 clubs 和 clubId ——
+     * 问不到（断网、令牌过期、云端抽风）。这时候不动 clubs 和 clubId ——
      * 上次问出来的答案比「什么都没有」准。
      *
-     * 但还是要记「问过了」：不记的话，引导页永远不出现，
-     * 一个新注册的人会掉进一个什么都同步不了、也没人告诉他为什么的
-     * 空 App 里。让他看见引导页、点下去看到网络错误，至少是句实话。
+     * 关键是不能记成「问过了，你一个群都没有」。
+     *
+     * 原来就是那么记的，代价是一次真实事故：有人的 App 刚更新完
+     * （clubId 还是空的），这一问失败了，于是他看到的是引导页 ——
+     * 那一屏摆着一个「建一个球群」的按钮。他按了。整个球群的数据
+     * 跟着搬进了那个新群，原来的群一行不剩。
+     *
+     * 「我问不到」和「你没有群」是两件完全不同的事，给的出路也该
+     * 完全不同：前者是重试，后者才是建群。分开记。
      */
-    useApp.getState().setClubsChecked(true)
+    useApp.getState().setClubsError(res.error)
     return res
   }
 
   const clubs = res.value
-  const { clubId, setClubs, setClubsChecked } = useApp.getState()
+  const { clubId, setClubs, setClubsChecked, setClubsError } = useApp.getState()
   setClubs(clubs)
+  setClubsError(null)
   setClubsChecked(true)
 
   const stillIn = clubId && clubs.some((c) => c.id === clubId)
@@ -824,29 +832,49 @@ export async function enterClub(id: string, carry?: Carry | null): Promise<PullO
 }
 
 /**
+ * 引导页上那个「再试一次」。
+ *
+ * 问到了就顺手把数据拉下来 —— 这时候 startSync 早就跑过了，
+ * 它自己不会再拉第二次，不补这一句的话人会停在一个空 App 上。
+ */
+export async function retryClubs(): Promise<void> {
+  const res = await refreshClubs()
+  if (res.ok && useApp.getState().clubId) await pullAll()
+}
+
+/**
  * 建一个群并且进去，本机已有的数据一起带过去。
  *
  * 界面上用这个，不要直接用 createClub —— 光建出来不进去的话，
  * 人点完「建群」还停在引导页上，看着像没成功。
  */
-export async function createAndEnterClub(name: string): Promise<ClubOutcome<Club>> {
-  const st = useApp.getState()
-  /*
-   * 只有「本来就不在任何群里」时才带。已经在群里的人再建一个新群，
-   * 本机那份是上一个群的 —— 带过去就是把别人群的球员和战绩复制一份
-   * 到新群里。
+export async function createAndEnterClub(
+  name: string,
+  /**
+   * 把这台手机上已有的球员和比赛带进新群。
+   *
+   * 必须由人明确说要，代码不许自己猜 —— 上线当天就是猜错的：
+   * 一个没被算进成员的人落到引导页，随手建了个群，客户端看见
+   * 「本机有数据、又不在任何群里」就当成「先玩后登录」，把整个球群
+   * 一年的战绩全搬进了那个新群，原来的群一行不剩。
+   *
+   * 猜不对的原因是这两种情况长得一模一样：本机有数据 + 不在任何群里，
+   * 既可能是「我自己先玩了两天」，也可能是「我刚被挡在群外面」。
+   * 分不出来的事就别分，问一句。
    */
-  const carry: Carry | null =
-    st.clubId === null
-      ? {
-          players: st.players,
-          sessions: st.sessions,
-          matches: st.matches,
-          avatars: st.avatars,
-          announcements: st.announcements,
-          meId: st.meId,
-        }
-      : null
+  bringLocal: boolean,
+): Promise<ClubOutcome<Club>> {
+  const st = useApp.getState()
+  const carry: Carry | null = bringLocal
+    ? {
+        players: st.players,
+        sessions: st.sessions,
+        matches: st.matches,
+        avatars: st.avatars,
+        announcements: st.announcements,
+        meId: st.meId,
+      }
+    : null
 
   const res = await createClub(name)
   if (!res.ok) return res

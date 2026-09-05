@@ -545,17 +545,16 @@ describe('清空 store 和同步撞在一起', () => {
  * 动的时候差一点，丢的就不是一条记录，是一个群一整年的战绩。
  */
 describe('建群和换群', () => {
-  it('建群时，本机已经有的东西跟着进新群', async () => {
+  it('说了要带，本机已有的东西才跟着进新群', async () => {
     /*
      * 「先自己玩起来、觉得不错才登录」是最自然的顺序。
-     * 建群这一步会把本机清空换成新群的那一份 —— 不把原来那批带过去，
-     * 人建完群会发现之前记的分全没了。
+     * 这种人建完群，之前记的分该还在。
      */
     cloud.session = { user: { id: 'uid-1' } }
     useApp.getState().setClubId(null)
     const p = useApp.getState().addPlayer('阿伟', 'M')
 
-    const res = await createAndEnterClub('周五羽球局')
+    const res = await createAndEnterClub('周五羽球局', true)
     expect(res.ok).toBe(true)
 
     // 人还在，而且推上去了，盖的是新群的章
@@ -564,6 +563,77 @@ describe('建群和换群', () => {
     const mine = pushed.find((r) => r.id === p.id)
     expect(mine).toBeTruthy()
     expect(mine?.club_id).toBe(res.ok ? res.value.id : '')
+  })
+
+  it('没说要带，一行都不许跟进新群', async () => {
+    /*
+     * 这条是上线当天那次事故写下来的。
+     *
+     * 当时的规则是「不在任何群里 + 本机有数据 = 那是他自己玩的，带过去」。
+     * 规则本身不算错，错在这两件事在数据上长得一模一样：
+     *
+     *   我自己先记着玩了两天       —— 该带
+     *   我刚被挡在自己的球群外面   —— 千万别带
+     *
+     * 分不出来就不该猜。那次猜的结果是：有人在引导页随手建了个群，
+     * 整个球群的球员、比赛、角色全被搬进那个新群，原来的群一行不剩。
+     * 数据没丢（软删除留着 club_id），但所有人的 App 都空了。
+     */
+    cloud.session = { user: { id: 'uid-1' } }
+    useApp.getState().setClubId(null)
+    useApp.getState().addPlayer('别人群里的阿伟', 'M')
+    useApp.getState().addPlayer('别人群里的小敏', 'F')
+    cloud.upserts = []
+
+    const res = await createAndEnterClub('手滑建的群', false)
+    expect(res.ok).toBe(true)
+
+    // 新群是空的：一个球员都没被推上去
+    const kinds = cloud.upserts.flat().map((r) => r.kind)
+    expect(kinds).not.toContain('player')
+    expect(useApp.getState().players).toHaveLength(0)
+  })
+
+  it('问不到球群，不能记成「你一个群都没有」', async () => {
+    /*
+     * 事故的起点就在这一句上。
+     *
+     * 原来问失败时也记「问过了」，于是界面分不出这两件事：
+     *
+     *   问过了，你确实不在任何群里 —— 该给「建一个球群」
+     *   我这一下没问到           —— 该给「再试一次」
+     *
+     * 共用一屏的结果是，一个只是令牌过期的人看到了建群按钮，
+     * 按下去，整个球群的数据跟着搬进了新群。
+     *
+     * 两件事分开记，界面才有可能给对出路。
+     */
+    cloud.session = { user: { id: 'uid-1' } }
+    cloud.selectError = { message: 'Failed to fetch' }
+
+    await startSync()
+
+    expect(useApp.getState().clubsError).toBeTruthy()
+    expect(useApp.getState().clubsChecked).toBe(false)
+    cloud.selectError = null
+  })
+
+  it('一个群都不在的时候，不清本机那份 —— 那可能是最后一份', async () => {
+    /*
+     * 事故的另一半：那天有人打开 App 落到引导页，而当时「切到没有群」
+     * 顺手把本机也清了。云端那份已经被搬走，手机上这份是最后一份 ——
+     * 清掉就真没了。
+     *
+     * 没进群的时候引导页盖住整个 App，留着的那份根本不会显示，
+     * 清它一点好处都没有。
+     */
+    useApp.getState().addPlayer('阿伟', 'M')
+    expect(useApp.getState().players).toHaveLength(1)
+
+    useApp.getState().setClubId(null)
+
+    expect(useApp.getState().clubId).toBeNull()
+    expect(useApp.getState().players).toHaveLength(1)
   })
 
   it('换群不会把上一个群的数据当成「被删了」推上去', async () => {
