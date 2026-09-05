@@ -34,6 +34,50 @@ export const venueKey = (raw: string | undefined) =>
 export const venueLabel = (raw: string | undefined) =>
   normalizeVenue(raw) || UNNAMED_VENUE()
 
+/**
+ * 从一段文本里认出经纬度。认不出返回 null。
+ *
+ * 认三种写法，都是人真的会粘进来的：
+ *   3.1234, 101.5678                     地图 App 里长按「复制坐标」
+ *   .../maps/@3.1234,101.5678,17z/...    Google Maps 网址栏
+ *   ...!3d3.1234!4d101.5678              分享出来的那种长链接
+ *
+ * 反过来写（经度在前）不用额外判断就会被挡掉：纬度的绝对值不可能
+ * 超过 90，而马来西亚的经度是 100 出头。这一条是白捡的正确性检查。
+ *
+ * 短链（maps.app.goo.gl）认不出来 —— 坐标不在链接里，要跟着跳转才拿得到，
+ * 而那要发一个跨域请求。与其做一半，不如明说「先在地图里打开它」。
+ */
+export function parseLatLng(text: string): { lat: number; lng: number } | null {
+  const s = (text ?? '').trim()
+  if (!s) return null
+
+  const pair =
+    // Google Maps 长链接里的那一对
+    s.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/) ??
+    // 网址栏里的 @纬度,经度
+    s.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/) ??
+    // 光是两个数字
+    s.match(/(-?\d+(?:\.\d+)?)\s*[,，]\s*(-?\d+(?:\.\d+)?)/)
+  if (!pair) return null
+
+  const lat = Number(pair[1])
+  const lng = Number(pair[2])
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null
+  // 正好 0,0 在几内亚湾里，那是「解析出错」而不是有人在那儿打球
+  if (lat === 0 && lng === 0) return null
+
+  // 六位小数约等于 0.1 米，再多是噪音
+  return { lat: round6(lat), lng: round6(lng) }
+}
+
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6
+
+/** 这个馆有没有填过位置 —— 地址或坐标，有一样就算 */
+export const hasLocation = (venue: Venue | undefined) =>
+  Boolean(venue && (normalizeVenue(venue.address) || (venue.lat != null && venue.lng != null)))
+
 /** 这个馆有没有人填过地址；没填过就是 undefined */
 export const venueByKey = (venues: Venue[], key: string) =>
   venues.find((v) => v.key === venueKey(key))

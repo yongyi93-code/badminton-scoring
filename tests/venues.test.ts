@@ -12,6 +12,8 @@ import {
   homeVenues,
   mapsUrl,
   venueByKey,
+  parseLatLng,
+  hasLocation,
 } from '@/lib/venues'
 import { computeStats, rankPlayers } from '@/lib/ranking'
 import { DEFAULT_RULES, type Match, type Session, type Venue } from '@/types'
@@ -366,5 +368,63 @@ describe('球馆地址', () => {
     const url = mapsUrl('城中羽球馆', venue({ key: '城中羽球馆', address: '随便写的', lat: 3.1, lng: 101.6 }))
     expect(decodeURIComponent(url!)).toContain('3.1,101.6')
     expect(decodeURIComponent(url!)).not.toContain('随便写的')
+  })
+})
+
+describe('认坐标', () => {
+  it('地图 App 里复制出来的那一对数字', () => {
+    expect(parseLatLng('3.1234, 101.5678')).toEqual({ lat: 3.1234, lng: 101.5678 })
+    expect(parseLatLng(' 3.1234,101.5678 ')).toEqual({ lat: 3.1234, lng: 101.5678 })
+    // 中文输入法打出来的逗号，人真的会粘进来
+    expect(parseLatLng('3.1234，101.5678')).toEqual({ lat: 3.1234, lng: 101.5678 })
+  })
+
+  it('Google Maps 网址栏里的 @纬度,经度', () => {
+    expect(
+      parseLatLng('https://www.google.com/maps/@3.1234,101.5678,17z/data=abc'),
+    ).toEqual({ lat: 3.1234, lng: 101.5678 })
+  })
+
+  it('分享出来的长链接里那一对', () => {
+    expect(
+      parseLatLng('https://www.google.com/maps/place/x/data=!3m1!4b1!3d3.1234!4d101.5678'),
+    ).toEqual({ lat: 3.1234, lng: 101.5678 })
+  })
+
+  it('经纬度写反了会被挡下来', () => {
+    /*
+     * 不用额外判断：纬度的绝对值不可能超过 90，而马来西亚的经度
+     * 是 100 出头。写反了第一个数就是 101，直接出局。
+     */
+    expect(parseLatLng('101.5678, 3.1234')).toBeNull()
+  })
+
+  it('认不出来的就是认不出来，不瞎猜', () => {
+    expect(parseLatLng('')).toBeNull()
+    expect(parseLatLng('城中羽球馆')).toBeNull()
+    // 短链里没有坐标，要跟着跳转才拿得到 —— 不装作认得
+    expect(parseLatLng('https://maps.app.goo.gl/abc123')).toBeNull()
+    // 0,0 在几内亚湾，那是解析出错不是真有人在那打球
+    expect(parseLatLng('0, 0')).toBeNull()
+  })
+
+  it('小数点后留六位就够，多的是噪音', () => {
+    expect(parseLatLng('3.12345678, 101.98765432')).toEqual({
+      lat: 3.123457,
+      lng: 101.987654,
+    })
+  })
+
+  it('有地址或有坐标，都算填过位置', () => {
+    expect(hasLocation(undefined)).toBe(false)
+    expect(hasLocation(venue({ key: 'x' }))).toBe(false)
+    expect(hasLocation(venue({ key: 'x', address: 'Jalan SS 2/24' }))).toBe(true)
+    expect(hasLocation(venue({ key: 'x', lat: 3.1, lng: 101.6 }))).toBe(true)
+  })
+
+  it('只有坐标、没有地址，照样带得走', () => {
+    // 开局的人在场上按一下定位就走完了，地址可以谁都不填
+    const url = mapsUrl('城中羽球馆', venue({ key: 'x', lat: 3.1, lng: 101.6 }))
+    expect(decodeURIComponent(url!)).toContain('3.1,101.6')
   })
 })

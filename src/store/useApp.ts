@@ -268,7 +268,16 @@ type AppState = {
    */
   saveVenue: (
     key: string,
-    patch: { address?: string; note?: string },
+    /**
+     * 只改传进来的那几项。坐标传 null 表示「清掉」——
+     * 和 undefined（不改）必须分得开，否则清不掉一个填错的点。
+     */
+    patch: {
+      address?: string
+      note?: string
+      lat?: number | null
+      lng?: number | null
+    },
     byPlayerId?: string | null,
   ) => void
 
@@ -672,11 +681,22 @@ export const useApp = create<AppState>()(
         if (!key) return
         set((s) => {
           const old = s.venues.find((v) => v.key === key)
+          /*
+           * 坐标三态：没传 = 不动；传数字 = 改成它；传 null = 清掉。
+           * 两个一起动，不允许只剩一半 —— 半个坐标比没有坐标更糟，
+           * 它会让「有没有位置」这个判断说谎。
+           */
+          const keepXY = patch.lat === undefined && patch.lng === undefined
+          const lat = keepXY ? old?.lat : (patch.lat ?? undefined)
+          const lng = keepXY ? old?.lng : (patch.lng ?? undefined)
+
           const next: Venue = {
             ...old,
             key,
             address: (patch.address ?? old?.address ?? '').trim(),
             note: (patch.note ?? old?.note ?? '').trim() || undefined,
+            lat: lat != null && lng != null ? lat : undefined,
+            lng: lat != null && lng != null ? lng : undefined,
             updatedAt: Date.now(),
             updatedBy: byPlayerId ?? null,
           }
