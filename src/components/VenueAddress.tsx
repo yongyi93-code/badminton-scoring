@@ -3,7 +3,7 @@ import { useT } from '@/lib/i18n'
 import { useApp } from '@/store/useApp'
 import { hasLocation, mapsUrl, parseLatLng, venueByKey, venueKey, venueLabel } from '@/lib/venues'
 import { Button, Field, Sheet, inputClass } from '@/components/ui'
-import { MIN_QUERY, searchPlaces, type Place } from '@/lib/geocode'
+import { lastNear, MIN_QUERY, rememberNear, searchPlaces, type Place } from '@/lib/geocode'
 
 /* ------------------------------------------------------------------ *
  * 球馆地址
@@ -67,11 +67,17 @@ function AddressSheet({
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocating(false)
-        setXy({
+        const at = {
           lat: Math.round(pos.coords.latitude * 1e6) / 1e6,
           lng: Math.round(pos.coords.longitude * 1e6) / 1e6,
-        })
+        }
+        setXy(at)
         setAccuracy(Math.round(pos.coords.accuracy))
+        /*
+         * 记下这台手机知道自己在哪。地址搜索拿它当参考点 ——
+         * 按过一次定位之后，搜出来的东西就是你附近的了。
+         */
+        rememberNear(at)
       },
       (err) => {
         setLocating(false)
@@ -106,14 +112,23 @@ function AddressSheet({
   const skipSearch = useRef(Boolean(saved?.address))
 
   /*
-   * 往哪儿偏：拿球群里已经标过坐标的任何一个球馆当参考点。
-   * 「Twin Ark」这种名字全世界有好几个，不给个参考点，第一条
-   * 很可能是德国的某处。用已有的球馆而不是问人要定位 —— 为了
-   * 一个搜索框弹权限框太重了。
+   * 搜索往哪儿偏。按可信度排：
+   *
+   *   1. 球群里已经标过坐标的球馆 —— 你们打球的那一带，最准
+   *   2. 这台手机上次定位到的地方 —— 按过一次「用我的位置」就有
+   *   3. 都没有的话，geocode.ts 里那个兜底（吉隆坡）
+   *
+   * 不为了一个搜索框去弹定位权限框：那太重了，而且第一次用的人
+   * 十有八九会拒。宁可用兜底的参考点，再靠上面两条自己变准。
+   *
+   * 这一条不做的后果实测过：打「Sport arena」回来的是俄罗斯、
+   * 意大利、匈牙利、立陶宛、奥地利，一条马来西亚的都没有。
    */
-  const near = useApp((st) =>
-    st.venues.find((v) => v.lat != null && v.lng != null),
-  )
+  const pinned = useApp((st) => st.venues.find((v) => v.lat != null && v.lng != null))
+  const near =
+    pinned?.lat != null && pinned?.lng != null
+      ? { lat: pinned.lat, lng: pinned.lng }
+      : (lastNear() ?? undefined)
 
   useEffect(() => {
     if (skipSearch.current) {
@@ -135,10 +150,7 @@ function AddressSheet({
     const ctrl = new AbortController()
     const timer = setTimeout(() => {
       setSearching(true)
-      void searchPlaces(q, {
-        near: near?.lat != null && near?.lng != null ? { lat: near.lat, lng: near.lng } : undefined,
-        signal: ctrl.signal,
-      }).then((res) => {
+      void searchPlaces(q, { near, signal: ctrl.signal }).then((res) => {
         if (ctrl.signal.aborted) return
         setSearching(false)
         if (res.ok) {
@@ -155,7 +167,9 @@ function AddressSheet({
       clearTimeout(timer)
       ctrl.abort()
     }
-  }, [address, near])
+    // near 每次渲染都是新对象，依赖里放它的值而不是它本身，
+    // 否则这个 effect 每渲染一次就重跑一次，等于没有防抖
+  }, [address, near?.lat, near?.lng])
 
   const usePlace = (place: Place) => {
     skipSearch.current = true

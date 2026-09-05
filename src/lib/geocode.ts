@@ -87,6 +87,74 @@ export function parsePlaces(json: unknown): Place[] {
   return out
 }
 
+/** 地球上两点之间大概多少公里。够用就行，不追求测绘级精度 */
+export function distanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371
+  const rad = (d: number) => (d * Math.PI) / 180
+  const dLat = rad(b.lat - a.lat)
+  const dLng = rad(b.lng - a.lng)
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/**
+ * 按离参考点的远近重排。
+ *
+ * 为什么不只靠服务端的 lat/lon 偏好：那是个「尽量」，实测过一次
+ * 打「Sport arena」回来的是俄罗斯、意大利、匈牙利、立陶宛、奥地利 ——
+ * 一条马来西亚的都没有。服务端偏不偏是它的事，近的排前面这件事
+ * 我们自己做得了，就自己做。
+ *
+ * 只重排不删：万一这个人真的在国外，或者要找的球馆确实远，
+ * 删掉就等于告诉他「没有」，那是撒谎。近的浮上来就够了。
+ */
+export function byDistance(places: Place[], near?: { lat: number; lng: number }): Place[] {
+  if (!near) return places
+  return [...places].sort((a, b) => distanceKm(a, near) - distanceKm(b, near))
+}
+
+/*
+ * 一个人还没标过任何球馆时，拿什么当参考点。
+ *
+ * 吉隆坡。这个 App 现在的用户全在马来西亚 —— 与其不给参考点、
+ * 让全世界的同名场馆按字母顺序糊上来，不如给一个大概率没错的。
+ *
+ * 而且它会自己变准：这个人只要标过一个球馆、或者按过一次定位，
+ * 后面就用真的位置了（见 lastNear）。
+ */
+export const FALLBACK_NEAR = { lat: 3.139, lng: 101.6869 }
+
+const NEAR_KEY = 'rally-last-near'
+
+/** 记下这台手机最后一次知道自己在哪，之后搜索拿它当参考点 */
+export function rememberNear(at: { lat: number; lng: number }) {
+  try {
+    localStorage.setItem(NEAR_KEY, JSON.stringify(at))
+  } catch {
+    // 隐私模式下写不进去，那就算了 —— 还有兜底的参考点
+  }
+}
+
+export function lastNear(): { lat: number; lng: number } | null {
+  try {
+    const raw = localStorage.getItem(NEAR_KEY)
+    if (!raw) return null
+    const v = JSON.parse(raw) as { lat?: unknown; lng?: unknown }
+    const lat = Number(v.lat)
+    const lng = Number(v.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null
+    return { lat, lng }
+  } catch {
+    return null
+  }
+}
+
 export type SearchOutcome =
   | { ok: true; places: Place[] }
   | { ok: false; error: string }
@@ -107,13 +175,16 @@ export async function searchPlaces(
   const q = query.trim()
   if (q.length < MIN_QUERY) return { ok: true, places: [] }
 
+  /*
+   * 多要一些回来（10 条），自己重排完只显示前几条。
+   * 只要 5 条的话，那 5 条可能一条近的都没有 —— 排序也就无从排起。
+   */
+  const near = opts.near ?? FALLBACK_NEAR
   const url = new URL('https://photon.komoot.io/api/')
   url.searchParams.set('q', q)
-  url.searchParams.set('limit', '5')
-  if (opts.near) {
-    url.searchParams.set('lat', String(opts.near.lat))
-    url.searchParams.set('lon', String(opts.near.lng))
-  }
+  url.searchParams.set('limit', '10')
+  url.searchParams.set('lat', String(near.lat))
+  url.searchParams.set('lon', String(near.lng))
 
   try {
     /*
@@ -143,7 +214,7 @@ export async function searchPlaces(
     if (!res.ok) {
       return { ok: false, error: pick('地址搜索暂时用不了', 'Address search is unavailable') }
     }
-    return { ok: true, places: parsePlaces(await res.json()) }
+    return { ok: true, places: byDistance(parsePlaces(await res.json()), near).slice(0, 6) }
   } catch (e) {
     // 主动取消（人又打了一个字）不是错误，别把它显示出来
     if (e instanceof DOMException && e.name === 'AbortError') {
