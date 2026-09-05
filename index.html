@@ -11,8 +11,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="RALLY" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="./favicon-96.png" />
+    <!--
+      iOS 用自己那张：它会给图标切一次圆角，而 icon-192 自带圆角和
+      透明的四角 —— 两层圆角叠在一起，边上会露出一圈发暗的缝。
+      apple-touch-icon 是不透明的满幅方图，让 iOS 自己去切。
+    -->
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <title>RALLY · 羽球社交竞技平台</title>
 
     <!--

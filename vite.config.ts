@@ -67,7 +67,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon-96.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'RALLY 羽球社交竞技平台',
         short_name: 'RALLY',
