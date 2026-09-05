@@ -364,6 +364,19 @@ describe('球馆地址', () => {
     expect(decodeURIComponent(url!)).toContain('Jalan SS 2/24')
   })
 
+  it('用导航链接，不是搜索链接', () => {
+    /*
+     * 这一条是用出来的：原来给的是 /maps/search/，它打开的是网页，
+     * 网页再跳 App 时地址会丢 —— 人跳进 Google 地图才发现要自己
+     * 重新打一遍地址。/maps/dir/ 是官方给「跨平台跳 App 还带着
+     * 目的地」用的那一种。别再改回去。
+     */
+    const url = mapsUrl('城中羽球馆', venue({ key: 'x', lat: 3.1, lng: 101.6 }))
+    expect(url).toContain('/maps/dir/')
+    expect(url).toContain('destination=')
+    expect(url).not.toContain('/maps/search/')
+  })
+
   it('有坐标就只用坐标 —— 那比任何文字都准', () => {
     const url = mapsUrl('城中羽球馆', venue({ key: '城中羽球馆', address: '随便写的', lat: 3.1, lng: 101.6 }))
     expect(decodeURIComponent(url!)).toContain('3.1,101.6')

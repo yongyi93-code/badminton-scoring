@@ -89,32 +89,42 @@ export const venueByKey = (venues: Venue[], key: string) =>
  * 拿去搜地图会把人导到一个看着像模像样、其实完全不相干的地方。
  * 宁可没有按钮，也不要一个会把人带错地方的按钮。
  *
- * 有坐标就用坐标（以后地图那一版会填），否则用「馆名 + 地址」——
- * 带上馆名是因为地址常常打得不全，馆名能帮地图消歧。
- *
- * 用 Google Maps 的通用搜索链接：手机上装了 App 会直接跳进 App，
- * 没装就开网页。iOS 上也一样 —— 不用为两个系统各写一套。
+ * 有坐标就用坐标，否则用「馆名 + 地址」—— 带上馆名是因为地址常常
+ * 打得不全，馆名能帮地图消歧。
  */
 export function mapsUrl(label: string, venue: Venue | undefined): string | null {
   if (!venue) return null
 
+  /*
+   * 用「导航」那种链接（/maps/dir/），不是「搜索」那种（/maps/search/）。
+   *
+   * 换掉是因为实际用出问题了：搜索链接打开的是 Google 地图的网页，
+   * 网页上再点「用 App 打开」时，那个地址经常丢 —— 人跳进 App 才发现
+   * 要自己重新打一遍地址，等于这个按钮白按。
+   *
+   * /dir/ 是 Google 文档里专门给「跨平台跳 App 还带着目的地」用的那一种：
+   * 装了 Google 地图的手机上，系统会直接把它交给 App，连网页那一步
+   * 都不经过。而且「带我去」本来要的就是导航，不是搜索。
+   *
+   * 目的地优先用坐标：一串数字没有歧义，也不怕地址写法不标准。
+   */
+  const dir = (destination: string) =>
+    `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`
+
   if (venue.lat != null && venue.lng != null) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      `${venue.lat},${venue.lng}`,
-    )}`
+    return dir(`${venue.lat},${venue.lng}`)
   }
 
   /*
    * 地址是硬条件，不是「有就加上」。
    *
    * 差一点就写成了「馆名 + 地址，两个都可选」—— 那样地址空着时会拿
-   * 光秃秃一个馆名去搜，正是上面说的那种「把人导错地方」。
+   * 光秃秃一个馆名去搜，正是「把人导错地方」的那种。
    */
   const address = normalizeVenue(venue.address)
   if (!address) return null
 
-  const query = [normalizeVenue(label), address].filter(Boolean).join(' ')
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+  return dir([normalizeVenue(label), address].filter(Boolean).join(' '))
 }
 
 export type VenueSummary = {
