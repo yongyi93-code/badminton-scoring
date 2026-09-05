@@ -1,10 +1,25 @@
 import { useT } from '@/lib/i18n'
-import { useMemo } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Body, Card, Screen, SectionTitle } from '@/components/ui'
-import { venueSummaries } from '@/lib/venues'
+import { venueByKey, venueSummaries } from '@/lib/venues'
 import { formatDate } from '@/lib/format'
+import type { MapPin } from '@/components/VenueMap'
+
+/*
+ * 地图按需加载。
+ *
+ * 地图库 + 它的样式表，压缩完还有 45 KB —— 而这一屏十次里有九次
+ * 是来看排名和球馆列表的，地图那一块很多人根本不会往下滚到。
+ * 打进主包等于让每个人第一次打开 App 都多下 45 KB，在马来西亚的
+ * 移动网络上那不是可以忽略的数字。
+ *
+ * 拆出去之后：真的有点要画时才去取那一块。
+ */
+const VenueMap = lazy(() =>
+  import('@/components/VenueMap').then((m) => ({ default: m.VenueMap })),
+)
 
 /*
  * 发现。
@@ -25,6 +40,25 @@ export function Discover() {
   const push = useNav((s) => s.push)
 
   const venues = useMemo(() => venueSummaries(sessions, matches), [sessions, matches])
+
+  /*
+   * 地图上只放标过位置的球馆。
+   *
+   * 没标位置的不出现 —— 猜一个点放上去，比不放糟得多：人会照着它开车。
+   * 所以列表和地图的条数常常对不上，那是对的，不是漏了。
+   */
+  const savedVenues = useApp((s) => s.venues)
+  const pins = useMemo<MapPin[]>(
+    () =>
+      venues.flatMap((v) => {
+        const saved = venueByKey(savedVenues, v.key)
+        if (saved?.lat == null || saved?.lng == null) return []
+        return [{ key: v.key, label: v.label, lat: saved.lat, lng: saved.lng, address: saved.address }]
+      }),
+    [venues, savedVenues],
+  )
+  /** 有几个馆还没标位置 —— 说出来才有人去补 */
+  const unpinned = venues.length - pins.length
 
   return (
     <Screen tabBar>
@@ -53,6 +87,47 @@ export function Discover() {
             </svg>
           </div>
         </Card>
+
+        {/*
+          地图。一个点都没有的时候不画一张空图 ——
+          那只会让人以为地图坏了。改成一句话告诉他怎么让点出现。
+        */}
+        {venues.length > 0 && (
+          <>
+            <SectionTitle
+              right={
+                unpinned > 0 ? (
+                  <span className="text-ink-500 text-caption">
+                    {t(`${unpinned} 个还没标位置`, `${unpinned} not pinned yet`)}
+                  </span>
+                ) : undefined
+              }
+            >
+              {t('地图', 'Map')}
+            </SectionTitle>
+            {pins.length > 0 ? (
+              <Suspense
+                fallback={
+                  <div className="border-line bg-fill rounded-card h-[280px] animate-pulse border" />
+                }
+              >
+                <VenueMap
+                  pins={pins}
+                  onPick={(pin) => push({ name: 'venue', venue: pin.label })}
+                />
+              </Suspense>
+            ) : (
+              <Card>
+                <p className="text-ink-500 text-label">
+                  {t(
+                    '还没有球馆标过位置。开局那一步、或者球馆页里点「顺手定个位」，人在场上按一下就好 —— 标过的馆会出现在这张图上。',
+                    'No venue has been pinned yet. Tap “Pin it” when starting a session or on a venue page — one tap while you are there, and it shows up on this map.',
+                  )}
+                </p>
+              </Card>
+            )}
+          </>
+        )}
 
         <SectionTitle>{t('常去的球馆', 'Your venues')}</SectionTitle>
         {venues.length === 0 ? (
