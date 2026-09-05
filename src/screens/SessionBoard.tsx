@@ -20,6 +20,7 @@ import {
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { AddGuest } from '@/components/AddGuest'
+import { VenueAddressLine } from '@/components/VenueAddress'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
 import { duration } from '@/lib/format'
 import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
@@ -826,6 +827,8 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       />
 
       <Body>
+        {/* 怎么去 —— 只在有人填过地址时出现，没填就当它不存在 */}
+        <VenueAddressLine venue={session.venue} />
         {progress.shouldWrapUp && (
           <div className="rounded-card border border-brand-500 bg-brand-100 px-4 py-3.5">
             <p className="font-semibold text-brand-600">{progress.wrapUpReason}</p>

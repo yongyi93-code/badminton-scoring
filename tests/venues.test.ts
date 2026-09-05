@@ -10,9 +10,11 @@ import {
   venueLabel,
   venueSummaries,
   homeVenues,
+  mapsUrl,
+  venueByKey,
 } from '@/lib/venues'
 import { computeStats, rankPlayers } from '@/lib/ranking'
-import { DEFAULT_RULES, type Match, type Session } from '@/types'
+import { DEFAULT_RULES, type Match, type Session, type Venue } from '@/types'
 
 let seq = 0
 function session(over: Partial<Session> = {}): Session {
@@ -314,5 +316,55 @@ describe('主场：最常打的球馆', () => {
     for (let i = 0; i < 5; i++) {
       expect(homeVenues([a, b], ms).get('p1')?.label).toBe(first)
     }
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 地址
+ *
+ * 球馆的战绩一直是算出来的，地址不是 —— 它只能有人填。这一组盯的是
+ * 那条记录怎么和历史球局对上，以及什么时候不该给「带我去」那个按钮。
+ * ------------------------------------------------------------------ */
+
+const venue = (patch: Partial<Venue> & { key: string }): Venue => ({
+  address: '',
+  updatedAt: 0,
+  ...patch,
+})
+
+describe('球馆地址', () => {
+  it('按归一化的 key 找，写法不同照样找得到', () => {
+    /*
+     * 这是整个设计的关键：地址记录的 key 就是球局里那段文本归一化的
+     * 结果。所以「城中羽球馆」「城中 羽球馆」「城中羽球馆 」都指向
+     * 同一条地址，老球局一行都不用改。
+     */
+    const list = [venue({ key: '城中羽球馆', address: 'Jalan SS 2/24' })]
+    expect(venueByKey(list, '城中 羽球馆')?.address).toBe('Jalan SS 2/24')
+    expect(venueByKey(list, ' 城中羽球馆 ')?.address).toBe('Jalan SS 2/24')
+    expect(venueByKey(list, '别的馆')).toBeUndefined()
+  })
+
+  it('没人填过地址就没有「带我去」', () => {
+    /*
+     * 不拿球馆名字去搜地图。名字是群里自己叫的（「老地方」「城中」），
+     * 搜出来多半是个看着像模像样、其实毫不相干的地方 ——
+     * 把人导错地方比没有按钮糟得多。
+     */
+    expect(mapsUrl('老地方', undefined)).toBeNull()
+    expect(mapsUrl('老地方', venue({ key: '老地方' }))).toBeNull()
+  })
+
+  it('有地址时，链接里带上馆名和地址', () => {
+    const url = mapsUrl('城中羽球馆', venue({ key: '城中羽球馆', address: 'Jalan SS 2/24' }))
+    expect(url).toContain('google.com/maps')
+    expect(decodeURIComponent(url!)).toContain('城中羽球馆')
+    expect(decodeURIComponent(url!)).toContain('Jalan SS 2/24')
+  })
+
+  it('有坐标就只用坐标 —— 那比任何文字都准', () => {
+    const url = mapsUrl('城中羽球馆', venue({ key: '城中羽球馆', address: '随便写的', lat: 3.1, lng: 101.6 }))
+    expect(decodeURIComponent(url!)).toContain('3.1,101.6')
+    expect(decodeURIComponent(url!)).not.toContain('随便写的')
   })
 })

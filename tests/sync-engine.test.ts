@@ -673,6 +673,46 @@ describe('建群和换群', () => {
 })
 
 /*
+ * 球馆地址也要同步。
+ *
+ * 这件事整个存在的理由就是「一个人填一次，全群都不用再问在哪」——
+ * 传不出去的话，等于每个人各填各的，那还不如不做。
+ */
+describe('球馆地址', () => {
+  it('填了地址会推上去，主键是那个归组 key', async () => {
+    cloud.session = { user: { id: 'uid-1' } }
+    await startSync()
+    cloud.upserts = []
+
+    useApp.getState().saveVenue('城中羽球馆', { address: 'Jalan SS 2/24' }, null)
+    await vi.advanceTimersByTimeAsync(700)
+
+    const row = cloud.upserts.flat().find((r) => r.kind === 'venue')
+    expect(row).toBeTruthy()
+    /*
+     * id 用归组 key 而不是随机 id：同一个馆在一个群里只该有一条地址。
+     * 用随机 id 的话，两个人同时填就是两条，之后谁也说不清哪条算数。
+     */
+    expect(row?.id).toBe('城中羽球馆')
+  })
+
+  it('拉下来的地址会进本机', async () => {
+    cloud.session = { user: { id: 'uid-1' } }
+    cloud.rows = [
+      {
+        kind: 'venue',
+        id: '城中羽球馆',
+        data: { key: '城中羽球馆', address: 'Jalan SS 2/24', updatedAt: 1 },
+      },
+    ]
+
+    await startSync()
+
+    expect(useApp.getState().venues.map((v) => v.address)).toEqual(['Jalan SS 2/24'])
+  })
+})
+
+/*
  * 公告要跟着同步走，否则「发给大家」只发给了自己那台手机 ——
  * 而这正是它存在的全部意义。
  */

@@ -27,6 +27,7 @@ import {
   type SessionFormat,
   type Announcement,
   type Club,
+  type Venue,
 } from '@/types'
 
 export const STORAGE_KEY = 'badminton-scoring-v1'
@@ -108,6 +109,15 @@ type AppState = {
   avatars: AvatarProfile[]
   /** 人工发的公告。首页快讯里那些是算出来的，这些是有人说的 */
   announcements: Announcement[]
+
+  /**
+   * 球馆的地址那一份。
+   *
+   * 战绩那一半（打了几场、谁是第一）一直是从球局算出来的，不落库；
+   * 这里只存算不出来的东西 —— 地址、备注。按 venueKey 存，
+   * 所以和历史球局天然对得上，一行都不用迁。
+   */
+  venues: Venue[]
 
   /**
    * 这台手机是谁在用 —— 「我的」那一页要显示谁的战绩、首页要跟谁打招呼。
@@ -247,6 +257,21 @@ type AppState = {
   /** 撤掉一条公告 */
   deleteAnnouncement: (id: string) => void
 
+  /**
+   * 填 / 改一个球馆的地址。key 是 venueKey 出来的那个。
+   *
+   * 谁都能改，不设权限：一个球群里的人填错了地址，群里另一个人
+   * 顺手改掉就是了 —— 为这种事做一套权限，挡住的多半是热心人。
+   * 界面上署名最后是谁改的，这在熟人群里够用。
+   *
+   * key 为空（球局没填球馆）时什么都不做：那不是一个球馆。
+   */
+  saveVenue: (
+    key: string,
+    patch: { address?: string; note?: string },
+    byPlayerId?: string | null,
+  ) => void
+
   resetAll: () => void
 }
 
@@ -258,6 +283,7 @@ export const useApp = create<AppState>()(
       matches: [],
       avatars: [],
       announcements: [],
+      venues: [],
       meId: null,
       clubs: [],
       clubId: null,
@@ -310,6 +336,7 @@ export const useApp = create<AppState>()(
           matches: [],
           avatars: [],
           announcements: [],
+          venues: [],
           meId: null,
         })
       },
@@ -640,6 +667,27 @@ export const useApp = create<AppState>()(
         set((s) => ({ announcements: s.announcements.filter((a) => a.id !== id) }))
       },
 
+      saveVenue(key, patch, byPlayerId) {
+        // 没填球馆的球局归在空 key 下，那不是一个球馆，没有地址可言
+        if (!key) return
+        set((s) => {
+          const old = s.venues.find((v) => v.key === key)
+          const next: Venue = {
+            ...old,
+            key,
+            address: (patch.address ?? old?.address ?? '').trim(),
+            note: (patch.note ?? old?.note ?? '').trim() || undefined,
+            updatedAt: Date.now(),
+            updatedBy: byPlayerId ?? null,
+          }
+          return {
+            venues: old
+              ? s.venues.map((v) => (v.key === key ? next : v))
+              : [...s.venues, next],
+          }
+        })
+      },
+
       resetAll() {
         set({
           players: [],
@@ -647,6 +695,7 @@ export const useApp = create<AppState>()(
           matches: [],
           avatars: [],
           announcements: [],
+          venues: [],
           meId: null,
           clubs: [],
           clubId: null,
@@ -686,6 +735,7 @@ export const useApp = create<AppState>()(
         matches: s.matches,
         avatars: s.avatars,
         announcements: s.announcements,
+        venues: s.venues,
         meId: s.meId,
         clubs: s.clubs,
         clubId: s.clubId,

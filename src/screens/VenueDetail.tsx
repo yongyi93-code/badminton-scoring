@@ -12,6 +12,7 @@ import {
   TopBar,
 } from '@/components/ui'
 import { RankTable } from '@/components/RankTable'
+import { VenueAddressCard } from '@/components/VenueAddress'
 import { computeStats, decidedMatches, rankPlayers } from '@/lib/ranking'
 import { progressByPlayer } from '@/lib/avatar'
 import {
@@ -31,9 +32,9 @@ import { FORMAT_LABELS, formatOf, RANK_MIN_GAMES } from '@/types'
  * 全部是从现有记录算出来的：没有「球馆」这个实体，球局上的 venue
  * 只是一段自由文本，归组靠 venueKey（去空白、转小写）。
  *
- * 所以这一屏没有地址、没有照片、没有地图 —— 那些要先给球馆建实体，
- * 而实体的形状取决于以后云端怎么存，现在拍一版本地的大概率要推翻。
- * 战绩这一半不需要等：数据全都已经在了。
+ * 地址是后来加的那一半：它算不出来，只能有人填。那条记录按 venueKey
+ * 存（见 types.ts 的 Venue），所以和这里的统计天然对得上，
+ * 老球局一行都没动过。地图以后铺在它上面。
  * ------------------------------------------------------------------ */
 
 export function VenueDetail({ venue }: { venue: string }) {
@@ -91,6 +92,11 @@ export function VenueDetail({ venue }: { venue: string }) {
       <Screen>
         <TopBar title={label} onBack={back} />
         <Body>
+          {/*
+            没战绩也要能填地址 —— 一个刚去的新馆，正是最需要
+            把「在哪」发给球友的时候。
+          */}
+          <VenueAddressCard venue={venue} />
           <EmptyState
             icon="🏟"
             title={t('这个球馆还没有战绩', 'Nothing recorded here yet')}
@@ -130,6 +136,7 @@ export function VenueDetail({ venue }: { venue: string }) {
         onBack={back}
       />
       <Body>
+        <VenueAddressCard venue={venue} />
         <div className="grid grid-cols-3 gap-2">
           {stats.map((s) => (
             <div

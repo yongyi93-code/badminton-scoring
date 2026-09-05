@@ -3,7 +3,7 @@ import { pick } from './i18n'
 import { supabase } from './supabase'
 import { useApp } from '@/store/useApp'
 import type { AvatarProfile } from './avatar'
-import type { Announcement, Club, Match, Player, Session } from '@/types'
+import type { Announcement, Club, Match, Player, Session, Venue } from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 同步引擎：云端为准
@@ -30,6 +30,7 @@ export type Kind =
   | 'match'
   | 'avatar'
   | 'announcement'
+  | 'venue'
   | 'club'
 
 /**
@@ -63,7 +64,7 @@ export const keyOf = (kind: Kind, id: string) => `${kind} ${id}`
  * 会被数据库拒（策略要求 club_id 非空且是自己的群），不如根本不推。
  */
 function rowsOf(): Map<string, Row> {
-  const { players, sessions, matches, avatars, announcements, clubId } =
+  const { players, sessions, matches, avatars, announcements, venues, clubId } =
     useApp.getState()
   const out = new Map<string, Row>()
   if (!clubId) return out
@@ -77,6 +78,8 @@ function rowsOf(): Map<string, Row> {
   // 角色一人一个，用 playerId 当主键
   for (const a of avatars) put('avatar', a.playerId, a)
   for (const a of announcements) put('announcement', a.id, a)
+  // 球馆的主键就是那个归组 key —— 同一个馆在群里只该有一条地址
+  for (const v of venues) put('venue', v.key, v)
   return out
 }
 
@@ -304,6 +307,7 @@ export async function pullAll(): Promise<PullOutcome> {
         announcements: rows
           .filter((r) => r.kind === 'announcement')
           .map((r) => r.data as Announcement),
+        venues: rows.filter((r) => r.kind === 'venue').map((r) => r.data as Venue),
       })
     } finally {
       applying = false
@@ -789,6 +793,7 @@ type Carry = {
   matches: Match[]
   avatars: AvatarProfile[]
   announcements: Announcement[]
+  venues: Venue[]
   meId: string | null
 }
 
@@ -872,6 +877,7 @@ export async function createAndEnterClub(
         matches: st.matches,
         avatars: st.avatars,
         announcements: st.announcements,
+        venues: st.venues,
         meId: st.meId,
       }
     : null

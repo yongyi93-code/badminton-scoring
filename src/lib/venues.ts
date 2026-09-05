@@ -1,6 +1,6 @@
 import { pick } from './i18n'
 import { decidedMatches } from './ranking'
-import type { Match, Session } from '@/types'
+import type { Match, Session, Venue } from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 按场馆分组
@@ -33,6 +33,45 @@ export const venueKey = (raw: string | undefined) =>
 /** 显示用名字，空的显示成「未填球馆」 */
 export const venueLabel = (raw: string | undefined) =>
   normalizeVenue(raw) || UNNAMED_VENUE()
+
+/** 这个馆有没有人填过地址；没填过就是 undefined */
+export const venueByKey = (venues: Venue[], key: string) =>
+  venues.find((v) => v.key === venueKey(key))
+
+/**
+ * 「带我去」那个链接。没有地址也没有坐标就返回 null —— 那时候不该有按钮。
+ *
+ * 为什么不拿球馆名字去搜：名字是群里自己叫的（「老地方」「城中」），
+ * 拿去搜地图会把人导到一个看着像模像样、其实完全不相干的地方。
+ * 宁可没有按钮，也不要一个会把人带错地方的按钮。
+ *
+ * 有坐标就用坐标（以后地图那一版会填），否则用「馆名 + 地址」——
+ * 带上馆名是因为地址常常打得不全，馆名能帮地图消歧。
+ *
+ * 用 Google Maps 的通用搜索链接：手机上装了 App 会直接跳进 App，
+ * 没装就开网页。iOS 上也一样 —— 不用为两个系统各写一套。
+ */
+export function mapsUrl(label: string, venue: Venue | undefined): string | null {
+  if (!venue) return null
+
+  if (venue.lat != null && venue.lng != null) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      `${venue.lat},${venue.lng}`,
+    )}`
+  }
+
+  /*
+   * 地址是硬条件，不是「有就加上」。
+   *
+   * 差一点就写成了「馆名 + 地址，两个都可选」—— 那样地址空着时会拿
+   * 光秃秃一个馆名去搜，正是上面说的那种「把人导错地方」。
+   */
+  const address = normalizeVenue(venue.address)
+  if (!address) return null
+
+  const query = [normalizeVenue(label), address].filter(Boolean).join(' ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
 
 export type VenueSummary = {
   /** 归组 key；'' 表示没填球馆 */
