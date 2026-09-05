@@ -24,18 +24,40 @@ const cloud = vi.hoisted(() => ({
   upsertError: null as { message: string } | null,
   /** 有没有登录。RLS 只认登录的人，没登录时一个请求都不该发出去 */
   session: {} as object | null,
+  /** 最后一次查询带的过滤条件，用来断言「按球群拉」 */
+  lastSelectFilters: null as Record<string, unknown> | null,
 }))
 
 vi.mock('@/lib/supabase', () => {
   const table = {
-    select: () => ({
-      eq: () =>
-        Promise.resolve(
-          cloud.selectError
-            ? { data: null, error: cloud.selectError }
-            : { data: cloud.rows, error: null },
-        ),
-    }),
+    /*
+     * 可以连着点 .eq() 的查询构造器。
+     *
+     * 真的 supabase-js 就是这样：.select().eq().eq() 一路链下去，
+     * 最后 await 才发请求。原来这个假的在第一个 .eq() 就返回 Promise，
+     * 加上按球群过滤那一句之后（两个 .eq()）当场就断了。
+     *
+     * 顺带把过滤条件记下来 —— 「拉取有没有按球群过滤」是这次改动的
+     * 重点之一，能断言比只让测试变绿有用。
+     */
+    select: () => {
+      const filters: Record<string, unknown> = {}
+      const builder = {
+        eq(col: string, val: unknown) {
+          filters[col] = val
+          cloud.lastSelectFilters = filters
+          return builder
+        },
+        then(resolve: (r: unknown) => void) {
+          resolve(
+            cloud.selectError
+              ? { data: null, error: cloud.selectError }
+              : { data: cloud.rows, error: null },
+          )
+        },
+      }
+      return builder
+    },
     upsert: (rows: { kind: string; id: string; deleted: boolean }[]) => {
       if (cloud.upsertError) return Promise.resolve({ error: cloud.upsertError })
       cloud.upserts.push(rows)
@@ -89,6 +111,14 @@ beforeEach(() => {
   cloud.selectError = null
   cloud.session = {}
   useApp.getState().resetAll()
+  /*
+   * 得先有球群。
+   *
+   * 数据现在按球群隔离：没进群的时候拉什么推什么都是空 —— 那是对的
+   * 行为（刚注册、还没建群的人本来就没有数据），但这一组测的是
+   * 「进了群之后同步走不走得通」，所以先把群设上。
+   */
+  useApp.getState().setClubId('club_test')
 })
 
 afterEach(() => {
@@ -386,19 +416,63 @@ describe('退出登录', () => {
  * 同一个机制，用在退出登录上就是事故。
  */
 describe('清空 store 和同步撞在一起', () => {
-  it('同步开着时清空，删除会被推上去 —— 所以退出必须先 stopSync', async () => {
+  it('同步开着时清空数据，删除会被推上去 —— 所以退出必须先 stopSync', async () => {
     cloud.session = { user: { id: 'uid-1' } }
     await startSync()
     useApp.getState().addPlayer('阿伟', 'M')
     await vi.advanceTimersByTimeAsync(700)
     cloud.upserts = []
 
-    // 故意不 stopSync，直接清
-    useApp.getState().resetAll()
+    /*
+     * 故意不 stopSync，直接把数据清掉 —— 但球群留着。
+     *
+     * 这里不用 resetAll()：它现在连 clubId 一起清，而没有球群就一行
+     * 都不推，隐患看起来就「自己消失了」。那是顺带挡住的，不是设计。
+     * 哪天有人加一个「清空数据但留在群里」的操作，它立刻回来。
+     * 所以这里照着隐患本来的样子造：数据没了，群还在。
+     */
+    useApp.setState({
+      players: [],
+      sessions: [],
+      matches: [],
+      avatars: [],
+      announcements: [],
+    })
     await vi.advanceTimersByTimeAsync(700)
 
     const deletions = cloud.upserts.flat().filter((r) => r.deleted)
     expect(deletions.length).toBeGreaterThan(0)
+  })
+
+  it('拉取带上球群条件 —— 流量那条靠的就是这一句', async () => {
+    cloud.session = { user: { id: 'uid-1' } }
+    cloud.lastSelectFilters = null
+    useApp.getState().setClubId('club_abc')
+
+    await startSync()
+
+    /*
+     * 不带这个条件的话，每台手机每次同步都要把全表拉一遍：
+     * 1000 人跑一年一次 22 MB，而免费额度一个月只够两百多次。
+     * 这一句是那个 130 倍差距的解法，所以要有测试盯着它。
+     */
+    expect(cloud.lastSelectFilters).toMatchObject({
+      club_id: 'club_abc',
+      deleted: false,
+    })
+  })
+
+  it('没进任何球群时，什么都不推 —— 挡在数据库拒绝之前', async () => {
+    cloud.session = { user: { id: 'uid-1' } }
+    await startSync()
+    useApp.getState().setClubId(null)
+    cloud.upserts = []
+
+    useApp.getState().addPlayer('无群的人', 'M')
+    await vi.advanceTimersByTimeAsync(700)
+
+    // 推上去只会被策略拒（club_id 不许为空），不如根本不发
+    expect(cloud.upserts.flat()).toHaveLength(0)
   })
 })
 

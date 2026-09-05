@@ -26,6 +26,7 @@ import {
   type Session,
   type SessionFormat,
   type Announcement,
+  type Club,
 } from '@/types'
 
 export const STORAGE_KEY = 'badminton-scoring-v1'
@@ -118,6 +119,32 @@ type AppState = {
    */
   meId: string | null
 
+  /**
+   * 我在哪些球群里。
+   *
+   * 从云端拉下来的一份缓存，只为了让「切换球群」那个界面能离线画出来。
+   * 谁是成员这件事以数据库为准 —— 这里改了不算数。
+   */
+  clubs: Club[]
+  /**
+   * 当前在看哪个球群。
+   *
+   * 本机任何时候只装着这一个群的数据：球员、球局、比赛、排行榜全是它的。
+   * 切群 = 清空本机 + 重新拉那个群的。不做「本机同时存好几个群」——
+   * 那样每处查询都要带上群的条件，漏一处就是串数据，而串了很难发现。
+   */
+  clubId: string | null
+
+  setClubs: (clubs: Club[]) => void
+  /**
+   * 换一个球群来看。
+   *
+   * 会把本机数据清空。必须清：不清的话，切过去之后同步会把上一个群的
+   * 球员和比赛当成「本机的新改动」推进新群里 —— 数据库那边会拒
+   * （改不了别人群的行），但界面上已经是两个群的数据混在一起了。
+   */
+  setClubId: (clubId: string | null) => void
+
   setMeId: (playerId: string | null) => void
   /**
    * 把刚建出来的自己和登录账号绑在一起。
@@ -207,6 +234,33 @@ export const useApp = create<AppState>()(
       avatars: [],
       announcements: [],
       meId: null,
+      clubs: [],
+      clubId: null,
+
+      setClubs(clubs) {
+        set({ clubs })
+      },
+
+      setClubId(clubId) {
+        if (get().clubId === clubId) return
+        /*
+         * 换群 = 换一整份数据。本机那份属于上一个群，一条都不能留。
+         *
+         * meId 也要清：那是「我在这个群里是哪个球员」。同一个人在不同
+         * 群里是不同的球员记录 —— 留着上一个群的 meId，新群里会指到
+         * 一个根本不存在的人，界面直接空掉。拉完之后 adoptMe 会按
+         * 登录账号在新群里重新认出「我是谁」。
+         */
+        set({
+          clubId,
+          players: [],
+          sessions: [],
+          matches: [],
+          avatars: [],
+          announcements: [],
+          meId: null,
+        })
+      },
 
       setMeId(playerId) {
         set({ meId: playerId })
@@ -542,6 +596,8 @@ export const useApp = create<AppState>()(
           avatars: [],
           announcements: [],
           meId: null,
+          clubs: [],
+          clubId: null,
         })
       },
     }),
@@ -577,6 +633,8 @@ export const useApp = create<AppState>()(
         avatars: s.avatars,
         announcements: s.announcements,
         meId: s.meId,
+        clubs: s.clubs,
+        clubId: s.clubId,
       }),
     },
   ),

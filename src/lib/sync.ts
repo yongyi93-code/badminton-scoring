@@ -3,7 +3,7 @@ import { pick } from './i18n'
 import { supabase } from './supabase'
 import { useApp } from '@/store/useApp'
 import type { AvatarProfile } from './avatar'
-import type { Announcement, Match, Player, Session } from '@/types'
+import type { Announcement, Club, Match, Player, Session } from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 同步引擎：云端为准
@@ -24,19 +24,52 @@ import type { Announcement, Match, Player, Session } from '@/types'
  * 操作函数 —— 那样每加一个新操作都要记得补一句推送，迟早漏。
  * ------------------------------------------------------------------ */
 
-export type Kind = 'player' | 'session' | 'match' | 'avatar' | 'announcement'
+export type Kind =
+  | 'player'
+  | 'session'
+  | 'match'
+  | 'avatar'
+  | 'announcement'
+  | 'club'
 
-export type Row = { kind: Kind; id: string; data: unknown; deleted: boolean }
+/**
+ * 一行数据。
+ *
+ * club_id 是数据库那边的列名（不是 clubId）—— 这个对象是直接 upsert
+ * 上去的，字段名得和列名一一对上。
+ *
+ * 为什么球群不写进 data 里：数据库每次读写都要判断这一行属于哪个群，
+ * 那是一个天天要走索引的判据，值得一个真正的列。而且写在 data 里的话，
+ * 客户端就能改它 —— 「这行属于哪个群」正是要用来限制客户端的东西。
+ */
+export type Row = {
+  kind: Kind
+  id: string
+  data: unknown
+  deleted: boolean
+  club_id: string
+}
 
 /** 一行的键。kind 和 id 一起才唯一 —— 不同类型的 id 可能撞 */
 export const keyOf = (kind: Kind, id: string) => `${kind} ${id}`
 
-/** 当前本机状态摊平成行 */
+/**
+ * 当前本机状态摊平成行。
+ *
+ * 本机任何时候只装着「当前球群」那一份数据 —— 切群会先清空再重拉。
+ * 所以这里给所有行盖同一个 club_id 是对的，不用逐行去查它原本属于谁。
+ *
+ * 没有当前球群（还没建、还没加入任何一个）就返回空：这时候推什么都
+ * 会被数据库拒（策略要求 club_id 非空且是自己的群），不如根本不推。
+ */
 function rowsOf(): Map<string, Row> {
-  const { players, sessions, matches, avatars, announcements } = useApp.getState()
+  const { players, sessions, matches, avatars, announcements, clubId } =
+    useApp.getState()
   const out = new Map<string, Row>()
+  if (!clubId) return out
+
   const put = (kind: Kind, id: string, data: unknown) =>
-    out.set(keyOf(kind, id), { kind, id, data, deleted: false })
+    out.set(keyOf(kind, id), { kind, id, data, deleted: false, club_id: clubId })
 
   for (const p of players) put('player', p.id, p)
   for (const s of sessions) put('session', s.id, s)
@@ -205,10 +238,36 @@ export async function pullAll(): Promise<PullOutcome> {
     setStatus({ state: 'error', message: noSession, pending })
     return { ok: false, error: noSession }
   }
+  /*
+   * 没有当前球群就不拉 —— 不是出错，是还没进任何一个群（刚注册的人）。
+   * 界面那边会引导他建群或者输邀请码。
+   */
+  const clubId = useApp.getState().clubId
+  if (!clubId) {
+    setStatus({ state: 'idle', pending: 0 })
+    return { ok: true, empty: true }
+  }
+
   setStatus({ state: 'syncing' })
   try {
+    /*
+     * 只拉自己这个群的。
+     *
+     * 这一句同时是流量那条的解法：原来不带条件，每台手机每次同步都要
+     * 把全表拉一遍 —— 1000 人跑一年是一次 22 MB，而免费额度一个月
+     * 只够拉两百多次。按群拉之后，拉的是自己群那几十个人的数据，
+     * 和全国有多少人无关。
+     *
+     * 数据库那边的策略本来也只会给自己群的行，这里再写一次不是多余：
+     * 策略是「拦住不该给的」，这个条件是「别去要不需要的」——
+     * 少了它，数据库照样要把全表过一遍再筛。
+     */
     const { data, error } = await withTimeout(
-      supabase.from('records').select('kind,id,data').eq('deleted', false),
+      supabase
+        .from('records')
+        .select('kind,id,data')
+        .eq('club_id', clubId)
+        .eq('deleted', false),
     )
     if (error) {
       const msg = readable(error.message)
@@ -277,6 +336,15 @@ export async function pullAll(): Promise<PullOutcome> {
 export function diffRows(
   now: Map<string, Row>,
   baseline: Map<string, string>,
+  /**
+   * 删除行要盖的球群。
+   *
+   * 基线里只存了 JSON，没存这一行原本属于哪个群 —— 而软删除是拿一行
+   * 空数据去覆盖，也得带上 club_id，否则策略会拒（不许写 club_id 为空
+   * 的行）。传当前球群是对的：本机只装着当前群的数据，能从本机消失的
+   * 也只有当前群的行。
+   */
+  clubId: string,
 ): Row[] {
   const out: Row[] = []
 
@@ -289,13 +357,24 @@ export function diffRows(
   for (const key of baseline.keys()) {
     if (!now.has(key)) {
       const [kind, ...rest] = key.split(' ')
-      out.push({ kind: kind as Kind, id: rest.join(' '), data: {}, deleted: true })
+      out.push({
+        kind: kind as Kind,
+        id: rest.join(' '),
+        data: {},
+        deleted: true,
+        club_id: clubId,
+      })
     }
   }
   return out
 }
 
-const changedRows = (): Row[] => diffRows(rowsOf(), pushed)
+const changedRows = (): Row[] => {
+  const clubId = useApp.getState().clubId
+  // 没进群就没什么可推的 —— rowsOf 也会返回空，这里提前挡掉更清楚
+  if (!clubId) return []
+  return diffRows(rowsOf(), pushed, clubId)
+}
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -487,4 +566,144 @@ export async function pushAll(): Promise<{ ok: true; count: number } | { ok: fal
   pending = 0
   setStatus({ state: 'idle', pending: 0 })
   return { ok: true, count: rows.length }
+}
+
+/* ------------------------------------------------------------------ *
+ * 球群
+ *
+ * 这几个函数直接和数据库打交道，不走 store 那套「改了就推」的机制 ——
+ * 建群和加群都要先在服务端落定（成员关系是数据库判断权限的依据），
+ * 落定之后本机才谈得上有这个群。
+ * ------------------------------------------------------------------ */
+
+export type ClubOutcome<T> = { ok: true; value: T } | { ok: false; error: string }
+
+/**
+ * 邀请码。六位，从一个刻意挑过的字母表里取。
+ *
+ * 去掉了 0/O、1/I/L：这串码是要人念给球友听、或者照着打进去的。
+ * 「零还是欧」这种问题，在球馆嘈杂的环境里问一次就够烦了。
+ */
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+
+function newCode(): string {
+  const bytes = new Uint8Array(6)
+  crypto.getRandomValues(bytes)
+  return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
+}
+
+/**
+ * 我在哪些球群里。
+ *
+ * 不带 club_id 条件 —— 策略只会给我是成员的那些群，所以这一句拿到的
+ * 正好是「我的群」。这是唯一一处故意不按群过滤的查询。
+ */
+export async function listMyClubs(): Promise<ClubOutcome<Club[]>> {
+  if (!supabase) return { ok: false, error: pick('还没接云端', 'Cloud is not set up') }
+  const noSession = await needsSignIn()
+  if (noSession) return { ok: false, error: noSession }
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('records').select('data').eq('kind', 'club').eq('deleted', false),
+    )
+    if (error) return { ok: false, error: readable(error.message) }
+    return { ok: true, value: (data ?? []).map((r) => r.data as Club) }
+  } catch (e) {
+    return { ok: false, error: readable(e instanceof Error ? e.message : String(e)) }
+  }
+}
+
+/**
+ * 建一个球群，自己成为第一个成员。
+ *
+ * 顺序不能反：先插成员行，再插群记录。
+ * 反过来的话，插群记录时我还不是成员，策略会把这一步拒掉 ——
+ * 「只能写进自己的群」对建群的人也一样成立。
+ */
+export async function createClub(name: string): Promise<ClubOutcome<Club>> {
+  if (!supabase) return { ok: false, error: pick('还没接云端', 'Cloud is not set up') }
+  const noSession = await needsSignIn()
+  if (noSession) return { ok: false, error: noSession }
+
+  const club: Club = {
+    id: `club_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+    name: name.trim(),
+    code: newCode(),
+    createdAt: Date.now(),
+  }
+  try {
+    const joined = await withTimeout(
+      supabase.from('club_members').insert({ club_id: club.id }),
+    )
+    if (joined.error) return { ok: false, error: readable(joined.error.message) }
+
+    const saved = await withTimeout(
+      supabase.from('records').insert({
+        kind: 'club',
+        id: club.id,
+        data: club,
+        club_id: club.id,
+        deleted: false,
+      }),
+    )
+    if (saved.error) {
+      // 群没建成，成员行就不该留着 —— 留着会变成一个指向空群的死成员关系
+      await supabase.from('club_members').delete().eq('club_id', club.id)
+      return { ok: false, error: readable(saved.error.message) }
+    }
+    return { ok: true, value: club }
+  } catch (e) {
+    return { ok: false, error: readable(e instanceof Error ? e.message : String(e)) }
+  }
+}
+
+/**
+ * 用邀请码加入。
+ *
+ * 加入之前我还不是成员，按策略读不到那条群记录 —— 也就查不出邀请码
+ * 对应哪个群。所以这一步走 club_by_code 那个函数：它绕过策略，
+ * 但只按码查、只回 id 和名字，读不到任何球局数据。
+ */
+export async function joinClubByCode(code: string): Promise<ClubOutcome<Club>> {
+  if (!supabase) return { ok: false, error: pick('还没接云端', 'Cloud is not set up') }
+  const noSession = await needsSignIn()
+  if (noSession) return { ok: false, error: noSession }
+
+  const trimmed = code.trim().toUpperCase()
+  if (trimmed.length < 4) {
+    return { ok: false, error: pick('邀请码不对', 'That invite code looks wrong') }
+  }
+  try {
+    const found = await withTimeout(
+      supabase.rpc('club_by_code', { invite_code: trimmed }),
+    )
+    if (found.error) return { ok: false, error: readable(found.error.message) }
+    const hit = (found.data ?? [])[0] as { id: string; name: string } | undefined
+    if (!hit) {
+      return {
+        ok: false,
+        error: pick('没有这个邀请码的球群', 'No club with that invite code'),
+      }
+    }
+
+    const joined = await withTimeout(
+      supabase.from('club_members').insert({ club_id: hit.id }),
+    )
+    // 已经在群里了不算失败 —— 重复点一下不该报错
+    if (joined.error && !/duplicate|unique/i.test(joined.error.message)) {
+      return { ok: false, error: readable(joined.error.message) }
+    }
+
+    // 进了群才读得到完整记录（有邀请码，之后能拿去邀请别人）
+    const full = await withTimeout(
+      supabase.from('records').select('data').eq('kind', 'club').eq('id', hit.id).limit(1),
+    )
+    const club = (full.data ?? [])[0]?.data as Club | undefined
+    return {
+      ok: true,
+      value: club ?? { id: hit.id, name: hit.name, code: trimmed, createdAt: Date.now() },
+    }
+  } catch (e) {
+    return { ok: false, error: readable(e instanceof Error ? e.message : String(e)) }
+  }
 }
