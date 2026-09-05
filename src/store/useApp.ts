@@ -135,7 +135,20 @@ type AppState = {
    */
   clubId: string | null
 
+  /**
+   * 「我在哪些群」这件事有没有问过云端。
+   *
+   * 只为了一件事：没进任何群的人要被拦下来引导建群，而「还没问」和
+   * 「问过了，一个群都没有」在数据上长得一模一样（clubId 都是 null）。
+   * 分不出来的话，每次冷启动都会先闪一下引导页再跳走。
+   *
+   * 故意不进 partialize：换一次页面就该重新问一遍。存下来的话，
+   * 上次退群这件事这台手机永远不知道。
+   */
+  clubsChecked: boolean
+
   setClubs: (clubs: Club[]) => void
+  setClubsChecked: (checked: boolean) => void
   /**
    * 换一个球群来看。
    *
@@ -236,9 +249,14 @@ export const useApp = create<AppState>()(
       meId: null,
       clubs: [],
       clubId: null,
+      clubsChecked: false,
 
       setClubs(clubs) {
         set({ clubs })
+      },
+
+      setClubsChecked(clubsChecked) {
+        set({ clubsChecked })
       },
 
       setClubId(clubId) {
@@ -598,6 +616,7 @@ export const useApp = create<AppState>()(
           meId: null,
           clubs: [],
           clubId: null,
+          clubsChecked: false,
         })
       },
     }),

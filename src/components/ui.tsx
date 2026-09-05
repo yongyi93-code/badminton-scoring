@@ -395,7 +395,14 @@ export function Sheet({
         className="absolute inset-0 bg-scrim backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="safe-bottom shadow-pop relative w-full max-w-md rounded-t-3xl border border-line bg-surface p-5 sm:rounded-3xl">
+      {/*
+        内容比屏幕高时自己滚。
+
+        不加这一句的话，长一点的弹层（球群那个：当前群 + 邀请码 + 切换 +
+        表单 + 退出）会从屏幕两头溢出去，而 fixed 定位的东西是滚不动的 ——
+        最底下那个按钮就那样点不到，看起来像是没做完。
+      */}
+      <div className="safe-bottom shadow-pop relative max-h-[88dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-line bg-surface p-5 sm:rounded-3xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold">{title}</h3>
           <button

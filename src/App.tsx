@@ -17,10 +17,21 @@ import { Avatar } from '@/screens/Avatar'
 import { TabBar } from '@/components/TabBar'
 import { ProgressProvider } from '@/store/progress'
 import { RecoverySheet } from '@/components/RecoverySheet'
+import { ClubGate, useClubGate } from '@/components/Club'
 
 export default function App() {
   const route = useRoute()
   const popFromHistory = useNav((s) => s.popFromHistory)
+  /*
+   * 还没进任何球群 —— 整个 App 先不给用。
+   *
+   * 拦得这么狠是因为没有群的时候这个 App 是坏的：记的分推不上去
+   * （数据库不收没有群的行），排行榜是空的，开的局别人也看不见。
+   * 让人先玩半小时再告诉他「刚才那些都没存」，比一开始就拦住难受得多。
+   *
+   * 那一屏自己带着「退出登录」—— 登错账号的人不能被锁在这里。
+   */
+  const gated = useClubGate()
 
   // 让手机系统返回键 / 浏览器后退和界面里的返回一致
   useEffect(() => {
@@ -39,8 +50,8 @@ export default function App() {
 
   return (
     <ProgressProvider>
-      {screenFor(route)}
-      {tabBar && <TabBar />}
+      {gated ? <ClubGate /> : screenFor(route)}
+      {!gated && tabBar && <TabBar />}
       {/*
         「设置新密码」挂在最外层：邮件链接会把人带回上次停在的任何一页，
         而这件事必须当场做完 —— 那个临时会话是一次性的。

@@ -267,7 +267,18 @@ export async function pullAll(): Promise<PullOutcome> {
         .from('records')
         .select('kind,id,data')
         .eq('club_id', clubId)
-        .eq('deleted', false),
+        .eq('deleted', false)
+        /*
+         * 群记录本身不是数据，是「这个群叫什么、码是多少」。它由
+         * listMyClubs 单独管，这里排掉它有两个原因：
+         *
+         * 一是本机根本不存它（rowsOf 里没有 club 这一档），拉下来也
+         * 无处安放；二是一个刚建的群，云端只有这一行 —— 不排掉的话
+         * 「云端是空的」这个判断就永远不成立，而那一句正是「把本机
+         * 已有的数据推上去当作这个群的第一批」的开关。建群的人会发现
+         * 自己之前记的分全没了。
+         */
+        .neq('kind', 'club'),
     )
     if (error) {
       const msg = readable(error.message)
@@ -442,6 +453,7 @@ export async function startSync(): Promise<PullOutcome> {
   if (started) return { ok: true, empty: false }
   started = true
 
+  await refreshClubs()
   const outcome = await pullAll()
 
   /*
@@ -533,6 +545,11 @@ export function stopSync() {
   }
   pushed = new Map()
   pending = 0
+  /*
+   * 「问过云端我在哪些群」这件事跟着账号走 —— 换个账号进来，
+   * 上一个账号问出来的答案一点都不算数。
+   */
+  useApp.getState().setClubsChecked(false)
   setStatus({ state: 'off' })
 }
 
@@ -706,4 +723,225 @@ export async function joinClubByCode(code: string): Promise<ClubOutcome<Club>> {
   } catch (e) {
     return { ok: false, error: readable(e instanceof Error ? e.message : String(e)) }
   }
+}
+
+/**
+ * 把「我在哪些球群里」刷新一遍，顺便挑一个当前球群。
+ *
+ * 挑的规则：
+ *   本机记着的那个还在名单里 —— 就用它（换设备后回到上次看的群）
+ *   只有一个群                 —— 直接进去，不用问
+ *   有好几个但本机没记          —— 进第一个，界面上能再切
+ *   一个都没有                 —— clubId 留空，界面会引导建群或输码
+ *
+ * 拉数据之前必须先跑这个：pullAll 是按 clubId 过滤的，
+ * clubId 没定好就等于拉了个空。
+ */
+export async function refreshClubs(): Promise<ClubOutcome<Club[]>> {
+  const res = await listMyClubs()
+  if (!res.ok) {
+    /*
+     * 问不到（多半是断网）。这时候不动 clubs 和 clubId ——
+     * 上次问出来的答案比「什么都没有」准。
+     *
+     * 但还是要记「问过了」：不记的话，引导页永远不出现，
+     * 一个新注册的人会掉进一个什么都同步不了、也没人告诉他为什么的
+     * 空 App 里。让他看见引导页、点下去看到网络错误，至少是句实话。
+     */
+    useApp.getState().setClubsChecked(true)
+    return res
+  }
+
+  const clubs = res.value
+  const { clubId, setClubs, setClubsChecked } = useApp.getState()
+  setClubs(clubs)
+  setClubsChecked(true)
+
+  const stillIn = clubId && clubs.some((c) => c.id === clubId)
+  if (!stillIn) {
+    /*
+     * 本机记着的群已经不在名单里了（退了群、或者被移出去）。
+     * 换成第一个，一个都没有就清空 —— 留着一个进不去的群，
+     * 界面会一直转圈拉一份永远拉不到的数据。
+     */
+    switchTo(clubs[0]?.id ?? null)
+  }
+  return res
+}
+
+/**
+ * 建群之前本机就有的东西。
+ *
+ * 「先自己玩起来、觉得不错才登录」是很自然的顺序，这批数据不能因为
+ * 建了个群就没了。
+ */
+type Carry = {
+  players: Player[]
+  sessions: Session[]
+  matches: Match[]
+  avatars: AvatarProfile[]
+  announcements: Announcement[]
+  meId: string | null
+}
+
+/**
+ * 换到另一个球群（null = 一个都不在）。
+ *
+ * 两件事必须一起做，少一件就出事：
+ *
+ *   清基线 —— 基线里躺着上一个群那些行。不清的话，切完之后本机是空的，
+ *             下一次同步会把「空 vs 基线」算成「这些行全被删了」，
+ *             然后盖上新群的 club_id 推上去。等于拿新群的身份，
+ *             去把上一个群的数据删掉。
+ *
+ *   挡订阅 —— 清空 store 本身会触发一次推送。applying 期间订阅会跳过它。
+ */
+function switchTo(id: string | null, carry?: Carry | null) {
+  if (useApp.getState().clubId === id && !carry) return
+  applying = true
+  try {
+    pushed = new Map()
+    useApp.getState().setClubId(id)
+    if (carry) useApp.setState(carry)
+  } finally {
+    applying = false
+  }
+}
+
+/**
+ * 进入某个球群：换过去，然后把那个群的数据拉下来。
+ *
+ * carry 只在「刚建群」时给：新群云端是空的，本机那份要推上去成为
+ * 这个群的第一批数据。加入别人的群时不能给 —— 那边已经有数据了，
+ * 本机这份和它是两回事，混进去只会多出一批来路不明的球员。
+ */
+export async function enterClub(id: string, carry?: Carry | null): Promise<PullOutcome> {
+  switchTo(id, carry)
+  const outcome = await pullAll()
+  // 新建的群云端是空的：把带过来的那份推上去
+  if (outcome.ok && outcome.empty && rowsOf().size > 0) await pushAll()
+  return outcome
+}
+
+/**
+ * 建一个群并且进去，本机已有的数据一起带过去。
+ *
+ * 界面上用这个，不要直接用 createClub —— 光建出来不进去的话，
+ * 人点完「建群」还停在引导页上，看着像没成功。
+ */
+export async function createAndEnterClub(name: string): Promise<ClubOutcome<Club>> {
+  const st = useApp.getState()
+  /*
+   * 只有「本来就不在任何群里」时才带。已经在群里的人再建一个新群，
+   * 本机那份是上一个群的 —— 带过去就是把别人群的球员和战绩复制一份
+   * 到新群里。
+   */
+  const carry: Carry | null =
+    st.clubId === null
+      ? {
+          players: st.players,
+          sessions: st.sessions,
+          matches: st.matches,
+          avatars: st.avatars,
+          announcements: st.announcements,
+          meId: st.meId,
+        }
+      : null
+
+  const res = await createClub(name)
+  if (!res.ok) return res
+
+  useApp.getState().setClubs([...st.clubs, res.value])
+  await enterClub(res.value.id, carry)
+  return res
+}
+
+/** 用邀请码加入并且进去 */
+export async function joinAndEnterClub(code: string): Promise<ClubOutcome<Club>> {
+  const res = await joinClubByCode(code)
+  if (!res.ok) return res
+  await enterClub(res.value.id)
+  await refreshClubs()
+  return res
+}
+
+/**
+ * 给球群改名。
+ *
+ * 群记录不走那套「本机改了就推」的机制（rowsOf 里没有 club 这一档），
+ * 所以这里直接写数据库，成了再更新本机那份缓存。
+ *
+ * 迁移过来的群名字是脚本里写死的「我的球群」，不给改的话它就一直
+ * 挂在那 —— 建群那个表单也答应过「之后能改」。
+ */
+export async function renameClub(id: string, name: string): Promise<ClubOutcome<Club>> {
+  if (!supabase) return { ok: false, error: pick('还没接云端', 'Cloud is not set up') }
+  const noSession = await needsSignIn()
+  if (noSession) return { ok: false, error: noSession }
+
+  const clubs = useApp.getState().clubs
+  const club = clubs.find((c) => c.id === id)
+  if (!club) return { ok: false, error: pick('找不到这个球群', 'No such club') }
+
+  const next: Club = { ...club, name: name.trim() }
+  try {
+    const { error } = await withTimeout(
+      supabase
+        .from('records')
+        .update({ data: next })
+        .eq('kind', 'club')
+        .eq('id', id),
+    )
+    if (error) return { ok: false, error: readable(error.message) }
+  } catch (e) {
+    return { ok: false, error: readable(e instanceof Error ? e.message : String(e)) }
+  }
+
+  useApp.getState().setClubs(clubs.map((c) => (c.id === id ? next : c)))
+  return { ok: true, value: next }
+}
+
+/**
+ * 退出球群。
+ *
+ * 只删自己那条成员关系，群和群里的数据一点都不动 —— 退群是「我不看了」，
+ * 不是「这个群没了」。想真的解散一个群，那是另一件事，现在不做：
+ * 一个人手滑就能把全群一年的战绩删掉，这种按钮不该存在。
+ */
+export async function leaveClub(id: string): Promise<ClubOutcome<Club[]>> {
+  if (!supabase) return { ok: false, error: pick('还没接云端', 'Cloud is not set up') }
+  const noSession = await needsSignIn()
+  if (noSession) return { ok: false, error: noSession }
+
+  /*
+   * 退之前先把没推上去的推完。退了之后策略就不认这台手机了 ——
+   * 那几场刚记的分会一直卡在本机，而本机马上要被清空。
+   */
+  if (useApp.getState().clubId === id) {
+    await flush()
+    if (status.state === 'error') {
+      return {
+        ok: false,
+        error: pick(
+          `还有东西没同步上去，先连上网再退群：${status.message}`,
+          `Some changes are not synced yet — get back online before leaving: ${status.message}`,
+        ),
+      }
+    }
+  }
+
+  try {
+    // 策略只允许删自己那一行，所以这里不用（也不该）写 user_id
+    const { error } = await withTimeout(
+      supabase.from('club_members').delete().eq('club_id', id),
+    )
+    if (error) return { ok: false, error: readable(error.message) }
+  } catch (e) {
+    return { ok: false, error: readable(e instanceof Error ? e.message : String(e)) }
+  }
+
+  // 名单重新问一遍：退的正好是当前群的话，这一步会把本机换到别的群去
+  const res = await refreshClubs()
+  if (res.ok && useApp.getState().clubId) await pullAll()
+  return res
 }

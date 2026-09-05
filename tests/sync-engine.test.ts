@@ -16,6 +16,16 @@ import { useApp } from '@/store/useApp'
 const cloud = vi.hoisted(() => ({
   /** 云端现有的行。测之前摆好 */
   rows: [] as { kind: string; id: string; data: unknown }[],
+  /**
+   * 云端有哪些球群、我在哪几个里。
+   *
+   * 和 rows 分开放：查球群走的是同一张表，但每条测试摆 rows 时想的
+   * 都是「云端有哪些球员和比赛」—— 混在一起的话，每次摆数据都要
+   * 记得捎上一行群记录，忘一次就是 clubId 被清空、然后十几条一起红。
+   */
+  clubs: [] as { kind: string; id: string; data: unknown }[],
+  /** 每次 insert 插了什么（建群、加成员走这条） */
+  inserts: [] as { kind?: string; id?: string; data?: unknown; club_id?: string }[],
   /** 每次 upsert 推了哪些行，按顺序记下来 */
   upserts: [] as { kind: string; id: string; deleted: boolean }[][],
   /** 想让读取失败时填这个 */
@@ -42,18 +52,45 @@ vi.mock('@/lib/supabase', () => {
      */
     select: () => {
       const filters: Record<string, unknown> = {}
+      const nots: Record<string, unknown> = {}
       const builder = {
         eq(col: string, val: unknown) {
           filters[col] = val
           cloud.lastSelectFilters = filters
           return builder
         },
+        neq(col: string, val: unknown) {
+          nots[col] = val
+          return builder
+        },
+        limit() {
+          return builder
+        },
         then(resolve: (r: unknown) => void) {
-          resolve(
-            cloud.selectError
-              ? { data: null, error: cloud.selectError }
-              : { data: cloud.rows, error: null },
+          if (cloud.selectError) {
+            resolve({ data: null, error: cloud.selectError })
+            return
+          }
+          /*
+           * 只认 kind 这一个条件。club_id 和 deleted 不认是故意的：
+           * 假数据里根本没有这两列，硬要匹配就得给每行都编一个
+           * club_id —— 那是在测这个假客户端，不是在测同步。
+           * 「拉取有没有带上球群条件」由 lastSelectFilters 那条断言盯着。
+           */
+          /*
+           * 群记录和数据行在同一张表里 —— 真的就是这样，所以这里也这样。
+           * 分开两个数组存只是为了摆数据方便：每条测试摆 rows 时想的都是
+           * 「云端有哪些球员和比赛」，不该还要记得捎上一行群记录。
+           *
+           * 合在一起查很要紧：拉数据那句要是忘了排掉 club，一个刚建的
+           * 群看起来就不是空的，「把本机已有的数据推上去」那一步会被跳过。
+           */
+          const data = [...cloud.rows, ...cloud.clubs].filter(
+            (r) =>
+              (filters.kind === undefined || r.kind === filters.kind) &&
+              (nots.kind === undefined || r.kind !== nots.kind),
           )
+          resolve({ data, error: null })
         },
       }
       return builder
@@ -63,6 +100,21 @@ vi.mock('@/lib/supabase', () => {
       cloud.upserts.push(rows)
       return Promise.resolve({ error: null })
     },
+    /*
+     * 建群走的是 insert 不是 upsert（群记录只该建一次）。
+     * 插进去的行直接进 clubs，之后 listMyClubs 就查得到它 ——
+     * 「建完群立刻就在这个群里」是这一段唯一值得测的事。
+     */
+    insert: (row: { kind?: string; id?: string; data?: unknown }) => {
+      cloud.inserts.push(row)
+      if (row.kind === 'club' && row.id) {
+        cloud.clubs.push({ kind: 'club', id: row.id, data: row.data })
+      }
+      return Promise.resolve({ error: null })
+    },
+    delete: () => ({
+      eq: () => Promise.resolve({ error: null }),
+    }),
   }
   const channel = { on: () => channel, subscribe: () => channel }
   return {
@@ -87,7 +139,7 @@ vi.mock('@/lib/supabase', () => {
   }
 })
 
-const { startSync, stopSync } = await import('@/lib/sync')
+const { createAndEnterClub, enterClub, startSync, stopSync } = await import('@/lib/sync')
 
 /** 挂上去的那个 visibilitychange 回调，测试里手动触发 */
 let resume: (() => void) | null = null
@@ -107,7 +159,17 @@ beforeEach(() => {
   })
   vi.useFakeTimers()
   cloud.rows = []
+  /*
+   * 两个群：下面大部分测试用 club_test，按群拉那条用 club_abc。
+   * 都得在名单里 —— 名单里没有的群，refreshClubs 会当成「已经被
+   * 移出去了」，把本机切到别处。
+   */
+  cloud.clubs = [
+    { kind: 'club', id: 'club_test', data: { id: 'club_test', name: '测试球群', code: 'AAA111', createdAt: 0 } },
+    { kind: 'club', id: 'club_abc', data: { id: 'club_abc', name: '另一个群', code: 'BBB222', createdAt: 0 } },
+  ]
   cloud.upserts = []
+  cloud.inserts = []
   cloud.selectError = null
   cloud.session = {}
   useApp.getState().resetAll()
@@ -473,6 +535,70 @@ describe('清空 store 和同步撞在一起', () => {
 
     // 推上去只会被策略拒（club_id 不许为空），不如根本不发
     expect(cloud.upserts.flat()).toHaveLength(0)
+  })
+})
+
+/*
+ * 建群和换群。
+ *
+ * 这两件事都要动「当前是哪个群」，而本机那份数据是跟着群走的 ——
+ * 动的时候差一点，丢的就不是一条记录，是一个群一整年的战绩。
+ */
+describe('建群和换群', () => {
+  it('建群时，本机已经有的东西跟着进新群', async () => {
+    /*
+     * 「先自己玩起来、觉得不错才登录」是最自然的顺序。
+     * 建群这一步会把本机清空换成新群的那一份 —— 不把原来那批带过去，
+     * 人建完群会发现之前记的分全没了。
+     */
+    cloud.session = { user: { id: 'uid-1' } }
+    useApp.getState().setClubId(null)
+    const p = useApp.getState().addPlayer('阿伟', 'M')
+
+    const res = await createAndEnterClub('周五羽球局')
+    expect(res.ok).toBe(true)
+
+    // 人还在，而且推上去了，盖的是新群的章
+    expect(useApp.getState().players.map((x) => x.name)).toEqual(['阿伟'])
+    const pushed = cloud.upserts.flat() as unknown as { id: string; club_id: string }[]
+    const mine = pushed.find((r) => r.id === p.id)
+    expect(mine).toBeTruthy()
+    expect(mine?.club_id).toBe(res.ok ? res.value.id : '')
+  })
+
+  it('换群不会把上一个群的数据当成「被删了」推上去', async () => {
+    /*
+     * 换群 = 清空本机 + 重拉。而同步是「本机 vs 基线」算差异 ——
+     * 基线里还躺着上一个群那些行的话，清空这一下会被算成
+     * 「这些行全被删了」，然后盖上新群的 club_id 推出去。
+     *
+     * 两个群都在的人（球局串场很常见），这一推就是拿新群的身份
+     * 去删掉上一个群的数据。
+     */
+    cloud.session = { user: { id: 'uid-1' } }
+    await startSync()
+    useApp.getState().addPlayer('阿伟', 'M')
+    useApp.getState().addPlayer('小敏', 'F')
+    await vi.advanceTimersByTimeAsync(700)
+    cloud.upserts = []
+
+    /*
+     * 切过去的时候拉失败（地铁里换个群，很正常）。
+     *
+     * 这一步是故意的：拉成功的话，拉完那一下顺手就把基线对齐了，
+     * 隐患被盖住 —— 测出来的是「拉成功时没事」，那本来就没事。
+     * 真正会出事的是拉不动那一次：本机已经清空，基线还是上一个群的。
+     */
+    cloud.selectError = { message: 'Failed to fetch' }
+    await enterClub('club_abc')
+    cloud.selectError = null
+
+    // 换完群继续记分 —— 这一下会触发推送，把差异算出来
+    useApp.getState().addPlayer('新群的人', 'M')
+    await vi.advanceTimersByTimeAsync(700)
+
+    expect(useApp.getState().clubId).toBe('club_abc')
+    expect(cloud.upserts.flat().filter((r) => r.deleted)).toHaveLength(0)
   })
 })
 

@@ -38,6 +38,7 @@ import {
 } from '@/lib/push'
 import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
 import { InstallSheet } from '@/components/InstallCard'
+import { ClubSheet } from '@/components/Club'
 import { useInstallHow } from '@/lib/install'
 
 const ARROW = (
@@ -387,6 +388,10 @@ export function Me() {
   const setAvatarSex = useApp((s) => s.setAvatarSex)
   const [authOpen, setAuthOpen] = useState(false)
   const [cloudOpen, setCloudOpen] = useState(false)
+  const [clubOpen, setClubOpen] = useState(false)
+  const clubs = useApp((s) => s.clubs)
+  const clubId = useApp((s) => s.clubId)
+  const club = clubs.find((c) => c.id === clubId)
   const sync = useSyncStatus()
   const syncHint =
     sync.state === 'syncing'
@@ -661,6 +666,28 @@ export function Me() {
               </Button>
             </div>
           </Card>
+        )}
+
+        {/*
+          球群。
+
+          摆在登录上面：登录是一次性的手续，球群是每天都在用的东西 ——
+          邀请码要发给球友，人多了还要换群。
+        */}
+        {cloudReady && session && club && (
+          <>
+            <SectionTitle>{t('球群', 'Club')}</SectionTitle>
+            <div className="border-line rounded-card overflow-hidden border">
+              <MenuRow
+                title={club.name}
+                hint={t(
+                  `邀请码 ${club.code} · 点这里发给球友`,
+                  `Invite code ${club.code} · tap to share it`,
+                )}
+                onClick={() => setClubOpen(true)}
+              />
+            </div>
+          </>
         )}
 
         {/*
@@ -972,6 +999,8 @@ export function Me() {
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
 
       <CloudSheet open={cloudOpen} onClose={() => setCloudOpen(false)} />
+
+      <ClubSheet open={clubOpen} onClose={() => setClubOpen(false)} />
 
     </Screen>
   )
