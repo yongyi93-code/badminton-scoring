@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { useApp } from '@/store/useApp'
 import { hasLocation, mapsUrl, parseLatLng, venueByKey, venueKey, venueLabel } from '@/lib/venues'
 import { Button, Field, Sheet, inputClass } from '@/components/ui'
+import { MIN_QUERY, searchPlaces, type Place } from '@/lib/geocode'
 
 /* ------------------------------------------------------------------ *
  * 球馆地址
@@ -92,14 +93,86 @@ function AddressSheet({
 
   const pasted = parseLatLng(paste)
 
+  /* ---------------- 地址搜索：边打边给建议 ---------------- */
+
+  const [hits, setHits] = useState<Place[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchErr, setSearchErr] = useState<string | null>(null)
+  /*
+   * 这一次的地址变化不该触发搜索。两种情况：
+   *   刚从建议里选了一条 —— 再搜一遍会立刻弹出一模一样的列表
+   *   弹层刚打开、地址是存过的 —— 人还没打字，凭什么给他弹建议
+   */
+  const skipSearch = useRef(Boolean(saved?.address))
+
+  /*
+   * 往哪儿偏：拿球群里已经标过坐标的任何一个球馆当参考点。
+   * 「Twin Ark」这种名字全世界有好几个，不给个参考点，第一条
+   * 很可能是德国的某处。用已有的球馆而不是问人要定位 —— 为了
+   * 一个搜索框弹权限框太重了。
+   */
+  const near = useApp((st) =>
+    st.venues.find((v) => v.lat != null && v.lng != null),
+  )
+
+  useEffect(() => {
+    if (skipSearch.current) {
+      skipSearch.current = false
+      return
+    }
+    const q = address.trim()
+    if (q.length < MIN_QUERY) {
+      setHits([])
+      setSearchErr(null)
+      return
+    }
+    /*
+     * 防抖 + 可取消。
+     *
+     * 不防抖的话，打「Twin Ark 养身局」是十几次请求 —— 对一个免费的
+     * 公共服务来说这是滥用，对用的人来说是列表在眼前乱跳。
+     */
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => {
+      setSearching(true)
+      void searchPlaces(q, {
+        near: near?.lat != null && near?.lng != null ? { lat: near.lat, lng: near.lng } : undefined,
+        signal: ctrl.signal,
+      }).then((res) => {
+        if (ctrl.signal.aborted) return
+        setSearching(false)
+        if (res.ok) {
+          setHits(res.places)
+          setSearchErr(null)
+        } else {
+          setHits([])
+          setSearchErr(res.error)
+        }
+      })
+    }, 500)
+
+    return () => {
+      clearTimeout(timer)
+      ctrl.abort()
+    }
+  }, [address, near])
+
+  const usePlace = (place: Place) => {
+    skipSearch.current = true
+    setAddress(place.address || place.name)
+    setXy({ lat: place.lat, lng: place.lng })
+    setAccuracy(null)
+    setHits([])
+  }
+
   return (
     <Sheet open={open} onClose={onClose} title={venueLabel(venue)}>
       <div className="space-y-4">
         <Field
           label={t('地址', 'Address')}
           hint={t(
-            '照着 Google Maps 上的写，或者直接从地图 App 复制粘贴过来。',
-            'Copy it from Google Maps, or paste it straight from your map app.',
+            '打几个字会跳出建议，选一条地址和坐标就一起有了。搜不到就自己写，或者用下面的定位。',
+            'Type a few letters and suggestions appear — picking one fills the address and the exact spot. Otherwise just type it, or use locate below.',
           )}
         >
           <textarea
@@ -109,6 +182,40 @@ function AddressSheet({
             placeholder={t('例：Jalan SS 2/24, SS 2, 47300 Petaling Jaya', 'e.g. Jalan SS 2/24, SS 2, 47300 Petaling Jaya')}
             maxLength={200}
           />
+
+          {/*
+            边打边给的建议。选一条，地址和坐标一起有了 ——
+            这是唯一一条不用人站在球馆里就能拿到坐标的路。
+
+            搜不到、连不上都不挡着手打：这是个免费的公共服务，
+            而且 OpenStreetMap 在马来西亚对小球馆的覆盖本来就一般。
+          */}
+          {searching && (
+            <p className="text-ink-500 mt-2 text-caption">{t('搜索中…', 'Searching…')}</p>
+          )}
+          {hits.length > 0 && (
+            <div className="border-line divide-line mt-2 divide-y overflow-hidden rounded-xl border">
+              {hits.map((h, i) => (
+                <button
+                  key={`${h.lat},${h.lng},${i}`}
+                  onClick={() => usePlace(h)}
+                  className="active:bg-fill block w-full px-3.5 py-2.5 text-left"
+                >
+                  {h.name && <p className="text-label font-semibold">{h.name}</p>}
+                  <p className="text-ink-500 text-caption">{h.address || t('（没有详细地址）', '(no street address)')}</p>
+                </button>
+              ))}
+              <p className="text-ink-500 px-3.5 py-2 text-caption">
+                {t('选一条，地址和坐标一起填好', 'Pick one and it fills both the address and the exact spot')}
+              </p>
+            </div>
+          )}
+          {searchErr && (
+            <p className="text-ink-500 mt-2 text-caption">
+              {searchErr}
+              {t(' —— 手打也行，不影响。', ' — typing it by hand works just as well.')}
+            </p>
+          )}
         </Field>
 
         <Field
