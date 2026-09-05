@@ -63,6 +63,20 @@ function ClubForms({ onDone }: { onDone?: () => void }) {
   /** 默认不带。带错的后果比不带严重得多，而不带是可以补救的 */
   const [bringLocal, setBringLocal] = useState(false)
 
+  /*
+   * 已经在某个群里，又要建新群 —— 这一步必须先说清楚会发生什么。
+   *
+   * 会发生的是：建完立刻切进新群，而新群是空的。屏幕上的样子
+   * （球员没了、排行榜空了、让你重新建一个自己）和「数据全丢了」
+   * 一模一样 —— 我自己都被吓到过一次，何况用的人。
+   *
+   * 数据一条没少，还在原来那个群里。但界面不说，没人猜得到。
+   */
+  const clubs = useApp((s) => s.clubs)
+  const clubId = useApp((s) => s.clubId)
+  const currentName = clubs.find((c) => c.id === clubId)?.name
+  const [confirmNew, setConfirmNew] = useState(false)
+
   const submit = async () => {
     setBusy(true)
     setError(null)
@@ -86,7 +100,10 @@ function ClubForms({ onDone }: { onDone?: () => void }) {
     <div className="space-y-4">
       <Segmented
         value={mode}
-        onChange={setMode}
+        onChange={(v) => {
+          setMode(v)
+          setConfirmNew(false)
+        }}
         options={[
           { value: 'join', label: t('用邀请码加入', 'Join with a code') },
           { value: 'new', label: t('建一个球群', 'Start a club') },
@@ -173,15 +190,41 @@ function ClubForms({ onDone }: { onDone?: () => void }) {
         </div>
       )}
 
+      {/*
+        已经在群里还要建新群 —— 把后果摆出来再让人按。
+        「建完会切进一个空群」这件事，不说的话看起来就是数据没了。
+      */}
+      {mode === 'new' && currentName && (
+        <div className="border-warning-600/30 bg-warning-50 rounded-xl border p-3.5">
+          <p className="text-label font-semibold">
+            {t('建的是一个全新的空球群', 'This starts a brand-new, empty club')}
+          </p>
+          <p className="text-ink-700 mt-1 text-caption">
+            {t(
+              `建完会直接进新群，那里一个球员、一场比赛都没有，也会让你重新建一个自己 —— 那是正常的。你在「${currentName}」的球员和战绩一条都不会少，随时从这里切回去。`,
+              `You will be taken straight into it — no players, no matches, and it will ask you to create yourself again. That is normal. Everything in “${currentName}” stays untouched, and you can switch back from here any time.`,
+            )}
+          </p>
+        </div>
+      )}
+
       {error && <p className="text-danger-600 text-label">{error}</p>}
 
-      <Button block variant="primary" disabled={busy || !ready} onClick={() => void submit()}>
-        {busy
-          ? t('请稍等…', 'One moment…')
-          : mode === 'new'
-            ? t('建群', 'Create')
-            : t('加入', 'Join')}
-      </Button>
+      {mode === 'new' && currentName && !confirmNew ? (
+        <Button block variant="ghost" disabled={!ready} onClick={() => setConfirmNew(true)}>
+          {t('建群', 'Create')}
+        </Button>
+      ) : (
+        <Button block variant="primary" disabled={busy || !ready} onClick={() => void submit()}>
+          {busy
+            ? t('请稍等…', 'One moment…')
+            : mode === 'new'
+              ? currentName
+                ? t('确定，建一个新的空群', 'Yes, start the empty club')
+                : t('建群', 'Create')
+              : t('加入', 'Join')}
+        </Button>
+      )}
     </div>
   )
 }

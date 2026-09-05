@@ -655,11 +655,31 @@ export function Me() {
           <Card>
             <p className="text-title">{t('先建一个你自己', 'Create yourself first')}</p>
             <p className="text-ink-500 mt-1 text-label">
-              {t(
-                '填个名字就好。建完这一页会显示你的段位、战绩和角色，开新球局时你也自动在场上。',
-                'Just a name. After that this page shows your rank, record and character, and you are put on court automatically when you start a session.',
-              )}
+              {/*
+                在哪个群里，这里必须说出来。
+                同一个人在每个群里是不同的球员记录，所以刚切进一个新群时，
+                这一屏就是空的 —— 不点名是哪个群的话，看起来像是数据没了。
+                有人因此以为自己丢了全部战绩，实际只是站在另一个群里。
+              */}
+              {club
+                ? t(
+                    `你在「${club.name}」这个球群里还没有球员。填个名字就好 —— 每个球群的球员是分开的，你在别的群里的战绩一条都没少。`,
+                    `You do not have a player in “${club.name}” yet. Just a name — each club keeps its own players, and your record in other clubs is untouched.`,
+                  )
+                : t(
+                    '填个名字就好。建完这一页会显示你的段位、战绩和角色，开新球局时你也自动在场上。',
+                    'Just a name. After that this page shows your rank, record and character, and you are put on court automatically when you start a session.',
+                  )}
             </p>
+            {/* 在好几个群里的人，最可能想做的其实是切回去，不是再建一个自己 */}
+            {clubs.length > 1 && (
+              <button
+                onClick={() => setClubOpen(true)}
+                className="text-brand-600 mt-2 text-label font-semibold"
+              >
+                {t('← 换回别的球群', '← Switch to another club')}
+              </button>
+            )}
             <div className="mt-4">
               <Button block variant="primary" onClick={() => setPicking(true)}>
                 {t('建一个你自己', 'Create yourself')}
