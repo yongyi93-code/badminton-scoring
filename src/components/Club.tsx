@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { useApp } from '@/store/useApp'
 import { signOut, useAuth } from '@/store/useAuth'
-import { cloudReady } from '@/lib/supabase'
+import { cloudReady, defaultClubCode } from '@/lib/supabase'
 import {
   createAndEnterClub,
   enterClub,
@@ -247,6 +247,15 @@ export function ClubGate() {
   const [retrying, setRetrying] = useState(false)
 
   /*
+   * 配了默认球群时，这一屏本不该出现 —— 注册完自动进群，人根本
+   * 看不到它。真出现了只有一种可能：自动进群没成功。
+   *
+   * 那种时候给的出路必须是「再试一次」，绝不能是「建一个球群」：
+   * 一个只是网络抽了一下的人按下建群，就是今早那场事故的剧本。
+   */
+  const autoJoins = defaultClubCode !== null
+
+  /*
    * 问不到球群 —— 这一屏绝不能出现建群按钮。
    *
    * 这是那次事故的正解：当时「问不到」和「你没有群」共用了同一屏，
@@ -255,7 +264,7 @@ export function ClubGate() {
    *
    * 问不到的时候唯一该给的出路是重试。
    */
-  if (failed) {
+  if (failed || autoJoins) {
     return (
       <Screen>
         <Body className="pt-16">
@@ -270,7 +279,9 @@ export function ClubGate() {
                 'You have not been removed — this one request just did not get through. Everything is still in the cloud.',
               )}
             </p>
-            <p className="text-ink-500 mx-auto mt-2 max-w-sm text-caption">{failed}</p>
+            {failed && (
+              <p className="text-ink-500 mx-auto mt-2 max-w-sm text-caption">{failed}</p>
+            )}
           </div>
           <Button
             block

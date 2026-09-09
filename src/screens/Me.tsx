@@ -694,7 +694,15 @@ export function Me() {
           摆在登录上面：登录是一次性的手续，球群是每天都在用的东西 ——
           邀请码要发给球友，人多了还要换群。
         */}
-        {cloudReady && session && club && (
+        {/*
+          球群那一节。
+
+          配了默认球群之后（所有人自动进同一个），这个概念对用的人
+          不存在了 —— 摆一个「球群 · 邀请码」在这里只会让人问「这是什么，
+          我要不要管」。所以只在他确实在好几个群里时才显示：
+          那时候「我在哪个群」才是一个真问题。
+        */}
+        {cloudReady && session && club && clubs.length > 1 && (
           <>
             <SectionTitle>{t('球群', 'Club')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">

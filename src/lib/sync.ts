@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { pick } from './i18n'
-import { supabase } from './supabase'
+import { defaultClubCode, supabase } from './supabase'
 import { useApp } from '@/store/useApp'
 import type { AvatarProfile } from './avatar'
 import type { Announcement, Club, Match, Player, Session, Venue } from '@/types'
@@ -414,7 +414,33 @@ async function flush(): Promise<void> {
       supabase.from('records').upsert(rows, { onConflict: 'kind,id' }),
     )
     if (error) {
-      // 推不上去就把基线留着，下次连上再推同一批
+      /*
+       * 数据库拒收这一批 —— 分两种，处理完全不同。
+       *
+       * 「策略不放行」是一种「再试一万次也一样」的拒绝。最常见的来由是
+       * 删了一条不是自己记的（数据库那边只允许记录的人删）。这时候
+       * 死等重试是最糟的：这一批永远推不上去，而它挡在队列最前面，
+       * 后面记的每一分都跟着卡住 —— 一次删除失败，整台手机不同步了。
+       *
+       * 所以拒了就认：从云端整份拉回来（云端是准的），本机那个删除
+       * 被撤销，队列清空，后面的分照常推。人会看到那条记录又出现了，
+       * 而下面那句话告诉他为什么。
+       *
+       * 别的错（断网、超时、令牌过期）照旧留着重推 —— 那些是会好的。
+       */
+      if (/row-level security/i.test(error.message)) {
+        await pullAll()
+        setStatus({
+          state: 'error',
+          message: pick(
+            '有一条改不动，已经从云端刷回来了 —— 多半是想删一条不是自己记的：删除只能由记的那个人来做。',
+            'One change was rejected and has been restored from the cloud — most likely a delete of something you did not record. Only whoever recorded it can delete it.',
+          ),
+          pending: 0,
+        })
+        return
+      }
+      // 别的错：把基线留着，下次连上再推同一批
       setStatus({ state: 'error', message: readable(error.message), pending })
       return
     }
@@ -768,6 +794,32 @@ export async function refreshClubs(): Promise<ClubOutcome<Club[]>> {
   setClubs(clubs)
   setClubsError(null)
   setClubsChecked(true)
+
+  /*
+   * 一个群都没有，而配了默认球群 —— 自动进去，不问，不弹引导页。
+   *
+   * 这就是「取消球群门槛」那件事的全部实现：底下这套按群分区的机制
+   * 一行没动（数据库靠它隔离，以后要做分国家的排名还得靠它），
+   * 只是对用的人来说，「球群」这个概念不存在了 —— 注册完就在里面。
+   *
+   * 放在这里而不是注册那一步：换台手机、清了缓存、重装 App 走的都是
+   * 这条路，只在注册时加一次的话，其余几种情况的人照样会卡在门口。
+   */
+  if (clubs.length === 0 && defaultClubCode) {
+    const joined = await joinClubByCode(defaultClubCode)
+    if (joined.ok) {
+      setClubs([joined.value])
+      switchTo(joined.value.id)
+      return { ok: true, value: [joined.value] }
+    }
+    /*
+     * 自动进群失败。不当成「你没有群」——那会把人送到建群那一屏去，
+     * 而这多半只是网络抽了一下。记成「问不到」，界面给的是重试。
+     */
+    setClubsChecked(false)
+    setClubsError(joined.error)
+    return joined
+  }
 
   const stillIn = clubId && clubs.some((c) => c.id === clubId)
   if (!stillIn) {

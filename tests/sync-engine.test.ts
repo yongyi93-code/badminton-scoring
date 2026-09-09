@@ -32,6 +32,8 @@ const cloud = vi.hoisted(() => ({
   selectError: null as { message: string } | null,
   /** 想让写入失败时填这个 */
   upsertError: null as { message: string } | null,
+  /** 数据库只允许记录的人删 —— 打开这个来模拟「删了一条不是自己记的」 */
+  rejectDeletes: false,
   /** 有没有登录。RLS 只认登录的人，没登录时一个请求都不该发出去 */
   session: {} as object | null,
   /** 最后一次查询带的过滤条件，用来断言「按球群拉」 */
@@ -97,6 +99,11 @@ vi.mock('@/lib/supabase', () => {
     },
     upsert: (rows: { kind: string; id: string; deleted: boolean }[]) => {
       if (cloud.upsertError) return Promise.resolve({ error: cloud.upsertError })
+      if (cloud.rejectDeletes && rows.some((r) => r.deleted)) {
+        return Promise.resolve({
+          error: { message: 'new row violates row-level security policy for table "records"' },
+        })
+      }
       cloud.upserts.push(rows)
       return Promise.resolve({ error: null })
     },
@@ -139,7 +146,7 @@ vi.mock('@/lib/supabase', () => {
   }
 })
 
-const { createAndEnterClub, enterClub, startSync, stopSync } = await import('@/lib/sync')
+const { createAndEnterClub, enterClub, startSync, stopSync, syncStatus } = await import('@/lib/sync')
 
 /** 挂上去的那个 visibilitychange 回调，测试里手动触发 */
 let resume: (() => void) | null = null
@@ -170,6 +177,7 @@ beforeEach(() => {
   ]
   cloud.upserts = []
   cloud.inserts = []
+  cloud.rejectDeletes = false
   cloud.selectError = null
   cloud.session = {}
   useApp.getState().resetAll()
@@ -669,6 +677,44 @@ describe('建群和换群', () => {
 
     expect(useApp.getState().clubId).toBe('club_abc')
     expect(cloud.upserts.flat().filter((r) => r.deleted)).toHaveLength(0)
+  })
+})
+
+/*
+ * 数据库拒收的时候，队列不能就这么卡死。
+ */
+describe('被数据库拒收', () => {
+  it('策略不放行时不死等重试，而是从云端刷回来', async () => {
+    /*
+     * 「只有记的那个人能删」上线之后，删一条别人记的会被数据库拒。
+     * 那是一种再试一万次也一样的拒绝 —— 死等重试的话，这一批永远
+     * 推不上去，而它挡在队列最前面，后面记的每一分都跟着卡住：
+     * 一次删除失败，整台手机不同步了。
+     *
+     * 所以拒了就认：整份拉回来，队列清空，后面照常推。
+     */
+    cloud.session = { user: { id: 'uid-1' } }
+    cloud.rows = [
+      { kind: 'player', id: 'p-别人的', data: { id: 'p-别人的', name: '别人记的', level: 3, gender: 'M', archived: false, createdAt: 1 } },
+    ]
+    await startSync()
+    expect(useApp.getState().players).toHaveLength(1)
+
+    // 本机把它删掉，而数据库不让
+    cloud.rejectDeletes = true
+    useApp.setState({ players: [] })
+    await vi.advanceTimersByTimeAsync(700)
+
+    // 从云端刷回来了：那条记录还在，队列也清空了
+    expect(useApp.getState().players.map((p) => p.name)).toEqual(['别人记的'])
+    expect(syncStatus()).toMatchObject({ pending: 0 })
+
+    // 关键：后面再记的东西照样推得上去，没被那条卡住
+    cloud.rejectDeletes = false
+    cloud.upserts = []
+    useApp.getState().addPlayer('后来的人', 'M')
+    await vi.advanceTimersByTimeAsync(700)
+    expect(cloud.upserts.flat().map((r) => r.kind)).toContain('player')
   })
 })
 

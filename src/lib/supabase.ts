@@ -19,6 +19,18 @@ const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
 /**
+ * 大家默认进的那个球群的邀请码。
+ *
+ * 配了它，注册完就自动进那个群 —— 不用码，也不会看到「先进一个球群」
+ * 那一屏。球群这套机制还在底下跑着（数据库靠它分区、以后要做分国家的
+ * 排名还得靠它），只是对用的人来说不存在了。
+ *
+ * 留空就回到老样子：要邀请码才进得来。
+ */
+export const defaultClubCode =
+  (import.meta.env.VITE_DEFAULT_CLUB_CODE as string | undefined)?.trim() || null
+
+/**
  * 这次打开，地址里是不是真的带着一张登录凭证？
  *
  * 「忘记密码」的邮件链接会把令牌带回来，supabase 得去 URL 里捡它 ——
