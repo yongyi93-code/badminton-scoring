@@ -126,8 +126,15 @@ function ImpactRow({
             `MMR ${impact.mmrBefore} → ${impact.mmrAfter}`,
             `MMR ${impact.mmrBefore} → ${impact.mmrAfter}`,
           )}
-          {impact.coins > 0 &&
-            t(` · 金币 +${impact.coins}`, ` · +${impact.coins} coins`)}
+          {/*
+            加注输了金币会是负的，那一笔尤其要写出来 ——
+            扣钱不说，比不扣还伤。0 就不写，免得每一行都挂个「金币 0」。
+          */}
+          {impact.coins !== 0 &&
+            t(
+              ` · 金币 ${signed(impact.coins)}`,
+              ` · ${signed(impact.coins)} coins`,
+            )}
         </p>
         {/*
           升段是这一屏的高光时刻，不能直接拿 tier.color 当文字色 ——

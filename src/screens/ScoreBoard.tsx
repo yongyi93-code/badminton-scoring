@@ -31,7 +31,13 @@ import {
 } from '@/lib/scoring'
 import { useWakeLock } from '@/lib/wakeLock'
 import { kingOfCourtNext, matchInput } from '@/lib/sessionFormat'
-import { LOSS_POINTS } from '@/lib/avatar'
+import {
+  LOSS_POINTS,
+  STAKE_COIN_LOSS,
+  STAKE_MULTIPLIER,
+  stakePending,
+  stakeSettled,
+} from '@/lib/avatar'
 import {
   DEFAULT_STREAK_CAP,
   formatOf,
@@ -237,6 +243,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const t = useT()
   const players = useApp((s) => s.players)
   const updateMatch = useApp((s) => s.updateMatch)
+  const meId = useApp((s) => s.meId)
   const back = useNav((s) => s.back)
   const replace = useNav((s) => s.replace)
 
@@ -267,12 +274,15 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
    * 那之后再开锁，就是「先试探一下再决定押不押」。
    */
   const stakeOpen = match?.firstPointAt == null && match?.status !== 'done'
+  /** 加过注但还没等齐人 —— 这一场开不了 */
+  const stakeWaiting = match?.staked === true && !stakeSettled(match)
 
   // 友谊赛的客队不在正式名单里，记分屏也要叫得出他们的名字
   const names = useMemo(
     () => rosterForSession(players, session),
     [players, session],
   )
+  const nameOf = (id: string) => names.get(id)?.name ?? '?'
   useWakeLock(Boolean(match) && match?.status === 'playing')
 
   if (!match || !session) {
@@ -321,6 +331,13 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const tap = (team: TeamSide) => {
     const fresh = useApp.getState().matches.find((m) => m.id === matchId)
     if (!fresh) return
+    /*
+     * 加注还没等齐人的时候不许开打。
+     *
+     * 这是「才可以开始」那条的落点：确认必须发生在第一分之前，
+     * 不然就成了打到一半再回头补同意 —— 那时候大家已经看见比分了。
+     */
+    if (fresh.staked && !stakeSettled(fresh)) return
     const idx = activeGameIndex(fresh, rules)
     const current = fresh.games[idx]
     if (isGameOver(current.a, current.b, rules)) return
@@ -566,6 +583,28 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           </p>
         )}
 
+        {/*
+          加注还没等齐人：把「为什么点不动」摆在最显眼的地方。
+          底下的计分区已经被 disabled 了，不写这一条的话，
+          拿着手机的人只会觉得 App 卡了。
+        */}
+        {match.staked && !stakeSettled(match) && (
+          <div className="border-brand-500 bg-brand-100 mx-5 mt-1 rounded-card border px-4 py-3">
+            <p className="text-brand-600 font-semibold">
+              {t(
+                `等 ${stakePending(match).map(nameOf).join('、')} 确认加注`,
+                `Waiting on ${stakePending(match).map(nameOf).join(', ')} to accept the stake`,
+              )}
+            </p>
+            <p className="text-ink-700 mt-0.5 text-label">
+              {t(
+                '他们要在自己手机上点。确认齐了才能开始记分 —— 等不到就在「⋯」里取消加注，照常打。',
+                'Each of them taps on their own phone. Scoring unlocks once everyone is in — or cancel the stake under “⋯” and just play.',
+              )}
+            </p>
+          </div>
+        )}
+
         <div
           className={cx(
             'flex flex-1 gap-3 p-5',
@@ -580,7 +619,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
             tone="teamA"
             serverId={serve?.servingTeam === 'A' ? serve.serverId : undefined}
             gamePoint={gamePoint === 'A'}
-            disabled={gameOver}
+            disabled={gameOver || stakeWaiting}
             onTap={() => tap('A')}
           />
           <ScoreZone
@@ -591,7 +630,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
             tone="teamB"
             serverId={serve?.servingTeam === 'B' ? serve.serverId : undefined}
             gamePoint={gamePoint === 'B'}
-            disabled={gameOver}
+            disabled={gameOver || stakeWaiting}
             onTap={() => tap('B')}
           />
         </div>
@@ -771,33 +810,64 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
             加注只在记第一分之前给点。开打之后还能加，
             就变成「打到 20:5 再来加注」的白捡，那不叫赌注。
           */}
-          {stakeOpen ? (
+          {stakeOpen && !match.staked && (
             <Button
               block
-              variant={match.staked ? 'primary' : 'soft'}
+              variant="soft"
               onClick={() => {
-                updateMatch(match.id, { staked: !match.staked })
+                /*
+                  发起人记在 stakeBy 上，他不用再点一次确认 ——
+                  按下这个按钮本身就是他的同意。
+                */
+                updateMatch(match.id, { staked: true, stakeBy: meId ?? undefined, stakeOk: [] })
                 setMoreOpen(false)
-                setToast(
-                  match.staked
-                    ? t('这一场取消加注', 'Stake removed')
-                    : t(
-                        `这一场加注 —— 赢的双倍，输的多扣 ${LOSS_POINTS}`,
-                        `Stake on — double for the winner, ${LOSS_POINTS} extra off for the loser`,
-                      ),
-                )
               }}
             >
-              {match.staked
-                ? t('取消加注', 'Remove stake')
-                : t('这一场加注（双倍）', 'Stake this match (double)')}
+              {t('这一场加注（双倍）', 'Stake this match (double)')}
             </Button>
-          ) : (
+          )}
+
+          {match.staked && (
+            <div className="border-line rounded-card border p-3">
+              <p className="text-ink-900 text-label font-semibold">
+                {stakePending(match).length > 0
+                  ? t(
+                      `等 ${stakePending(match).map(nameOf).join('、')} 确认`,
+                      `Waiting for ${stakePending(match).map(nameOf).join(', ')}`,
+                    )
+                  : t('全员已确认，可以开打', 'Everyone confirmed — good to go')}
+              </p>
+              <p className="text-ink-500 mt-1 text-caption">
+                {t(
+                  `赢的一方 MMR 和金币都双倍，输的一方扣 ${LOSS_POINTS * STAKE_MULTIPLIER} 分、${STAKE_COIN_LOSS} 金币。每个人要在自己手机上点确认。`,
+                  `Winners get double MMR and coins; losers drop ${LOSS_POINTS * STAKE_MULTIPLIER} MMR and ${STAKE_COIN_LOSS} coins. Everyone confirms on their own phone.`,
+                )}
+              </p>
+              {stakeOpen && (
+                <Button
+                  block
+                  variant="soft"
+                  className="mt-3"
+                  onClick={() => {
+                    updateMatch(match.id, {
+                      staked: undefined,
+                      stakeBy: undefined,
+                      stakeOk: undefined,
+                    })
+                    setMoreOpen(false)
+                    setToast(t('这一场取消加注', 'Stake removed'))
+                  }}
+                >
+                  {t('取消加注，照常打', 'Cancel the stake and just play')}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {!stakeOpen && !match.staked && (
             <div className="border-line rounded-card border p-3">
               <p className="text-ink-700 text-label font-semibold">
-                {match.staked
-                  ? t('这一场已加注', 'Stake is on for this match')
-                  : t('这一场不能再加注了', 'Too late to stake this match')}
+                {t('这一场不能再加注了', 'Too late to stake this match')}
               </p>
               <p className="text-ink-500 mt-1 text-caption">
                 {t(
@@ -807,15 +877,24 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               </p>
             </div>
           )}
+
+          {/*
+            加注的场次不给用直接输入 —— 加注只对逐分记的场次算数
+            （见 stakeApplies）。放它进来，人会开开心心确认一轮、
+            打完输入比分，然后在结算页发现加注没算。在门口拦住更好。
+          */}
           <Button
             block
             variant="soft"
+            disabled={match.staked === true}
             onClick={() => {
               setMoreOpen(false)
               setDirectOpen(true)
             }}
           >
-            {t('直接输入最终比分', 'Enter the final score')}
+            {match.staked
+              ? t('加注的场次要一分一分记', 'Staked matches must be scored live')
+              : t('直接输入最终比分', 'Enter the final score')}
           </Button>
           <Button
             block

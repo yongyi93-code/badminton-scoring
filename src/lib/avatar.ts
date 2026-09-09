@@ -524,18 +524,47 @@ function matchupKey(match: Match, winners: string[], losers: string[]): string {
 /** 加注赢了翻几倍。和碾压、爆冷同一个数 —— 任何加成最多双倍 */
 export const STAKE_MULTIPLIER = 2
 
+/** 加注输了扣多少金币。没加注的场次输了一分不扣，这是唯一的例外 */
+export const STAKE_COIN_LOSS = WIN_POINTS * STAKE_MULTIPLIER
+
+/** 这一场里所有会被加注影响到的人 */
+export const stakeParticipants = (match: Match): string[] => [
+  ...match.teamA,
+  ...match.teamB,
+]
+
 /**
- * 这一场的加注算不算数。
+ * 还差谁点确认。
  *
- * 除了要真的加过注，还要求这一场是逐分记下来的。
- * 「直接输入最终比分」的场次不算：那种录法是打完之后才录的，
- * 按下加注的时候谁赢已经知道了 —— 那不是赌注，那是白捡。
+ * 发起的人不用点 —— 他按下加注就等于同意了。
+ * 其余每一个人都要点，包括发起人的搭档：他的金币和分一样要跟着翻，
+ * 凭什么由队友替他决定。
+ */
+export function stakePending(match: Match): string[] {
+  const ok = new Set([...(match.stakeOk ?? []), ...(match.stakeBy ? [match.stakeBy] : [])])
+  return stakeParticipants(match).filter((id) => !ok.has(id))
+}
+
+/** 场上每个人都点过头了 */
+export const stakeSettled = (match: Match): boolean =>
+  stakePending(match).length === 0
+
+/**
+ * 这一场的加注算不算数。三个条件缺一不可：
  *
- * 锁的时机交给界面（记了第一分就不给改了），这里只管认不认。
- * 两头都做是有意的：界面那层是给人看的，这一层是算分的最后一道。
+ * 1. 真的加过注
+ * 2. 场上每个人都在自己手机上点过确认
+ * 3. 这一场是逐分记下来的
+ *
+ * 第 3 条是为了让加注永远是「开打前定的」。「直接输入最终比分」
+ * 是打完之后才录的，那时候谁赢已经知道了 —— 全员确认在那种局面下
+ * 也证明不了什么，因为所有人都看得见结果。
+ *
+ * 界面上还会更早拦一次（加注的场次不给用直接输入），
+ * 那层是为了别让人白确认一轮才发现不算数；这一层是算分的最后一道。
  */
 export function stakeApplies(match: Match): boolean {
-  return match.staked === true && match.firstPointAt != null
+  return match.staked === true && match.firstPointAt != null && stakeSettled(match)
 }
 
 export type Progress = {
@@ -673,12 +702,22 @@ export function replayMatches(matches: Match[]): {
      * 输的一方只在加注时扣双倍。
      *
      * 碾压和爆冷不加重处罚：那两种是系统判出来的，输的人没同意过。
-     * 加注是他自己点头的，那才叫赌注 —— 没有下行风险的赌注不是赌注。
-     *
-     * 金币照旧只涨不跌。让金币会跌要动「赢过的场次永远算数」那条一直
-     * 成立的性质，那是另一个量级的改动，不该跟这个功能捆在一起上。
+     * 加注是他自己点头的（而且是在自己手机上点的），那才叫赌注 ——
+     * 没有下行风险的赌注不是赌注。
      */
     const lossPoints = staked ? LOSS_POINTS * STAKE_MULTIPLIER : LOSS_POINTS
+    /*
+     * 金币也扣，但只在加注的场次扣 —— 这是「金币只涨不跌」唯一的例外，
+     * 而且是本人点头换来的。没加注的场次输了照旧一分不扣。
+     *
+     * 扣到 0 就打住，和 MMR 同一个做法。
+     *
+     * 有个边角要说清楚：余额 = 赚到的 − 花掉的。一个人把钱花光了
+     * （余额 0）再输一场加注，赚到的那一栏掉了 20，但余额本来就是 0，
+     * 看起来像没扣。要修得让重放知道他花了多少，而「花掉多少」是落库的、
+     * 不是从比赛推出来的 —— 为这个边角把那条界线打通不值得。
+     */
+    const coinLoss = staked ? STAKE_COIN_LOSS : 0
 
     /*
      * 打折和不算分，最后一起乘上去。
@@ -699,6 +738,7 @@ export function replayMatches(matches: Match[]): {
     const finalGain = Math.round(gain * factor)
     const finalCoins = Math.round(coinGain * factor)
     const finalLoss = Math.round(lossPoints * factor)
+    const finalCoinLoss = Math.round(coinLoss * factor)
     const impacts: MatchImpact[] = []
 
     for (const id of winners) {
@@ -719,16 +759,20 @@ export function replayMatches(matches: Match[]): {
     for (const id of losers) {
       const p = get(id)
       const before = p.mmr
+      const coinsBefore = p.coins
       p.losses += 1
       // 输球扣分，但扣到 0 就打住，不做负分
       p.mmr = Math.max(0, p.mmr - finalLoss)
+      // 金币只有加注的场次才扣，同样扣到 0 为止
+      p.coins = Math.max(0, p.coins - finalCoinLoss)
       impacts.push({
         playerId: id,
         won: false,
         delta: p.mmr - before,
         mmrBefore: before,
         mmrAfter: p.mmr,
-        coins: 0,
+        // 负数：结算页要显示「金币 −20」。真扣掉多少以封底后为准
+        coins: p.coins - coinsBefore,
       })
     }
 

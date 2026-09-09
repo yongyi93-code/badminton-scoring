@@ -25,7 +25,13 @@ import { ShareSessionButton } from '@/components/ShareSession'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
 import { duration } from '@/lib/format'
 import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
-import { progressByPlayer } from '@/lib/avatar'
+import {
+  LOSS_POINTS,
+  STAKE_COIN_LOSS,
+  STAKE_MULTIPLIER,
+  progressByPlayer,
+  stakePending,
+} from '@/lib/avatar'
 import { RankChip } from '@/components/RankMedal'
 import {
   buildSchedule,
@@ -840,6 +846,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           站在这里除了看别人打球什么也做不了。
         */}
         <JoinBar session={session} />
+        <StakeBar session={session} />
         {/* 怎么去 —— 只在有人填过地址时出现，没填就当它不存在 */}
         <VenueAddressLine venue={session.venue} />
         {progress.shouldWrapUp && (
@@ -1530,5 +1537,105 @@ function JoinBar({ session }: { session: Session }) {
         </div>
       )}
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * 加注等确认
+ *
+ * 有人在某一场里按了加注，场上其余每个人都要在自己手机上点一次头。
+ * 这一条摆在看板最上面，因为那一场在等着他 —— 不点，球开不了。
+ *
+ * 为什么不能由拿着记分手机的那个人代点：加注翻的是四个人的分和钱，
+ * 输的那边要扣双倍 MMR、还要扣金币。那不是一个人能替另外三个人决定的事。
+ *
+ * 「他自己手机」这层有多硬要说清楚：meId 是「我在这个群里是哪个球员」，
+ * 存在本机，不是密码学意义的身份 —— 换句话说这挡的是「顺手替别人点了」，
+ * 挡不住「存心冒充」。要真挡住得等账号和球员绑死。
+ * ------------------------------------------------------------------ */
+function StakeBar({ session }: { session: Session }) {
+  const t = useT()
+  const meId = useApp((s) => s.meId)
+  const matches = useApp((s) => s.matches)
+  const players = useApp((s) => s.players)
+  const updateMatch = useApp((s) => s.updateMatch)
+
+  const names = useMemo(
+    () => rosterForSession(players, session),
+    [players, session],
+  )
+  const nameOf = (id: string) => names.get(id)?.name ?? '?'
+
+  /* 等我点头的那些场次。同时有两场在等是可能的，都列出来 */
+  const waiting = matches.filter(
+    (m) =>
+      m.sessionId === session.id &&
+      m.status !== 'done' &&
+      m.staked === true &&
+      stakePending(m).includes(meId ?? ''),
+  )
+  if (!meId || waiting.length === 0) return null
+
+  return (
+    <>
+      {waiting.map((m) => (
+        <div
+          key={m.id}
+          className="border-brand-500 bg-brand-100 rounded-card border px-4 py-3.5"
+        >
+          <p className="text-brand-600 font-semibold">
+            {t(
+              `${m.stakeBy ? nameOf(m.stakeBy) : '有人'} 要这一场加注`,
+              `${m.stakeBy ? nameOf(m.stakeBy) : 'Someone'} wants to stake this match`,
+            )}
+          </p>
+          <p className="text-ink-700 mt-0.5 text-label">
+            {[...m.teamA].map(nameOf).join(' / ')}
+            {' vs '}
+            {[...m.teamB].map(nameOf).join(' / ')}
+          </p>
+          <p className="text-ink-700 mt-1.5 text-label">
+            {t(
+              `赢了 MMR 和金币都双倍；输了扣 ${LOSS_POINTS * STAKE_MULTIPLIER} 分、${STAKE_COIN_LOSS} 金币。`,
+              `Winners take double MMR and coins; losers drop ${LOSS_POINTS * STAKE_MULTIPLIER} MMR and ${STAKE_COIN_LOSS} coins.`,
+            )}
+          </p>
+          <p className="text-ink-500 mt-1 text-caption">
+            {t(
+              `还等：${stakePending(m).map(nameOf).join('、')}`,
+              `Still waiting: ${stakePending(m).map(nameOf).join(', ')}`,
+            )}
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button
+              className="flex-1"
+              variant="primary"
+              onClick={() =>
+                updateMatch(m.id, { stakeOk: [...(m.stakeOk ?? []), meId] })
+              }
+            >
+              {t('我同意', 'I am in')}
+            </Button>
+            {/*
+              不同意就直接把加注撤掉 —— 加注是全体的事，一个人不干就不成立。
+              留着一个「等某人」的僵局，只会让那一场永远开不了。
+            */}
+            <Button
+              className="flex-1"
+              variant="soft"
+              onClick={() =>
+                updateMatch(m.id, {
+                  staked: undefined,
+                  stakeBy: undefined,
+                  stakeOk: undefined,
+                })
+              }
+            >
+              {t('不加注', 'No thanks')}
+            </Button>
+          </div>
+        </div>
+      ))}
+    </>
   )
 }

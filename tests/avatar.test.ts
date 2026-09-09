@@ -24,6 +24,9 @@ import {
   SHOP_ITEMS,
   STARS_PER_TIER,
   STAKE_MULTIPLIER,
+  STAKE_COIN_LOSS,
+  stakePending,
+  stakeSettled,
   starThreshold,
   WIN_POINTS,
   winCount,
@@ -1039,6 +1042,9 @@ describe('同一组人重复打要打折', () => {
 })
 
 describe('加注', () => {
+  /** 全员点头的加注：发起人是 a1，其余三个都确认过 */
+  const agreed = { staked: true, stakeBy: 'a1', stakeOk: ['a2', 'b1', 'b2'] }
+
   /** 一场逐分记下来、时长够的球 */
   const live = (id: string, o: Partial<Match> = {}, seq = 1): Match => ({
     ...timed(`${id}`, { firstPointAt: seq * 6e5, lastPointAt: seq * 6e5 + MIN }, { seq }),
@@ -1046,25 +1052,47 @@ describe('加注', () => {
     ...o,
   })
 
+  /** 让 b 队先赢一串别的对手，把分和金币垫起来 */
+  const bankB = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
+        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
+    )
+
   it('加注赢了，MMR 和金币都双倍', () => {
-    const { progress, outcomes } = replayMatches([live('m1', { staked: true })])
+    const { progress, outcomes } = replayMatches([live('m1', agreed)])
     expect(outcomes.get('m1')!.staked).toBe(true)
     expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * STAKE_MULTIPLIER)
     expect(progress.get('a1')!.coins).toBe(WIN_POINTS * STAKE_MULTIPLIER)
   })
 
   it('加注输了，MMR 扣双倍', () => {
-    /*
-     * 输的一方先赢一串别的对手把分垫起来，不然一直贴着 0，
-     * 扣双倍和扣单倍看起来一模一样。
-     */
-    const bank = Array.from({ length: 4 }, (_, i) =>
-      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
-        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
-    )
-    const { outcomes } = replayMatches([...bank, live('m1', { staked: true }, 9)])
+    const bank = bankB(4)
+    const { outcomes } = replayMatches([...bank, live('m1', agreed, 9)])
     const loser = outcomes.get('m1')!.impacts.find((i) => !i.won)!
     expect(loser.mmrBefore - loser.mmrAfter).toBe(LOSS_POINTS * STAKE_MULTIPLIER)
+  })
+
+  it('加注输了，金币也扣', () => {
+    const bank = bankB(4)
+    const before = replayMatches(bank).progress.get('b1')!.coins
+    const { progress, outcomes } = replayMatches([...bank, live('m1', agreed, 9)])
+    expect(progress.get('b1')!.coins).toBe(before - STAKE_COIN_LOSS)
+    // 结算页要显示成负数
+    expect(outcomes.get('m1')!.impacts.find((i) => !i.won)!.coins).toBe(-STAKE_COIN_LOSS)
+  })
+
+  it('没加注的场次输了，金币照旧一分不扣', () => {
+    const bank = bankB(4)
+    const before = replayMatches(bank).progress.get('b1')!.coins
+    const { progress } = replayMatches([...bank, live('m1', {}, 9)])
+    expect(progress.get('b1')!.coins).toBe(before)
+  })
+
+  it('金币扣到 0 就打住，不做负数', () => {
+    // b 队一分钱没有就输了一场加注
+    const { progress } = replayMatches([live('m1', agreed)])
+    expect(progress.get('b1')!.coins).toBe(0)
   })
 
   it('没加注的场次，输赢都还是老样子', () => {
@@ -1073,24 +1101,31 @@ describe('加注', () => {
     expect(progress.get('a1')!.mmr).toBe(WIN_POINTS)
   })
 
-  it('金币还是只涨不跌 —— 加注输了也不扣钱', () => {
-    const bank = Array.from({ length: 4 }, (_, i) =>
-      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
-        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
-    )
-    const before = replayMatches(bank).progress.get('b1')!.coins
-    const after = replayMatches([...bank, live('m1', { staked: true }, 9)])
-      .progress.get('b1')!.coins
-    expect(after).toBe(before)
+  it('还差人确认时加注不算数', () => {
+    // b2 没点头
+    const half = live('m1', { staked: true, stakeBy: 'a1', stakeOk: ['a2', 'b1'] })
+    const { progress, outcomes } = replayMatches([half])
+    expect(outcomes.get('m1')!.staked).toBe(false)
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS)
+  })
+
+  it('发起人不用再点一次，但搭档要', () => {
+    const m = live('m1', { staked: true, stakeBy: 'a1', stakeOk: ['b1', 'b2'] })
+    // 只差 a2 —— 发起人的搭档。他的钱和分一样要翻，凭什么由队友替他决定
+    expect(stakePending(m)).toEqual(['a2'])
+    expect(stakeSettled(m)).toBe(false)
+    expect(stakeSettled({ ...m, stakeOk: ['a2', 'b1', 'b2'] })).toBe(true)
+  })
+
+  it('没人点头的加注，等于没加', () => {
+    const m = live('m1', { staked: true, stakeBy: 'a1' })
+    expect(stakePending(m)).toEqual(['a2', 'b1', 'b2'])
+    expect(replayMatches([m]).outcomes.get('m1')!.staked).toBe(false)
   })
 
   it('补录的场次加注不算数 —— 那时候谁赢已经知道了', () => {
-    /*
-     * 「直接输入最终比分」没有 firstPointAt。这是加注最明显的一个绕法：
-     * 打完看到自己赢了，再回去按加注。
-     */
     const direct = timed('m1', { startedAt: 0, lastPointAt: 8 * 60_000 })
-    const { progress, outcomes } = replayMatches([{ ...direct, staked: true }])
+    const { progress, outcomes } = replayMatches([{ ...direct, ...agreed }])
     expect(outcomes.get('m1')!.staked).toBe(false)
     expect(progress.get('a1')!.mmr).toBe(WIN_POINTS)
   })
@@ -1100,7 +1135,10 @@ describe('加注', () => {
      * 这一条是这个功能能不能上的关键：刷分的人打 21:0 本来就拿双倍，
      * 加注给不了他更多。也就是说加注一点没抬高刷分的天花板。
      */
-    const both = { ...live('m1', { staked: true }), games: [{ a: 21, b: 3, points: null, serveInit: null }] } as Match
+    const both = {
+      ...live('m1', agreed),
+      games: [{ a: 21, b: 3, points: null, serveInit: null }],
+    } as Match
     const { progress, outcomes } = replayMatches([both])
     const o = outcomes.get('m1')!
     expect(o.staked).toBe(true)
@@ -1111,7 +1149,7 @@ describe('加注', () => {
 
   it('加注和爆冷也不叠加', () => {
     const first = timed('m1', { firstPointAt: 0, lastPointAt: MIN }, { seq: 1, winner: 'B' })
-    const second = { ...live('m2', { staked: true }, 2) } as Match
+    const second = live('m2', agreed, 2)
     const { progress, outcomes } = replayMatches([first, second])
     const o = outcomes.get('m2')!
     expect(o.upset).toBe(true)
@@ -1122,7 +1160,7 @@ describe('加注', () => {
 
   it('打得太快的话，加注也救不回来', () => {
     const quick = timed('m1', { firstPointAt: 0, lastPointAt: 5000 })
-    const { progress, outcomes } = replayMatches([{ ...quick, staked: true }])
+    const { progress, outcomes } = replayMatches([{ ...quick, ...agreed }])
     expect(outcomes.get('m1')!.tooQuick).toBe(true)
     expect(progress.get('a1')!.mmr).toBe(0)
     expect(progress.get('a1')!.coins).toBe(0)
@@ -1133,7 +1171,7 @@ describe('加注', () => {
     const ms = [
       ...Array.from({ length: 5 }, (_, i) =>
         timed(`m${i + 1}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN }, { seq: i + 1 })),
-      live('m6', { staked: true }, 6),
+      live('m6', agreed, 6),
     ]
     const { outcomes } = replayMatches(ms)
     const o = outcomes.get('m6')!
