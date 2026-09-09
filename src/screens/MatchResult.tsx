@@ -19,6 +19,7 @@ import {
   levelOf,
   outcomeOf,
   tierName,
+  BLOWOUT_MULTIPLIER,
   UPSET_MULTIPLIER,
   type MatchImpact,
 } from '@/lib/avatar'
@@ -264,14 +265,29 @@ export function MatchResult({ matchId }: { matchId: string }) {
             </>
           )}
 
-          {outcome?.upset && (
-            <div className="mt-3 flex justify-center">
-              <Pill tone="warn">
-                {t(
-                  `爆冷 · MMR ${UPSET_MULTIPLIER} 倍`,
-                  `Upset · ${UPSET_MULTIPLIER}× MMR`,
-                )}
-              </Pill>
+          {/*
+            两个标记都可能同时成立，就都显示 —— 但加成不叠加（见 replayMatches）。
+            所以碾压那一枚写「MMR 和金币都双倍」，爆冷那一枚只写 MMR：
+            两枚一起出现时，人看到的仍然是「MMR 双倍、金币双倍」，没有矛盾。
+          */}
+          {(outcome?.upset || outcome?.blowout) && (
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
+              {outcome?.blowout && (
+                <Pill tone="brand">
+                  {t(
+                    `碾压 · MMR 和金币都 ${BLOWOUT_MULTIPLIER} 倍`,
+                    `Blowout · ${BLOWOUT_MULTIPLIER}× MMR and coins`,
+                  )}
+                </Pill>
+              )}
+              {outcome?.upset && (
+                <Pill tone="warn">
+                  {t(
+                    `爆冷 · MMR ${UPSET_MULTIPLIER} 倍`,
+                    `Upset · ${UPSET_MULTIPLIER}× MMR`,
+                  )}
+                </Pill>
+              )}
             </div>
           )}
         </Card>

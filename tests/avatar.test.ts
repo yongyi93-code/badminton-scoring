@@ -4,7 +4,10 @@ import {
   buyBlocker,
   IMMORTAL_STEP,
   itemById,
+  BLOWOUT_MULTIPLIER,
+  isBlowout,
   LOSS_POINTS,
+  replayMatches,
   UPSET_MULTIPLIER,
   progressByPlayer,
   progressOf,
@@ -644,5 +647,112 @@ describe('MMR 走势', () => {
       match('m1', ['p1'], ['p2'], 'A', 10),
     ]
     expect(mmrTimeline(ms, 'p1').map((p) => p.matchId)).toEqual(['', 'm1', 'm2'])
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 碾压双倍
+ *
+ * 规则：每一局对手的分都不到一半。21 分制就是对手不超过 10 分。
+ * MMR 和金币都翻倍 —— 和爆冷不一样，爆冷只翻 MMR。
+ * ------------------------------------------------------------------ */
+
+/** 造一场比分随便写的比赛 */
+const scored = (id: string, games: [number, number][], seq = 1): Match => ({
+  id,
+  sessionId: 's1',
+  courtIndex: 0,
+  type: 'doubles',
+  teamA: ['a1', 'a2'],
+  teamB: ['b1', 'b2'],
+  games: games.map(([a, b]) => ({ a, b, points: null, serveInit: null })),
+  status: 'done',
+  seq,
+  endedAt: seq,
+})
+
+describe('碾压', () => {
+  it('21 分制：对手 10 分算，11 分不算', () => {
+    // 10.5 是一半，所以 10 进、11 不进 —— 这正是「少于总分 50%」
+    expect(isBlowout(scored('m1', [[21, 10]]), 'A')).toBe(true)
+    expect(isBlowout(scored('m1', [[21, 11]]), 'A')).toBe(false)
+  })
+
+  it('一条规则套所有分制，不用去查这场定的是几分', () => {
+    // 15 分制：一半是 7.5
+    expect(isBlowout(scored('m', [[15, 7]]), 'A')).toBe(true)
+    expect(isBlowout(scored('m', [[15, 8]]), 'A')).toBe(false)
+    // 11 分制：一半是 5.5
+    expect(isBlowout(scored('m', [[11, 5]]), 'A')).toBe(true)
+    expect(isBlowout(scored('m', [[11, 6]]), 'A')).toBe(false)
+  })
+
+  it('正好一半不算 —— 要「少于」一半', () => {
+    /*
+     * 这一条是红测时发现漏了的：前面几条用的都是 21、15、11 这种
+     * 单数总分，一半永远带零点五，怎么写都碰不到边界。
+     * 打到平分加赛才会出现双数总分（16:8、30:15），那时候
+     * 「不到一半」和「不超过一半」才分得出来。按你说的「少于 50%」，
+     * 正好一半不算。
+     */
+    expect(isBlowout(scored('m', [[16, 8]]), 'A')).toBe(false)
+    expect(isBlowout(scored('m', [[30, 15]]), 'A')).toBe(false)
+    expect(isBlowout(scored('m', [[16, 7]]), 'A')).toBe(true)
+  })
+
+  it('打到平分加赛的，无论如何不算碾压', () => {
+    expect(isBlowout(scored('m', [[30, 28]]), 'A')).toBe(false)
+    expect(isBlowout(scored('m', [[23, 21]]), 'A')).toBe(false)
+  })
+
+  it('三局两胜：每一局都要碾压才算', () => {
+    expect(isBlowout(scored('m', [[21, 8], [21, 9]]), 'A')).toBe(true)
+    // 中间输过一局 —— 那一局「对手的分」比自己高，自然不成立
+    expect(isBlowout(scored('m', [[21, 5], [18, 21], [21, 3]]), 'A')).toBe(false)
+  })
+
+  it('2:0 结束时那个没打的空局不算数', () => {
+    /*
+     * 三局两胜打 2:0 就结束了，第三局可能是个 0:0 的空壳。
+     * 不排掉的话「0 不小于 0 的一半」会把每一场碾压都判成不是。
+     */
+    expect(isBlowout(scored('m', [[21, 6], [21, 4], [0, 0]]), 'A')).toBe(true)
+  })
+
+  it('B 队碾压也认得出来', () => {
+    expect(isBlowout(scored('m', [[7, 21]]), 'B')).toBe(true)
+    expect(isBlowout(scored('m', [[7, 21]]), 'A')).toBe(false)
+  })
+
+  it('碾压时 MMR 和金币都双倍', () => {
+    const { progress } = replayMatches([scored('m1', [[21, 6]])])
+    const w = progress.get('a1')!
+    expect(w.mmr).toBe(WIN_POINTS * BLOWOUT_MULTIPLIER)
+    expect(w.coins).toBe(WIN_POINTS * BLOWOUT_MULTIPLIER)
+  })
+
+  it('普通赢球还是原来那样，一分不多', () => {
+    const { progress } = replayMatches([scored('m1', [[21, 15]])])
+    const w = progress.get('a1')!
+    expect(w.mmr).toBe(WIN_POINTS)
+    expect(w.coins).toBe(WIN_POINTS)
+  })
+
+  it('碾压和爆冷不叠加 —— 最多双倍，不是四倍', () => {
+    /*
+     * 叠起来一场顶四场：分数忽上忽下失去意义，而且正好给刷分的人
+     * 指了条路 —— 找个分低的队友赢一场 21:5。
+     *
+     * 造一个两者同时成立的局面：先让 B 队赢一场把分拉上去，
+     * 再让 A 队碾压他们（这时 A 的平均 MMR 更低，算爆冷）。
+     */
+    const first = scored('m1', [[15, 21]], 1)   // B 赢，B 队 MMR 上去
+    const second = scored('m2', [[21, 4]], 2)   // A 碾压 B，且 A 分更低 = 爆冷
+    const { progress, outcomes } = replayMatches([first, second])
+    const o = outcomes.get('m2')!
+    expect(o.upset).toBe(true)
+    expect(o.blowout).toBe(true)
+    // a1 第一场输（MMR 扣到 0），第二场只该拿双倍，不是四倍
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * UPSET_MULTIPLIER)
   })
 })

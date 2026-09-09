@@ -372,6 +372,39 @@ export function starThreshold(tierIndex: number, star: number): number {
 /** 爆冷（赢了平均 MMR 比自己高的一方）时，赢的分翻几倍 */
 export const UPSET_MULTIPLIER = 2
 
+/** 碾压时翻几倍。MMR 和金币都翻 —— 和爆冷不一样，爆冷只翻 MMR */
+export const BLOWOUT_MULTIPLIER = 2
+
+/**
+ * 碾压：每一局对手的分都不到一半。
+ *
+ * 21 分制就是对手不超过 10 分，15 分制不超过 7，11 分制不超过 5 ——
+ * 一条规则套所有分制，不用每处去查这场球局定的是几分。
+ *
+ * 拿这一局赢家的分当分母，而不是去查球局规则里的目标分：
+ *
+ *   一是 replayMatches 手上只有比赛，没有球局，查不到那个目标分；
+ *   二是打到平分加赛时（30:28），赢家实际拿的是 30 分，
+ *      拿 21 当分母会把 28:30 这种硬仗算成……不，28 本来就不到一半。
+ *      真正的差别在另一头：拿实际分当分母更严，而严是对的 ——
+ *      一场打到加赛的球，无论如何不该算碾压。
+ *
+ * 三局两胜要每一局都碾压才算。赢家中间输过一局的话，那一局里
+ * 「对手的分」比赢家还高，这个判断自然就不成立了 —— 不用特判。
+ *
+ * 0:0 的空局要排掉：三局两胜打 2:0 结束时，第三局可能是个没打的空壳，
+ * 而 0 不小于 0 的一半，留着它会把每一场碾压都判成不是。
+ */
+export function isBlowout(match: Match, winner: TeamSide): boolean {
+  const played = match.games.filter((g) => g.a + g.b > 0)
+  if (played.length === 0) return false
+  return played.every((g) => {
+    const won = winner === 'A' ? g.a : g.b
+    const lost = winner === 'A' ? g.b : g.a
+    return lost * 2 < won
+  })
+}
+
 export type Progress = {
   wins: number
   losses: number
@@ -410,8 +443,10 @@ export type MatchImpact = {
 export type MatchOutcome = {
   matchId: string
   winner: TeamSide
-  /** 赢的这队打之前平均 MMR 更低 —— 这一场算爆冷，赢家拿双倍 */
+  /** 赢的这队打之前平均 MMR 更低 —— 这一场算爆冷，赢家 MMR 双倍 */
   upset: boolean
+  /** 每一局对手都不到一半的分 —— 这一场算碾压，赢家 MMR 和金币都双倍 */
+  blowout: boolean
   impacts: MatchImpact[]
 }
 
@@ -457,7 +492,25 @@ export function replayMatches(matches: Match[]): {
 
     // 爆冷：赢的这队打这场之前平均 MMR 更低
     const upset = avgMmr(winners) < avgMmr(losers)
-    const gain = upset ? WIN_POINTS * UPSET_MULTIPLIER : WIN_POINTS
+    // 碾压：每一局对手都不到一半的分
+    const blowout = isBlowout(m, winnerSide)
+
+    /*
+     * 两种加成都是双倍，但不叠加 —— 最多双倍。
+     *
+     * 叠起来就是四倍，一场球顶四场。那既让分数忽上忽下失去意义，
+     * 也正好给刷分的人指了条路：找个分低的队友，赢一场 21:5，
+     * 一场抵四场。规则简单一点，跑得久一点。
+     */
+    const gain = upset || blowout ? WIN_POINTS * UPSET_MULTIPLIER : WIN_POINTS
+    /*
+     * 金币只跟着碾压翻，不跟着爆冷。
+     *
+     * 爆冷是「对手比你强」，那是 MMR 该管的事；金币是买装备的钱，
+     * 按「你打得多干净」给更直观 —— 而且碾压是场上看得见的，
+     * 爆冷要对着两边的 MMR 才说得清。
+     */
+    const coinGain = blowout ? WIN_POINTS * BLOWOUT_MULTIPLIER : WIN_POINTS
     const impacts: MatchImpact[] = []
 
     for (const id of winners) {
@@ -465,15 +518,14 @@ export function replayMatches(matches: Match[]): {
       const before = p.mmr
       p.wins += 1
       p.mmr += gain
-      // 金币不跟着爆冷翻倍：那是买装备的钱，只按「赢了几场」算，规则越简单越好
-      p.coins += WIN_POINTS
+      p.coins += coinGain
       impacts.push({
         playerId: id,
         won: true,
         delta: p.mmr - before,
         mmrBefore: before,
         mmrAfter: p.mmr,
-        coins: WIN_POINTS,
+        coins: coinGain,
       })
     }
     for (const id of losers) {
@@ -492,7 +544,7 @@ export function replayMatches(matches: Match[]): {
       })
     }
 
-    outcomes.set(m.id, { matchId: m.id, winner: winnerSide, upset, impacts })
+    outcomes.set(m.id, { matchId: m.id, winner: winnerSide, upset, blowout, impacts })
   }
 
   for (const p of out.values()) p.level = levelOf(p.mmr)
