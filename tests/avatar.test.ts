@@ -23,6 +23,7 @@ import {
   PET_LEVELS,
   SHOP_ITEMS,
   STARS_PER_TIER,
+  STAKE_MULTIPLIER,
   starThreshold,
   WIN_POINTS,
   winCount,
@@ -1034,5 +1035,111 @@ describe('同一组人重复打要打折', () => {
     const o = outcomes.get('m1')!
     expect(o.repeats).toBe(0)
     expect(o.impacts.find((i) => i.won)!.coins).toBe(0)
+  })
+})
+
+describe('加注', () => {
+  /** 一场逐分记下来、时长够的球 */
+  const live = (id: string, o: Partial<Match> = {}, seq = 1): Match => ({
+    ...timed(`${id}`, { firstPointAt: seq * 6e5, lastPointAt: seq * 6e5 + MIN }, { seq }),
+    id,
+    ...o,
+  })
+
+  it('加注赢了，MMR 和金币都双倍', () => {
+    const { progress, outcomes } = replayMatches([live('m1', { staked: true })])
+    expect(outcomes.get('m1')!.staked).toBe(true)
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+    expect(progress.get('a1')!.coins).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+  })
+
+  it('加注输了，MMR 扣双倍', () => {
+    /*
+     * 输的一方先赢一串别的对手把分垫起来，不然一直贴着 0，
+     * 扣双倍和扣单倍看起来一模一样。
+     */
+    const bank = Array.from({ length: 4 }, (_, i) =>
+      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
+        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
+    )
+    const { outcomes } = replayMatches([...bank, live('m1', { staked: true }, 9)])
+    const loser = outcomes.get('m1')!.impacts.find((i) => !i.won)!
+    expect(loser.mmrBefore - loser.mmrAfter).toBe(LOSS_POINTS * STAKE_MULTIPLIER)
+  })
+
+  it('没加注的场次，输赢都还是老样子', () => {
+    const { progress, outcomes } = replayMatches([live('m1')])
+    expect(outcomes.get('m1')!.staked).toBe(false)
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS)
+  })
+
+  it('金币还是只涨不跌 —— 加注输了也不扣钱', () => {
+    const bank = Array.from({ length: 4 }, (_, i) =>
+      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
+        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
+    )
+    const before = replayMatches(bank).progress.get('b1')!.coins
+    const after = replayMatches([...bank, live('m1', { staked: true }, 9)])
+      .progress.get('b1')!.coins
+    expect(after).toBe(before)
+  })
+
+  it('补录的场次加注不算数 —— 那时候谁赢已经知道了', () => {
+    /*
+     * 「直接输入最终比分」没有 firstPointAt。这是加注最明显的一个绕法：
+     * 打完看到自己赢了，再回去按加注。
+     */
+    const direct = timed('m1', { startedAt: 0, lastPointAt: 8 * 60_000 })
+    const { progress, outcomes } = replayMatches([{ ...direct, staked: true }])
+    expect(outcomes.get('m1')!.staked).toBe(false)
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS)
+  })
+
+  it('加注和碾压不叠加 —— 任何加成最多双倍', () => {
+    /*
+     * 这一条是这个功能能不能上的关键：刷分的人打 21:0 本来就拿双倍，
+     * 加注给不了他更多。也就是说加注一点没抬高刷分的天花板。
+     */
+    const both = { ...live('m1', { staked: true }), games: [{ a: 21, b: 3, points: null, serveInit: null }] } as Match
+    const { progress, outcomes } = replayMatches([both])
+    const o = outcomes.get('m1')!
+    expect(o.staked).toBe(true)
+    expect(o.blowout).toBe(true)
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+    expect(progress.get('a1')!.coins).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+  })
+
+  it('加注和爆冷也不叠加', () => {
+    const first = timed('m1', { firstPointAt: 0, lastPointAt: MIN }, { seq: 1, winner: 'B' })
+    const second = { ...live('m2', { staked: true }, 2) } as Match
+    const { progress, outcomes } = replayMatches([first, second])
+    const o = outcomes.get('m2')!
+    expect(o.upset).toBe(true)
+    expect(o.staked).toBe(true)
+    // a1 第一场输到 0，第二场只该拿双倍
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * UPSET_MULTIPLIER)
+  })
+
+  it('打得太快的话，加注也救不回来', () => {
+    const quick = timed('m1', { firstPointAt: 0, lastPointAt: 5000 })
+    const { progress, outcomes } = replayMatches([{ ...quick, staked: true }])
+    expect(outcomes.get('m1')!.tooQuick).toBe(true)
+    expect(progress.get('a1')!.mmr).toBe(0)
+    expect(progress.get('a1')!.coins).toBe(0)
+  })
+
+  it('重复打的折扣照打在加注上 —— 加注抬不高刷分的上限', () => {
+    // 同一组人第 6 场：加注双倍 20，再打半折 = 10
+    const ms = [
+      ...Array.from({ length: 5 }, (_, i) =>
+        timed(`m${i + 1}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN }, { seq: i + 1 })),
+      live('m6', { staked: true }, 6),
+    ]
+    const { outcomes } = replayMatches(ms)
+    const o = outcomes.get('m6')!
+    expect(o.repeats).toBe(5)
+    expect(o.impacts.find((i) => i.won)!.coins).toBe(
+      (WIN_POINTS * STAKE_MULTIPLIER) / 2,
+    )
   })
 })

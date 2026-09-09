@@ -21,6 +21,7 @@ import {
   tierName,
   BLOWOUT_MULTIPLIER,
   MIN_SCORING_MS,
+  STAKE_MULTIPLIER,
   REPEAT_FULL,
   REPEAT_HALF,
   UPSET_MULTIPLIER,
@@ -273,8 +274,17 @@ export function MatchResult({ matchId }: { matchId: string }) {
             所以碾压那一枚写「MMR 和金币都双倍」，爆冷那一枚只写 MMR：
             两枚一起出现时，人看到的仍然是「MMR 双倍、金币双倍」，没有矛盾。
           */}
-          {(outcome?.upset || outcome?.blowout) && !outcome?.tooQuick && (
+          {(outcome?.upset || outcome?.blowout || outcome?.staked) &&
+            !outcome?.tooQuick && (
             <div className="mt-3 flex flex-wrap justify-center gap-2">
+              {outcome?.staked && (
+                <Pill tone="brand">
+                  {t(
+                    `加注 · MMR 和金币都 ${STAKE_MULTIPLIER} 倍`,
+                    `Staked · ${STAKE_MULTIPLIER}× MMR and coins`,
+                  )}
+                </Pill>
+              )}
               {outcome?.blowout && (
                 <Pill tone="brand">
                   {t(
@@ -311,6 +321,25 @@ export function MatchResult({ matchId }: { matchId: string }) {
                 {t(
                   '从记第一分算到记最后一分。真打完的球没这么快 —— 如果这一场是打完之后才补录的，下次开打时点上场、打完再收，时间就对得上了。战绩里照样记这一场。',
                   'Measured from the first point to the last. A real game takes longer — if you entered this one after the fact, start it when play starts next time. The match still counts in your record.',
+                )}
+              </p>
+            </div>
+          )}
+
+          {/*
+            加过注但没算数：这一场是「直接输入最终比分」录的。
+            不说的话，加注的人会以为双倍进去了，结果只拿到单倍 ——
+            那种沉默最伤，因为他会觉得是 App 吞了他的注。
+          */}
+          {match.staked && outcome != null && !outcome.staked && !outcome.tooQuick && (
+            <div className="border-line bg-surface mt-3 rounded-card border p-3 text-left">
+              <p className="text-ink-900 text-label font-semibold">
+                {t('这一场的加注没算数', 'The stake did not apply')}
+              </p>
+              <p className="text-ink-500 mt-1 text-caption">
+                {t(
+                  '加注只对一分一分记下来的场次有效。这一场是直接输入最终比分的 —— 那种录法是打完之后才录的，按下加注的时候谁赢已经知道了。',
+                  'Stakes only count on matches scored point by point. This one had its final score typed in after play, when the result was already known.',
                 )}
               </p>
             </div>

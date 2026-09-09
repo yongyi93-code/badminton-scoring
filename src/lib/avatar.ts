@@ -504,6 +504,40 @@ function matchupKey(match: Match, winners: string[], losers: string[]): string {
   return `${match.sessionId}|${w}>${l}`
 }
 
+/* ------------------------------------------------------------------ *
+ * 加注
+ *
+ * 开打前双方讲好「这场打大的」：赢的一方 MMR 和金币都双倍，
+ * 输的一方 MMR 扣双倍。钱是系统出的，不从对手兜里掏。
+ *
+ * 为什么不做真的对赌（金币在人之间转）：
+ * 现在这一整套防刷分管的都是「一个人能赚多快」，一条都不管「转账」。
+ * 开了转移的口子，注册几个小号老实打、再把金币全押给大号，
+ * 规矩一条没破，大号一夜暴富。真对赌要等对手确认做完。
+ *
+ * 为什么加注不叠加、也是最多双倍：
+ * 刷分的人打 21:0 本来就拿双倍（碾压），加注给不了他更多 ——
+ * 也就是说这个功能一点没有抬高刷分的天花板。
+ * 而对正常打球的人，它让一场 21:18 的硬仗也值双倍，那才是它存在的意义。
+ * ------------------------------------------------------------------ */
+
+/** 加注赢了翻几倍。和碾压、爆冷同一个数 —— 任何加成最多双倍 */
+export const STAKE_MULTIPLIER = 2
+
+/**
+ * 这一场的加注算不算数。
+ *
+ * 除了要真的加过注，还要求这一场是逐分记下来的。
+ * 「直接输入最终比分」的场次不算：那种录法是打完之后才录的，
+ * 按下加注的时候谁赢已经知道了 —— 那不是赌注，那是白捡。
+ *
+ * 锁的时机交给界面（记了第一分就不给改了），这里只管认不认。
+ * 两头都做是有意的：界面那层是给人看的，这一层是算分的最后一道。
+ */
+export function stakeApplies(match: Match): boolean {
+  return match.staked === true && match.firstPointAt != null
+}
+
 export type Progress = {
   wins: number
   losses: number
@@ -550,6 +584,8 @@ export type MatchOutcome = {
   tooQuick: boolean
   /** 这一组人这样赢过几次了（不含这一场）。到了 REPEAT_FULL 就开始打折 */
   repeats: number
+  /** 开打前加过注，而且这一场是逐分记的 —— 双倍，输的那边也扣双倍 */
+  staked: boolean
   impacts: MatchImpact[]
 }
 
@@ -610,22 +646,39 @@ export function replayMatches(matches: Match[]): {
     // 碾压：每一局对手都不到一半的分
     const blowout = isBlowout(m, winnerSide)
 
+    // 加注：开打前讲好的双倍
+    const staked = stakeApplies(m)
+
     /*
-     * 两种加成都是双倍，但不叠加 —— 最多双倍。
+     * 三种加成都是双倍，而且互相不叠加 —— 任何加成最多双倍。
      *
-     * 叠起来就是四倍，一场球顶四场。那既让分数忽上忽下失去意义，
-     * 也正好给刷分的人指了条路：找个分低的队友，赢一场 21:5，
-     * 一场抵四场。规则简单一点，跑得久一点。
+     * 叠起来就是四倍八倍，一场球顶好几场。那既让分数忽上忽下失去意义，
+     * 也正好给刷分的人指路：找个分低的队友，加注，赢一场 21:5。
+     *
+     * 这条封顶顺带解决了加注最让人担心的那件事：刷分的人打 21:0
+     * 本来就拿双倍，加注给不了他更多，所以加注一点没抬高刷分的天花板。
      */
-    const gain = upset || blowout ? WIN_POINTS * UPSET_MULTIPLIER : WIN_POINTS
+    const gain =
+      upset || blowout || staked ? WIN_POINTS * UPSET_MULTIPLIER : WIN_POINTS
     /*
-     * 金币只跟着碾压翻，不跟着爆冷。
+     * 金币跟着碾压和加注翻，不跟着爆冷。
      *
      * 爆冷是「对手比你强」，那是 MMR 该管的事；金币是买装备的钱，
-     * 按「你打得多干净」给更直观 —— 而且碾压是场上看得见的，
-     * 爆冷要对着两边的 MMR 才说得清。
+     * 按「你打得多干净」给更直观。加注要跟着翻是因为它是双方讲好的，
+     * 场上人人知道 —— 说好打大的，赢了却只多拿分不多拿钱，说不过去。
      */
-    const coinGain = blowout ? WIN_POINTS * BLOWOUT_MULTIPLIER : WIN_POINTS
+    const coinGain =
+      blowout || staked ? WIN_POINTS * BLOWOUT_MULTIPLIER : WIN_POINTS
+    /*
+     * 输的一方只在加注时扣双倍。
+     *
+     * 碾压和爆冷不加重处罚：那两种是系统判出来的，输的人没同意过。
+     * 加注是他自己点头的，那才叫赌注 —— 没有下行风险的赌注不是赌注。
+     *
+     * 金币照旧只涨不跌。让金币会跌要动「赢过的场次永远算数」那条一直
+     * 成立的性质，那是另一个量级的改动，不该跟这个功能捆在一起上。
+     */
+    const lossPoints = staked ? LOSS_POINTS * STAKE_MULTIPLIER : LOSS_POINTS
 
     /*
      * 打折和不算分，最后一起乘上去。
@@ -645,7 +698,7 @@ export function replayMatches(matches: Match[]): {
 
     const finalGain = Math.round(gain * factor)
     const finalCoins = Math.round(coinGain * factor)
-    const finalLoss = Math.round(LOSS_POINTS * factor)
+    const finalLoss = Math.round(lossPoints * factor)
     const impacts: MatchImpact[] = []
 
     for (const id of winners) {
@@ -686,6 +739,7 @@ export function replayMatches(matches: Match[]): {
       blowout,
       tooQuick: quick,
       repeats,
+      staked,
       impacts,
     })
   }

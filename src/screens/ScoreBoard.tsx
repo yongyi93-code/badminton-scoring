@@ -31,6 +31,7 @@ import {
 } from '@/lib/scoring'
 import { useWakeLock } from '@/lib/wakeLock'
 import { kingOfCourtNext, matchInput } from '@/lib/sessionFormat'
+import { LOSS_POINTS } from '@/lib/avatar'
 import {
   DEFAULT_STREAK_CAP,
   formatOf,
@@ -258,6 +259,15 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
    */
   const [confirmEnd, setConfirmEnd] = useState(false)
 
+  /*
+   * 还能不能改这一场的加注：记第一分之前可以，之后锁死。
+   *
+   * 判据用 firstPointAt 而不是「比分是不是 0:0」—— 点了一分又撤销的话
+   * 比分回到 0:0，但那一分是真的发生过的，两边都看见了分数变化。
+   * 那之后再开锁，就是「先试探一下再决定押不押」。
+   */
+  const stakeOpen = match?.firstPointAt == null && match?.status !== 'done'
+
   // 友谊赛的客队不在正式名单里，记分屏也要叫得出他们的名字
   const names = useMemo(
     () => rosterForSession(players, session),
@@ -471,7 +481,13 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
         <TopBar
           title={t(`${(match.courtIndex ?? 0) + 1} 号场`, `Court ${(match.courtIndex ?? 0) + 1}`)}
           subtitle={
-            rules.bestOf === 3
+            /*
+              加注写进副标题，两边整场都看得见。
+              藏在「⋯」里的话，押了注只有按的那个人知道 ——
+              而这是双方讲好的事，不该只有一个人记得。
+            */
+            (match.staked ? t('加注 · ', 'Staked · ') : '') +
+            (rules.bestOf === 3
               ? t(
                   `${rules.pointsToWin} 分制 · 第 ${gi + 1} 局 · 大比分 ${sets.A}:${sets.B}`,
                   `to ${rules.pointsToWin} · game ${gi + 1} · sets ${sets.A}:${sets.B}`,
@@ -479,7 +495,7 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               : t(
                   `${rules.pointsToWin} 分制${rules.winBy2 ? ' · 净胜 2 分' : ''}`,
                   `to ${rules.pointsToWin}${rules.winBy2 ? ' · win by 2' : ''}`,
-                )
+                ))
           }
           onBack={back}
           right={
@@ -751,6 +767,46 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
 
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t('这一场', 'This match')}>
         <div className="space-y-2">
+          {/*
+            加注只在记第一分之前给点。开打之后还能加，
+            就变成「打到 20:5 再来加注」的白捡，那不叫赌注。
+          */}
+          {stakeOpen ? (
+            <Button
+              block
+              variant={match.staked ? 'primary' : 'soft'}
+              onClick={() => {
+                updateMatch(match.id, { staked: !match.staked })
+                setMoreOpen(false)
+                setToast(
+                  match.staked
+                    ? t('这一场取消加注', 'Stake removed')
+                    : t(
+                        `这一场加注 —— 赢的双倍，输的多扣 ${LOSS_POINTS}`,
+                        `Stake on — double for the winner, ${LOSS_POINTS} extra off for the loser`,
+                      ),
+                )
+              }}
+            >
+              {match.staked
+                ? t('取消加注', 'Remove stake')
+                : t('这一场加注（双倍）', 'Stake this match (double)')}
+            </Button>
+          ) : (
+            <div className="border-line rounded-card border p-3">
+              <p className="text-ink-700 text-label font-semibold">
+                {match.staked
+                  ? t('这一场已加注', 'Stake is on for this match')
+                  : t('这一场不能再加注了', 'Too late to stake this match')}
+              </p>
+              <p className="text-ink-500 mt-1 text-caption">
+                {t(
+                  '加注要在记第一分之前定。开打之后还能加，就成了看着比分再决定。',
+                  'A stake must be set before the first point — otherwise you would be betting with the score already in front of you.',
+                )}
+              </p>
+            </div>
+          )}
           <Button
             block
             variant="soft"
