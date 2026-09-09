@@ -1,6 +1,7 @@
 import { pick } from '@/lib/i18n'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
   parts.filter(Boolean).join(' ')
@@ -389,7 +390,19 @@ export function Sheet({
   }, [open, onClose])
 
   if (!open) return null
-  return (
+
+  /*
+   * 挂到 body 上，不留在原地。
+   *
+   * position: fixed 认的不一定是屏幕：只要祖先里有人带了 transform、
+   * filter 或者 backdrop-filter，它就改认那个祖先。而 TopBar 正好
+   * 带着 backdrop-blur —— 从顶栏里弹出来的弹层会被塞进顶栏那条
+   * 几十像素高的盒子里，人看到的是弹层的一角挂在屏幕顶上。
+   *
+   * 实测踩到过：分享按钮放在顶栏右上角，弹层就跑到屏幕外面去了。
+   * 与其记住「别在顶栏里放弹层」，不如让弹层自己不受这条规矩影响。
+   */
+  const sheet = (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div
         className="absolute inset-0 bg-scrim backdrop-blur-sm"
@@ -419,6 +432,8 @@ export function Sheet({
       </div>
     </div>
   )
+
+  return typeof document === 'undefined' ? sheet : createPortal(sheet, document.body)
 }
 
 /**

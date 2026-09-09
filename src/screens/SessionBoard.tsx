@@ -21,6 +21,7 @@ import {
 import { Avatar } from '@/components/PlayerBits'
 import { AddGuest } from '@/components/AddGuest'
 import { VenueAddressLine } from '@/components/VenueAddress'
+import { ShareSessionButton } from '@/components/ShareSession'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
 import { duration } from '@/lib/format'
 import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
@@ -820,13 +821,25 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         )}
         onBack={() => resetTo({ name: 'home' })}
         right={
-          <Button size="sm" variant="ghost" onClick={() => setEndOpen(true)}>
-            {t('结束', 'End')}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* 分享摆在「结束」旁边：开完局第一件事就是叫人来 */}
+            <ShareSessionButton session={session} />
+            <Button size="sm" variant="ghost" onClick={() => setEndOpen(true)}>
+              {t('结束', 'End')}
+            </Button>
+          </div>
         }
       />
 
       <Body>
+        {/*
+          点着链接进来、但还不在名单上的人。
+
+          在这之前，加入只能从首页那张「正在进行的球局」卡片上按 ——
+          而顺着分享链接进来的人是直接落在这一屏的，那张卡他根本没看见，
+          站在这里除了看别人打球什么也做不了。
+        */}
+        <JoinBar session={session} />
         {/* 怎么去 —— 只在有人填过地址时出现，没填就当它不存在 */}
         <VenueAddressLine venue={session.venue} />
         {progress.shouldWrapUp && (
@@ -1459,5 +1472,63 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         </div>
       </Sheet>
     </Screen>
+  )
+}
+
+/**
+ * 「你还没在这场里，要加入吗」。
+ *
+ * 只在三个条件都成立时出现：球局还在进行、你有球员身份、你不在名单上。
+ * 少一个都不该出现 —— 已经在场上的人看到一个「加入」按钮，
+ * 只会怀疑自己是不是掉出去了。
+ */
+function JoinBar({ session }: { session: Session }) {
+  const t = useT()
+  const meId = useApp((s) => s.meId)
+  const joinSession = useApp((s) => s.joinSession)
+  const [note, setNote] = useState<string | null>(null)
+
+  const inIt = meId ? session.playerIds.includes(meId) : false
+  if (session.status !== 'active' || !meId || inIt) return null
+
+  const full = isFull(session)
+
+  return (
+    <div className="border-brand-500 bg-brand-100 rounded-card border px-4 py-3.5">
+      <p className="text-brand-600 font-semibold">
+        {t('你还没在这场球局里', 'You are not in this session yet')}
+      </p>
+      <p className="text-ink-700 mt-0.5 text-label">
+        {full
+          ? t('人数已经满了 —— 问一下开局的人还能不能加。', 'It is full — ask whoever started it.')
+          : t('加进来就会自动排到你上场。', 'Join and you get put into the rotation.')}
+      </p>
+      {note && <p className="text-danger-600 mt-1 text-label">{note}</p>}
+      {!full && (
+        <div className="mt-3">
+          <Button
+            block
+            variant="primary"
+            onClick={() => {
+              if (!joinSession(session.id, meId)) {
+                /*
+                 * 加不进去只有两种原因，而两种都不该让按钮默默没反应：
+                 * 人满了（上面那一句已经说了），或者你还在另一场里 ——
+                 * 一个人同一时间只能在一场球局里。
+                 */
+                setNote(
+                  t(
+                    '加不进去 —— 你可能还在另一场球局里，先把那一场结束或者退出。',
+                    'Could not join — you may still be in another session. End or leave that one first.',
+                  ),
+                )
+              }
+            }}
+          >
+            {t('加入这场球局', 'Join this session')}
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }

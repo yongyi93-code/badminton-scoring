@@ -18,6 +18,7 @@ import { TabBar } from '@/components/TabBar'
 import { ProgressProvider } from '@/store/progress'
 import { RecoverySheet } from '@/components/RecoverySheet'
 import { ClubGate, useClubGate } from '@/components/Club'
+import { InviteHandler } from '@/components/InviteHandler'
 
 export default function App() {
   const route = useRoute()
@@ -57,6 +58,12 @@ export default function App() {
         而这件事必须当场做完 —— 那个临时会话是一次性的。
       */}
       <RecoverySheet />
+      {/*
+        点着球局链接进来的人。挂在最外层，和重设密码那个一样 ——
+        中间要经过登录、进群、等同步，这几步会把人带到别的页面上去，
+        挂在某一屏里的话，一离开那屏这条邀请就断了。
+      */}
+      <InviteHandler />
     </ProgressProvider>
   )
 }
