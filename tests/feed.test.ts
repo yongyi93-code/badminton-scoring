@@ -151,11 +151,16 @@ describe('首页快讯', () => {
   })
 
   it('按权重排序，升段排在最前面', () => {
+    /*
+     * 每场换一个对手。这一条测的是快讯的排序，要的只是「p1 在 s2 里升了段」，
+     * 而连赢同一个人九场会触发「重复打要打折」那条规矩，攒不到升段的分 ——
+     * 那是另一条规矩的事，不该在这里搅进来。
+     */
     const first = Array.from({ length: 9 }, (_, i) =>
-      match(i + 1, 's1', ['p1'], ['p9'], 'A'),
+      match(i + 1, 's1', ['p1'], [`o${i}`], 'A'),
     )
     const second = Array.from({ length: 2 }, (_, i) =>
-      match(i + 10, 's2', ['p1'], ['p9'], 'A'),
+      match(i + 10, 's2', ['p1'], [`o${9 + i}`], 'A'),
     )
     const feed = buildFeed(
       PLAYERS,

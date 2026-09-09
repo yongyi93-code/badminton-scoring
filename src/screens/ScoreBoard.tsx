@@ -304,12 +304,6 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
       : game.serveInit.rightA
     : null
 
-  const writeGame = (next: typeof game) => {
-    const games = [...match.games]
-    games[gi] = next
-    updateMatch(match.id, { games })
-  }
-
   /**
    * 加分要从 store 现取最新比赛，不能用渲染闭包里的 game：
    * 手快连点两下时组件还没重渲染，两次都会基于同一个旧比分算，第二分会丢。
@@ -322,7 +316,17 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
     if (isGameOver(current.a, current.b, rules)) return
     const games = [...fresh.games]
     games[idx] = addPoint(current, team, rules)
-    updateMatch(fresh.id, { games })
+    /*
+     * 记下第一分和最后一分的时刻，时长规矩要靠它们算「这场真打了多久」。
+     *
+     * firstPointAt 用 ??= 只写第一次 —— 撤销再重点、第二局第三局，
+     * 都不该把起点往后推。
+     */
+    updateMatch(fresh.id, {
+      games,
+      firstPointAt: fresh.firstPointAt ?? Date.now(),
+      lastPointAt: Date.now(),
+    })
   }
 
   const undoLast = () => {
@@ -447,7 +451,15 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
     const a = Number(directA)
     const b = Number(directB)
     if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b < 0) return
-    writeGame({ a, b, points: null, serveInit: null })
+    const games = [...match.games]
+    games[gi] = { a, b, points: null, serveInit: null }
+    /*
+     * 直接输入的场次也要盖上「最后一次记分动作」的时刻 —— 时长规矩对
+     * 两种录法一视同仁，豁免这一条就等于给刷分的人留了一个按钮。
+     *
+     * 不写 firstPointAt：这种录法没有第一分，起点只能退回「摆上场」。
+     */
+    updateMatch(match.id, { games, lastPointAt: Date.now() })
     setDirectOpen(false)
     setDirectA('')
     setDirectB('')

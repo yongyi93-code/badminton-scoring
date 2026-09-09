@@ -405,6 +405,105 @@ export function isBlowout(match: Match, winner: TeamSide): boolean {
   })
 }
 
+/* ------------------------------------------------------------------ *
+ * 防刷分
+ *
+ * 两条规矩，挡的是两种不同的刷法，缺一条另一条就有明显的绕法。
+ *
+ * 先说清楚它们挡不住什么，免得以后有人以为这里已经防死了：
+ *
+ *   改手机时钟   —— 时间取的是 Date.now()，也就是手机自己的钟。
+ *                   往前拨十分钟再点最后一分，时长规矩就过了。
+ *                   补不了：这个 App 是离线优先的（球馆信号差是常态），
+ *                   改用服务器时间的话，离线打完再同步的人两次写入
+ *                   落在同一个服务器时刻，正常打球的反而会被判成 0 分钟。
+ *   真人打假球   —— 两个人真的在场上站三分钟，然后记一个 21:0。
+ *                   任何时间和场次的规则都看不出来。
+ *
+ * 这两条挡的是「懒得动」和「重复来」，那是刷分的绝大多数。
+ * 真要防死得靠对手确认，那是另一件事。
+ * ------------------------------------------------------------------ */
+
+/** 一场球至少要打这么久才算分 */
+export const MIN_SCORING_MS = 3 * 60_000
+
+/**
+ * 这一场从开始记分到最后一次记分，经过了多久。拿不到时间就返回 null。
+ *
+ * 起点优先用第一分，退回「摆上场」：
+ *   摆上场之后热身、等对手、买水，可能过十分钟才真开打，
+ *   把那一段算进去等于白送时长。
+ *   「直接输入最终比分」的场次没有第一分，只能退回摆上场。
+ *
+ * 终点用最后一次记分动作，不用「点打完」：
+ *   两者之间可以隔很久。十秒点完 21 分、把手机丢那儿等三分钟再点打完，
+ *   用 endedAt 就正好放过这种，而那恰恰是要挡的那一类。
+ */
+export function scoringSpan(match: Match): number | null {
+  const first = match.firstPointAt ?? match.startedAt
+  const last = match.lastPointAt
+  if (first == null || last == null) return null
+  return Math.max(0, last - first)
+}
+
+/**
+ * 这一场太快，不算分。
+ *
+ * 拿不到时长的一律放行，这是有意的：lastPointAt 是这次改动才开始写的，
+ * 两种录法（逐分、直接输入）都会写。所以「没有 lastPointAt」等于
+ * 「这条是老版本记的」—— 老账不翻，规矩只从现在往后管。
+ */
+export function tooQuick(match: Match): boolean {
+  const span = scoringSpan(match)
+  return span !== null && span < MIN_SCORING_MS
+}
+
+/**
+ * 同一组人重复打，第几场之后开始打折。
+ *
+ * 为什么要这一条：时长规矩挡不住「摆四片场同时刷」「挂机去吃饭」
+ * 「把手机时钟往前拨」这三种 —— 它们都只是在跟一个钟较劲。而刷分的
+ * 本质不是快，是同样那几个人来回打很多场。掐在这个点上，钟就没用了。
+ *
+ * 这也不全是防作弊。真正的 Elo 里，反复赢同一个人本来就越赢越少 ——
+ * 因为对方分掉下去了。这个 App 是固定 ±10，天生没有那个刹车，
+ * 这一条等于把它补回来。
+ *
+ * 门槛定得比一晚上正常打球高：11 个人轮着转，同一组四个人碰上五次
+ * 都难；就算全场只有四个人（这在羽球里太常见了，两对打一晚上），
+ * 换着搭档也是三种组合分摊，很难有一种赢到第六场。
+ */
+export const REPEAT_FULL = 5
+export const REPEAT_HALF = 10
+
+/** 同一组人第 n 次赢同一组人（n 从 0 起）时，收益乘几 */
+export function repeatFactor(seen: number): number {
+  if (seen < REPEAT_FULL) return 1
+  if (seen < REPEAT_HALF) return 0.5
+  return 0
+}
+
+/**
+ * 「这个球局里、这一组人、这一边赢」的标识。
+ *
+ * 赢家和输家分开记，两边各自排序 —— 换了搭档就是另一组，
+ * 反过来赢也是另一组。四个人打一晚上，正常会换搭档也会互有胜负，
+ * 落在好几个不同的标识上；刷分的那种从头到尾只落在同一个上。
+ *
+ * 必须带上球局，这一点是写测试时发现的：不带的话计数就是「这辈子」。
+ * 每周固定跟同一个人打单打的两个人，打满十场之后就永远不再涨分了 ——
+ * 那不是防作弊，那是把最忠实的用户赶走。折扣只在一个晚上之内有意义。
+ *
+ * 代价说清楚：换个球局，计数就从头开始。刷分的人多开几个球局就能
+ * 绕过去。没按「按天」算是因为球局本来就是这个 App 里「一场球」的单位，
+ * 跨零点还在打的那种按天算反而会拦腰断掉。多开球局这条留给对手确认去堵。
+ */
+function matchupKey(match: Match, winners: string[], losers: string[]): string {
+  const w = [...winners].sort().join(',')
+  const l = [...losers].sort().join(',')
+  return `${match.sessionId}|${w}>${l}`
+}
+
 export type Progress = {
   wins: number
   losses: number
@@ -447,6 +546,10 @@ export type MatchOutcome = {
   upset: boolean
   /** 每一局对手都不到一半的分 —— 这一场算碾压，赢家 MMR 和金币都双倍 */
   blowout: boolean
+  /** 打得太快（不到 MIN_SCORING_MS）—— 这一场进战绩，但不动 MMR 和金币 */
+  tooQuick: boolean
+  /** 这一组人这样赢过几次了（不含这一场）。到了 REPEAT_FULL 就开始打折 */
+  repeats: number
   impacts: MatchImpact[]
 }
 
@@ -483,6 +586,18 @@ export function replayMatches(matches: Match[]): {
   }
   const avgMmr = (team: string[]) =>
     team.length ? team.reduce((s, id) => s + get(id).mmr, 0) / team.length : 0
+  /*
+   * 「这个球局里，这一组人这样赢过几次了」。跟着重放一路累加 ——
+   * 重放本来就是从头按时间走一遍，数到第几次是顺手的事。
+   */
+  const seenMatchups = new Map<string, number>()
+  /** 这一组人这个球局里已经赢过几次（不含这一场） */
+  const repeatsOf = (m: Match, winners: string[], losers: string[]) => {
+    const key = matchupKey(m, winners, losers)
+    const seen = seenMatchups.get(key) ?? 0
+    seenMatchups.set(key, seen + 1)
+    return seen
+  }
 
   for (const m of chronological(decidedMatches(matches))) {
     const winnerSide = matchWinnerBySets(m)
@@ -511,21 +626,41 @@ export function replayMatches(matches: Match[]): {
      * 爆冷要对着两边的 MMR 才说得清。
      */
     const coinGain = blowout ? WIN_POINTS * BLOWOUT_MULTIPLIER : WIN_POINTS
+
+    /*
+     * 打折和不算分，最后一起乘上去。
+     *
+     * 两条防刷分的规矩都只动 MMR 和金币，不动胜负场次 ——
+     * 球是真打了的（或者至少记下来了），战绩里该留着；
+     * 把它从战绩里也抹掉，等于替人判定「这场不作数」，
+     * 那是另一个性质的事，我们没有那个把握。
+     *
+     * 输的那一边同样打折。只打赢家的折会让反复对打变成净扣分：
+     * 全场只有四个人打一晚上的那种（羽球里太常见了），
+     * 到后面就是赢的不加、输的照扣，那不是我们要的。
+     */
+    const quick = tooQuick(m)
+    const repeats = repeatsOf(m, winners, losers)
+    const factor = quick ? 0 : repeatFactor(repeats)
+
+    const finalGain = Math.round(gain * factor)
+    const finalCoins = Math.round(coinGain * factor)
+    const finalLoss = Math.round(LOSS_POINTS * factor)
     const impacts: MatchImpact[] = []
 
     for (const id of winners) {
       const p = get(id)
       const before = p.mmr
       p.wins += 1
-      p.mmr += gain
-      p.coins += coinGain
+      p.mmr += finalGain
+      p.coins += finalCoins
       impacts.push({
         playerId: id,
         won: true,
         delta: p.mmr - before,
         mmrBefore: before,
         mmrAfter: p.mmr,
-        coins: coinGain,
+        coins: finalCoins,
       })
     }
     for (const id of losers) {
@@ -533,7 +668,7 @@ export function replayMatches(matches: Match[]): {
       const before = p.mmr
       p.losses += 1
       // 输球扣分，但扣到 0 就打住，不做负分
-      p.mmr = Math.max(0, p.mmr - LOSS_POINTS)
+      p.mmr = Math.max(0, p.mmr - finalLoss)
       impacts.push({
         playerId: id,
         won: false,
@@ -544,7 +679,15 @@ export function replayMatches(matches: Match[]): {
       })
     }
 
-    outcomes.set(m.id, { matchId: m.id, winner: winnerSide, upset, blowout, impacts })
+    outcomes.set(m.id, {
+      matchId: m.id,
+      winner: winnerSide,
+      upset,
+      blowout,
+      tooQuick: quick,
+      repeats,
+      impacts,
+    })
   }
 
   for (const p of out.values()) p.level = levelOf(p.mmr)

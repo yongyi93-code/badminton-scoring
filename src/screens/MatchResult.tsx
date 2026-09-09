@@ -20,6 +20,9 @@ import {
   outcomeOf,
   tierName,
   BLOWOUT_MULTIPLIER,
+  MIN_SCORING_MS,
+  REPEAT_FULL,
+  REPEAT_HALF,
   UPSET_MULTIPLIER,
   type MatchImpact,
 } from '@/lib/avatar'
@@ -270,7 +273,7 @@ export function MatchResult({ matchId }: { matchId: string }) {
             所以碾压那一枚写「MMR 和金币都双倍」，爆冷那一枚只写 MMR：
             两枚一起出现时，人看到的仍然是「MMR 双倍、金币双倍」，没有矛盾。
           */}
-          {(outcome?.upset || outcome?.blowout) && (
+          {(outcome?.upset || outcome?.blowout) && !outcome?.tooQuick && (
             <div className="mt-3 flex flex-wrap justify-center gap-2">
               {outcome?.blowout && (
                 <Pill tone="brand">
@@ -290,6 +293,52 @@ export function MatchResult({ matchId }: { matchId: string }) {
               )}
             </div>
           )}
+
+          {/*
+            赢了却没拿到分，一定要当场说清楚为什么。
+            不说的话，人只会看到「赢了，+0」，然后开始怀疑这个 App 坏了 ——
+            那比不加这两条规矩还糟。
+          */}
+          {outcome?.tooQuick && (
+            <div className="border-line bg-surface mt-3 rounded-card border p-3 text-left">
+              <p className="text-ink-900 text-label font-semibold">
+                {t(
+                  `这一场不到 ${MIN_SCORING_MS / 60_000} 分钟，不算 MMR 和金币`,
+                  `Under ${MIN_SCORING_MS / 60_000} minutes — no MMR or coins`,
+                )}
+              </p>
+              <p className="text-ink-500 mt-1 text-caption">
+                {t(
+                  '从记第一分算到记最后一分。真打完的球没这么快 —— 如果这一场是打完之后才补录的，下次开打时点上场、打完再收，时间就对得上了。战绩里照样记这一场。',
+                  'Measured from the first point to the last. A real game takes longer — if you entered this one after the fact, start it when play starts next time. The match still counts in your record.',
+                )}
+              </p>
+            </div>
+          )}
+
+          {outcome != null &&
+            !outcome.tooQuick &&
+            outcome.repeats >= REPEAT_FULL && (
+              <div className="border-line bg-surface mt-3 rounded-card border p-3 text-left">
+                <p className="text-ink-900 text-label font-semibold">
+                  {outcome.repeats >= REPEAT_HALF
+                    ? t(
+                        `同一组人这个球局第 ${outcome.repeats + 1} 场，这一场不再计分`,
+                        `Same lineup, match ${outcome.repeats + 1} this session — no longer counting`,
+                      )
+                    : t(
+                        `同一组人这个球局第 ${outcome.repeats + 1} 场，这一场算一半`,
+                        `Same lineup, match ${outcome.repeats + 1} this session — counts half`,
+                      )}
+                </p>
+                <p className="text-ink-500 mt-1 text-caption">
+                  {t(
+                    '反复赢同一组人，一场比一场值钱少。换个搭档或换个对手就恢复全额。',
+                    'Beating the same lineup again and again is worth less each time. Switch partners or opponents to go back to full.',
+                  )}
+                </p>
+              </div>
+            )}
         </Card>
 
         {/*

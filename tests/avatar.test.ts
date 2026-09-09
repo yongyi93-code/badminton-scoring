@@ -169,11 +169,16 @@ describe('MMR 与金币', () => {
   })
 
   it('输球不会让已经买得起的东西变买不起', () => {
-    const wins = Array.from({ length: 10 }, () => ({
-      a: ['p1'], b: ['p2'], winner: 'A' as const,
+    /*
+     * 每场换一个对手：这一条测的是「输球扣不扣金币」，
+     * 不该被「同一组人重复打要打折」那条规矩搅进来。
+     * 十场全打同一个人的话，后五场只给半额，测出来的就不是这件事了。
+     */
+    const wins = Array.from({ length: 10 }, (_, i) => ({
+      a: ['p1'], b: [`o${i}`], winner: 'A' as const,
     }))
-    const losses = Array.from({ length: 20 }, () => ({
-      a: ['p1'], b: ['p2'], winner: 'B' as const,
+    const losses = Array.from({ length: 20 }, (_, i) => ({
+      a: ['p1'], b: [`o${i}`], winner: 'B' as const,
     }))
     const after = progressOf('p1', series([...wins, ...losses]))
     // 输到 MMR 归零
@@ -754,5 +759,280 @@ describe('碾压', () => {
     expect(o.blowout).toBe(true)
     // a1 第一场输（MMR 扣到 0），第二场只该拿双倍，不是四倍
     expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * UPSET_MULTIPLIER)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 防刷分
+ * ------------------------------------------------------------------ */
+
+const MIN = 3 * 60_000
+
+/** 一场有时间的球。t 里的时刻都是毫秒，不写就是没记（老数据） */
+const timed = (
+  id: string,
+  t: {
+    startedAt?: number
+    firstPointAt?: number
+    lastPointAt?: number
+    endedAt?: number
+  },
+  o: { seq?: number; sessionId?: string; teams?: [string[], string[]]; winner?: 'A' | 'B' } = {},
+): Match => {
+  const [teamA, teamB] = o.teams ?? [['a1', 'a2'], ['b1', 'b2']]
+  const win = o.winner ?? 'A'
+  return {
+    id,
+    sessionId: o.sessionId ?? 's1',
+    courtIndex: 0,
+    type: 'doubles',
+    teamA,
+    teamB,
+    games: [
+      {
+        a: win === 'A' ? 21 : 15,
+        b: win === 'B' ? 21 : 15,
+        points: null,
+        serveInit: null,
+      },
+    ],
+    status: 'done',
+    seq: o.seq ?? 1,
+    ...t,
+  }
+}
+
+describe('打得太快不算分', () => {
+  it('不到 3 分钟：MMR 和金币都不动', () => {
+    const { progress, outcomes } = replayMatches([
+      timed('m1', { firstPointAt: 0, lastPointAt: MIN - 1 }),
+    ])
+    expect(outcomes.get('m1')!.tooQuick).toBe(true)
+    expect(progress.get('a1')!.mmr).toBe(0)
+    expect(progress.get('a1')!.coins).toBe(0)
+  })
+
+  it('输的那一边也不扣 —— 这一场对谁都不作数', () => {
+    const ms = [
+      // 先正常赢一场把 b1 的分垫起来
+      timed('m1', { firstPointAt: 0, lastPointAt: MIN }, { seq: 1, winner: 'B' }),
+      // 再来一场十秒的，b 队输
+      timed('m2', { firstPointAt: 0, lastPointAt: 10_000 }, { seq: 2, winner: 'A' }),
+    ]
+    const { progress } = replayMatches(ms)
+    expect(progress.get('b1')!.mmr).toBe(WIN_POINTS)
+  })
+
+  it('正好 3 分钟算数 —— 卡在门槛上的放行', () => {
+    const { outcomes } = replayMatches([
+      timed('m1', { firstPointAt: 0, lastPointAt: MIN }),
+    ])
+    expect(outcomes.get('m1')!.tooQuick).toBe(false)
+  })
+
+  it('战绩照记 —— 不算分不等于这场没打过', () => {
+    const { progress } = replayMatches([
+      timed('m1', { firstPointAt: 0, lastPointAt: 1000 }),
+    ])
+    expect(progress.get('a1')!.wins).toBe(1)
+    expect(progress.get('b1')!.losses).toBe(1)
+  })
+
+  it('起点是第一分，不是摆上场 —— 热身那十分钟不算打球', () => {
+    /*
+     * 摆上场之后热身、等对手，过了十分钟才开打，一分钟打完。
+     * 从摆上场算是 11 分钟（放行），从第一分算是 1 分钟（该拦）。
+     */
+    const { outcomes } = replayMatches([
+      timed('m1', {
+        startedAt: 0,
+        firstPointAt: 10 * 60_000,
+        lastPointAt: 11 * 60_000,
+      }),
+    ])
+    expect(outcomes.get('m1')!.tooQuick).toBe(true)
+  })
+
+  it('终点是最后一分，不是点打完 —— 点完分把手机丢那儿等三分钟没用', () => {
+    /*
+     * 这正是要挡的那一类：十秒点完 21 分，然后等三分钟再点「打完」。
+     * 用 endedAt 当终点的话，这一场会被判成 3 分钟，正好放过去。
+     */
+    const { outcomes } = replayMatches([
+      timed('m1', {
+        firstPointAt: 0,
+        lastPointAt: 10_000,
+        endedAt: 10 * 60_000,
+      }),
+    ])
+    expect(outcomes.get('m1')!.tooQuick).toBe(true)
+  })
+
+  it('直接输入比分的场次一样要满 3 分钟，没有豁免', () => {
+    // 这种录法没有第一分，起点退回摆上场
+    const quick = replayMatches([
+      timed('m1', { startedAt: 0, lastPointAt: 15_000 }),
+    ])
+    expect(quick.outcomes.get('m1')!.tooQuick).toBe(true)
+
+    const ok = replayMatches([
+      timed('m1', { startedAt: 0, lastPointAt: 8 * 60_000 }),
+    ])
+    expect(ok.outcomes.get('m1')!.tooQuick).toBe(false)
+  })
+
+  it('老数据不翻旧账 —— 没有 lastPointAt 的一律放行', () => {
+    /*
+     * lastPointAt 是这次改动才开始写的，两种录法都会写。
+     * 所以「没有」就等于「这条是老版本记的」，那些场次不该被追着扣分。
+     */
+    const { progress, outcomes } = replayMatches([
+      timed('m1', { startedAt: 0, endedAt: 5_000 }),
+    ])
+    expect(outcomes.get('m1')!.tooQuick).toBe(false)
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS)
+  })
+})
+
+describe('同一组人重复打要打折', () => {
+  /** 同一组人在同一个球局里连赢 n 场，每场都够 3 分钟 */
+  const streak = (n: number, sessionId = 's1') =>
+    Array.from({ length: n }, (_, i) =>
+      timed(
+        `${sessionId}-m${i + 1}`,
+        { firstPointAt: i * 10 * 60_000, lastPointAt: i * 10 * 60_000 + MIN },
+        { seq: i + 1, sessionId },
+      ),
+    )
+
+  it('前 5 场全额', () => {
+    const { progress } = replayMatches(streak(5))
+    expect(progress.get('a1')!.mmr).toBe(5 * WIN_POINTS)
+    expect(progress.get('a1')!.coins).toBe(5 * WIN_POINTS)
+  })
+
+  it('第 6 到第 10 场半额', () => {
+    const { progress } = replayMatches(streak(10))
+    // 5 场全额 + 5 场半额
+    expect(progress.get('a1')!.mmr).toBe(5 * WIN_POINTS + 5 * (WIN_POINTS / 2))
+    expect(progress.get('a1')!.coins).toBe(5 * WIN_POINTS + 5 * (WIN_POINTS / 2))
+  })
+
+  it('第 11 场起一分不给', () => {
+    const ten = replayMatches(streak(10)).progress.get('a1')!
+    const twenty = replayMatches(streak(20)).progress.get('a1')!
+    expect(twenty.mmr).toBe(ten.mmr)
+    expect(twenty.coins).toBe(ten.coins)
+    // 但战绩还是记满 20 场
+    expect(twenty.wins).toBe(20)
+  })
+
+  it('输的那一边同样打折 —— 不然反复对打会变成净扣分', () => {
+    /*
+     * 全场只有四个人打一晚上，在羽球里太常见了。
+     * 只打赢家的折，到后面就成了「赢的不加、输的照扣」。
+     *
+     * 先让 b 队打赢一串不同的对手把分垫起来 —— 不然他们一直是 0 分，
+     * 扣多扣少都是「扣到 0 为止」，这一条就测不出任何东西了。
+     * （第一版就是这么写的，红测时它不会变红，才发现在测空气。）
+     */
+    const bank = Array.from({ length: 6 }, (_, i) =>
+      timed(
+        `bank${i}`,
+        { firstPointAt: i * 10 * 60_000, lastPointAt: i * 10 * 60_000 + MIN },
+        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] },
+      ),
+    )
+    const beat = Array.from({ length: 6 }, (_, i) =>
+      timed(
+        `beat${i}`,
+        { firstPointAt: (10 + i) * 10 * 60_000, lastPointAt: (10 + i) * 10 * 60_000 + MIN },
+        { seq: 10 + i },
+      ),
+    )
+    const { outcomes } = replayMatches([...bank, ...beat])
+    const sixth = outcomes.get('beat5')!
+    expect(sixth.repeats).toBe(5) // 第 6 次输给同一组人 —— 半额
+    const loser = sixth.impacts.find((i) => !i.won)!
+    expect(loser.mmrBefore - loser.mmrAfter).toBe(LOSS_POINTS / 2)
+  })
+
+  it('换了搭档就是另一组，不打折', () => {
+    const ms = [
+      ...streak(5),
+      // 第 6 场 a1 换了个搭档 —— 另一组人，重新从全额开始
+      timed(
+        'm6',
+        { firstPointAt: 60 * 60_000, lastPointAt: 60 * 60_000 + MIN },
+        { seq: 6, teams: [['a1', 'a3'], ['b1', 'b2']] },
+      ),
+    ]
+    const { outcomes } = replayMatches(ms)
+    expect(outcomes.get('m6')!.repeats).toBe(0)
+    expect(outcomes.get('m6')!.impacts.find((i) => i.won)!.coins).toBe(WIN_POINTS)
+  })
+
+  it('反过来赢是另一组 —— 互有胜负的一晚上不会被打折', () => {
+    const ms = Array.from({ length: 10 }, (_, i) =>
+      timed(
+        `m${i + 1}`,
+        { firstPointAt: i * 10 * 60_000, lastPointAt: i * 10 * 60_000 + MIN },
+        { seq: i + 1, winner: i % 2 === 0 ? 'A' : 'B' },
+      ),
+    )
+    const { outcomes } = replayMatches(ms)
+    // 各赢 5 场，两个方向各自数到 4，都还在全额里
+    expect(outcomes.get('m9')!.repeats).toBe(4)
+    expect(outcomes.get('m10')!.repeats).toBe(4)
+    const { progress } = replayMatches(ms)
+    expect(progress.get('a1')!.coins).toBe(5 * WIN_POINTS)
+  })
+
+  it('换个球局重新数 —— 不然每周固定对手的两个人会永远不涨分', () => {
+    /*
+     * 这一条是写测试时才想清楚的：计数要是不带球局，数的就是「这辈子」。
+     * 每周跟同一个人打单打的两个人，打满十场之后就再也拿不到分了。
+     */
+    // 分成两个球局，各 5 场：两边各自从头数，10 场全是全额
+    const across = replayMatches([...streak(5, 's1'), ...streak(5, 's2')])
+    expect(across.progress.get('a1')!.coins).toBe(10 * WIN_POINTS)
+    expect(across.outcomes.get('s2-m5')!.repeats).toBe(4)
+
+    // 同样 10 场挤在一个球局里，后 5 场就是半额。
+    // 两边一对比才说明计数真的按球局分开了 —— 只测其中一边是测不出来的。
+    const within = replayMatches(streak(10, 's1'))
+    expect(within.progress.get('a1')!.coins).toBe(5 * WIN_POINTS + 5 * (WIN_POINTS / 2))
+    expect(within.outcomes.get('s1-m10')!.repeats).toBe(9)
+  })
+
+  it('打折和双倍是乘起来的，不是各算各的', () => {
+    // 前 5 场普通赢，第 6 场碾压：双倍 20，再打半折 = 10
+    const ms = [
+      ...streak(5),
+      {
+        ...timed(
+          'm6',
+          { firstPointAt: 60 * 60_000, lastPointAt: 60 * 60_000 + MIN },
+          { seq: 6 },
+        ),
+        games: [{ a: 21, b: 3, points: null, serveInit: null }],
+      } as Match,
+    ]
+    const { outcomes } = replayMatches(ms)
+    const o = outcomes.get('m6')!
+    expect(o.blowout).toBe(true)
+    expect(o.repeats).toBe(5)
+    expect(o.impacts.find((i) => i.won)!.coins).toBe(
+      (WIN_POINTS * BLOWOUT_MULTIPLIER) / 2,
+    )
+  })
+
+  it('太快的场次直接归零，不管重复了几次', () => {
+    const { outcomes } = replayMatches([
+      timed('m1', { firstPointAt: 0, lastPointAt: 1000 }),
+    ])
+    const o = outcomes.get('m1')!
+    expect(o.repeats).toBe(0)
+    expect(o.impacts.find((i) => i.won)!.coins).toBe(0)
   })
 })
