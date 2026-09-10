@@ -13,13 +13,22 @@ const player = (id: string, name: string): Player => ({
   id, name, level: 3, gender: 'M', archived: false, createdAt: 0,
 })
 
+/*
+ * 夹具的时间戳要贴着「现在」。
+ *
+ * 首页公告只播最近三天的事（见 FRESH_MS），而这些用例原来用的是
+ * at = 1、2 这种小数字 —— 那是 1970 年，加了时限之后一条都播不出来。
+ * 用 NOW + at：相对先后不变，同时全都算新鲜。
+ */
+const NOW = Date.now()
+
 const session = (id: string, venue: string, ended: boolean, at = 1): Session => ({
   id, date: '2026-08-27', venue, courtCount: 1,
   playerIds: ['p1', 'p2', 'p3', 'p4'], defaultType: 'doubles',
   rules: { pointsToWin: 21, winBy2: true, cap: 30, bestOf: 1 },
   fee: { courtFee: 0, shuttleCount: 0, shuttleUnitPrice: 0, paidPlayerIds: [] },
-  status: ended ? 'ended' : 'active', createdAt: at,
-  endedAt: ended ? at : undefined,
+  status: ended ? 'ended' : 'active', createdAt: NOW + at,
+  endedAt: ended ? NOW + at : undefined,
   format: 'free',
 })
 
@@ -120,7 +129,14 @@ describe('首页快讯', () => {
     )
     const up = feed.find((f) => f.id.startsWith('rankup-p1'))
     expect(up?.text).toContain('球员1')
-    expect(up?.text).toContain(PET_LEVELS[1].label)
+    /*
+      取 [0]，不是整个数组。原来这里写的是 toContain(PET_LEVELS[1].label)，
+      而那会把二元组拼成「卫士,Guardian」去比对 —— 真实文案里当时正好
+      也是这么拼的，于是这条断言不但没抓到那个 bug，还把它钉住了。
+    */
+    expect(up?.text).toContain(PET_LEVELS[1].label[0])
+    // 逗号是二元组被 JS 拼过的记号，正常文案里不该出现
+    expect(up?.text).not.toContain(',')
     expect(up?.link).toEqual({ kind: 'player', playerId: 'p1' })
   })
 
@@ -171,6 +187,45 @@ describe('首页快讯', () => {
     for (let i = 1; i < feed.length; i++) {
       expect(feed[i - 1].weight).toBeGreaterThanOrEqual(feed[i].weight)
     }
+  })
+
+  /*
+   * 公告是新闻，不是档案。没有这一道闸的话，「阿明 5 连胜」
+   * 「城中现在是老陈的天下」会一直挂在首页第一屏 —— 三个月没打球也挂着。
+   */
+  describe('过期就不播了', () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const busy = Array.from({ length: 8 }, (_, i) =>
+      match(i + 1, 's1', ['p1', 'p2'], ['p3', 'p4'], 'A'),
+    )
+    const one = [session('s1', '城中羽球馆', true)]
+
+    it('最近一局是今天的：照播', () => {
+      expect(buildFeed(PLAYERS, one, busy, NOW + 1).length).toBeGreaterThan(0)
+    })
+
+    it('最近一局是三天前的：还在窗口里，照播', () => {
+      // NOW + 1 是那一局结束的时刻，所以「三天后」是它 + 3 天
+      expect(buildFeed(PLAYERS, one, busy, NOW + 1 + 3 * DAY).length).toBeGreaterThan(0)
+    })
+
+    it('最近一局是四天前的：一条都不播', () => {
+      expect(buildFeed(PLAYERS, one, busy, NOW + 1 + 4 * DAY)).toEqual([])
+    })
+
+    it('连胜和馆主也跟着一起收 —— 它们是状态不是事件', () => {
+      /*
+       * 这两类不依赖「最近一局」，只要数据在就永远成立。
+       * 不跟着一起关的话，首页永远清不空 —— 而这正是加这道闸要解决的事。
+       */
+      const stale = buildFeed(PLAYERS, one, busy, NOW + 1 + 10 * DAY)
+      expect(stale.some((f) => f.id.startsWith('streak-'))).toBe(false)
+      expect(stale.some((f) => f.id.startsWith('king-'))).toBe(false)
+    })
+
+    it('球局还没结束的时候本来就没有「最近一局」，也不播', () => {
+      expect(buildFeed(PLAYERS, [session('s1', '城中', false)], busy, NOW)).toEqual([])
+    })
   })
 
   it('每条消息的 id 唯一 —— 轮播用它当 key', () => {

@@ -26,7 +26,7 @@ import { formatDate, percent, streakLabel } from '@/lib/format'
 import { venueLabel } from '@/lib/venues'
 import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
-import { cloudReady } from '@/lib/supabase'
+import { cloudReady, defaultClubCode } from '@/lib/supabase'
 import { sendPasswordReset, signIn, signOut, signUp, useAuth } from '@/store/useAuth'
 import {
   disablePush,
@@ -697,12 +697,19 @@ export function Me() {
         {/*
           球群那一节。
 
-          配了默认球群之后（所有人自动进同一个），这个概念对用的人
-          不存在了 —— 摆一个「球群 · 邀请码」在这里只会让人问「这是什么，
-          我要不要管」。所以只在他确实在好几个群里时才显示：
-          那时候「我在哪个群」才是一个真问题。
+          配了默认球群（所有人注册完自动进同一个）之后，这个概念对用的人
+          就不存在了 —— 摆一个「球群 · 邀请码 · 换个球群」在这里，
+          只会让人问「这是什么，我要不要管」，而正确答案是「不用管」。
+
+          原来的门槛是「在好几个群里才显示」。那个不够：账号上留着一个
+          早就不用的旧群（比如那次事故留下的），照样会把这一节顶出来。
+          既然自动进群这条路已经保证了「所有人在同一个群」，
+          那就干脆按开关来 —— 配了默认球群，这一节整个不出现。
+
+          真被卡在错的群里时还有出路：上面那张「你在这个群里还没有球员」
+          的卡片里有「← 换回别的球群」，那条留着没动。
         */}
-        {cloudReady && session && club && clubs.length > 1 && (
+        {cloudReady && session && club && !defaultClubCode && (
           <>
             <SectionTitle>{t('球群', 'Club')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">

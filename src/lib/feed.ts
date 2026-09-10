@@ -44,6 +44,18 @@ const VENUE_MIN_MATCHES = 6
 /** 连胜到几场才值得播报 */
 const STREAK_MIN = 3
 
+/**
+ * 最近一局过了这么久，首页就不再播报了。
+ *
+ * 公告是新闻，不是档案。原来这里没有时限，于是「阿明 5 连胜」「城中现在
+ * 是老陈的天下」会一直挂在首页第一屏 —— 三个月没打球也挂着。人看第二遍
+ * 就不看了，看第十遍就学会了整块跳过，那时候真有事要说也传不出去。
+ *
+ * 三天是按羽球的节奏定的：周末打完，周一还看得到；到了周中就该安静下来，
+ * 等下一局带来新的。首页空着不是毛病 —— 没有新闻就是没有新闻。
+ */
+const FRESH_MS = 3 * 24 * 60 * 60 * 1000
+
 /** 当前还在延续的连胜（从最后一场往回数） */
 function currentStreak(playerId: string, matches: Match[]): number {
   let n = 0
@@ -66,22 +78,34 @@ export function buildFeed(
   players: Player[],
   sessions: Session[],
   matches: Match[],
+  /** 现在几点。测试要能定住它，不然「新不新鲜」没法测 */
+  now: number = Date.now(),
 ): FeedItem[] {
   const out: FeedItem[] = []
   const nameOf = new Map(players.map((p) => [p.id, p.name]))
   const done = decidedMatches(matches)
   if (done.length === 0) return out
 
-  /* ---- 谁升段了 ----------------------------------------------------
-   * 拿「所有比赛」和「去掉最近一局的比赛」各算一次段位，比出差别。
-   * MMR 是逐场重放算出来的，所以这是真的「那一局打完升的段」，
-   * 不是拿总分估的。
-   * ---------------------------------------------------------------- */
   const ended = sessions
     .filter((s) => s.status === 'ended')
     .sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt))
   const latest = ended[0]
 
+  /*
+   * 最近一局是不是还新鲜。不新鲜就一条都不播 —— 包括连胜和馆主那两类。
+   *
+   * 那两类是「状态」不是「事件」：只要数据在，它们永远成立，
+   * 所以必须跟着这一道闸一起关，否则首页永远清不空。
+   */
+  const fresh =
+    latest !== undefined && now - (latest.endedAt ?? latest.createdAt) <= FRESH_MS
+  if (!fresh) return out
+
+  /* ---- 谁升段了 ----------------------------------------------------
+   * 拿「所有比赛」和「去掉最近一局的比赛」各算一次段位，比出差别。
+   * MMR 是逐场重放算出来的，所以这是真的「那一局打完升的段」，
+   * 不是拿总分估的。
+   * ---------------------------------------------------------------- */
   if (latest) {
     const before = progressByPlayer(matches.filter((m) => m.sessionId !== latest.id))
     const after = progressByPlayer(matches)
@@ -94,8 +118,15 @@ export function buildFeed(
       out.push({
         id: `rankup-${id}-${now.level.index}`,
         icon: '⬆️',
+        /*
+          label 是个 [中文, English] 二元组，早先这里直接插进模板串，
+          于是首页上写着「阿明 升到 卫士,Guardian Guardian 了」——
+          数组被 JS 拿逗号拼了一遍，后面又跟着重复一次英文名。
+          取 label[0] 就够：display 本身已经是英文段位名，
+          而且冠绝那几级带着编号（Immortal 3），不能拿 tierName 替。
+        */
         text: pick(
-          `${name} 升到 ${now.level.tier.label} ${now.level.display} 了`,
+          `${name} 升到 ${now.level.tier.label[0]} ${now.level.display} 了`,
           `${name} climbed to ${now.level.display}`,
         ),
         weight: 1000 + now.level.index,
