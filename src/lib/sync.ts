@@ -522,7 +522,89 @@ export async function startSync(): Promise<PullOutcome> {
   // 回到线上先补推一次没推成的
   window.addEventListener('online', scheduleFlush)
   document.addEventListener('visibilitychange', pullOnResume)
+  startPolling()
   return outcome
+}
+
+/* ------------------------------------------------------------------ *
+ * 心跳
+ *
+ * realtime 是尽力而为的，不是保证送到。它断过、被代理掐过、被手机
+ * 省电策略冻过，而这几种情况一模一样地表现成「界面一切正常，只是
+ * 永远看不到别人」—— 开局的人只会觉得这 App 的同步坏了。
+ *
+ * 所以再加一条不依赖长连接的路：每隔一会儿问一句「这个群最后一次
+ * 改动是什么时候」。变了才整份拉。
+ *
+ * 这一问只取一行的一个时间戳，几十个字节 —— 比整份拉便宜三个数量级，
+ * 所以可以问得勤。真正花流量的那一步只在确实有新东西时才走。
+ * ------------------------------------------------------------------ */
+
+/** 隔多久问一句。别人开了局，最迟这么久就该出现在你首页上 */
+const POLL_MS = 30_000
+
+/** 上一次问到的「最后改动时间」。和这一次不一样就说明有新东西 */
+let lastSeenAt: string | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+/** 问一句：这个群最后一次改动是什么时候。问不到返回 null */
+async function newestAt(): Promise<string | null> {
+  if (!supabase) return null
+  const clubId = useApp.getState().clubId
+  if (!clubId) return null
+  try {
+    const { data, error } = await withTimeout(
+      supabase
+        .from('records')
+        .select('updated_at')
+        .eq('club_id', clubId)
+        .order('updated_at', { ascending: false })
+        .limit(1),
+    )
+    if (error) return null
+    return ((data ?? [])[0]?.updated_at as string | undefined) ?? null
+  } catch {
+    // 问不到就算了，下一轮再说 —— 这条路本来就是兜底的
+    return null
+  }
+}
+
+async function heartbeat(): Promise<void> {
+  if (!supabase || !started || applying) return
+  // 在后台就别问了 —— 回到前台有 pullOnResume 补一次，问也是白问
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+  const newest = await newestAt()
+  if (!newest || newest === lastSeenAt) return
+  /*
+   * 记下的是「问到的那个时间戳」，不是「拉完之后云端最新的那个」。
+   * 这一点要紧：拉的过程中别人又写了一条的话，那一条的时间戳比这个新，
+   * 下一轮心跳照样发现得了。记成拉完时的最新值就会把它吞掉。
+   */
+  lastSeenAt = newest
+  await pullAll()
+}
+
+function startPolling() {
+  if (pollTimer) return
+  /*
+   * 先把当前位置记下来。
+   *
+   * 不记的话 lastSeenAt 是空的，第一次心跳一定判成「变了」，
+   * 于是刚刚在 startSync 里拉过的那一份又整份拉一遍 ——
+   * 每次打开 App 白花一次流量，而心跳存在的意义正是省下这个。
+   * （这一条是数「整份拉发生了几次」时才露出来的：只看数据对不对，
+   * 白拉一次和没拉长得一模一样。）
+   */
+  void newestAt().then((v) => {
+    if (lastSeenAt === null) lastSeenAt = v
+  })
+  pollTimer = setInterval(() => void heartbeat(), POLL_MS)
+}
+
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer)
+  pollTimer = null
+  lastSeenAt = null
 }
 
 /*
@@ -569,6 +651,7 @@ export function stopSync() {
   }
   window.removeEventListener('online', scheduleFlush)
   document.removeEventListener('visibilitychange', pullOnResume)
+  stopPolling()
   if (flushTimer) {
     clearTimeout(flushTimer)
     flushTimer = null

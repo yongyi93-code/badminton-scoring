@@ -38,6 +38,10 @@ const cloud = vi.hoisted(() => ({
    * 只有「我还不在这个群里，但它存在」那种局面才需要把它们分开。
    */
   allClubs: null as { kind: string; id: string; data: unknown }[] | null,
+  /** 这个群最后一次改动的时间戳。心跳那一问答的就是它 */
+  updatedAt: null as string | null,
+  /** 「整份拉」发生了几次。心跳该省下的就是这个 */
+  pulls: 0,
   /** 每次 insert 插了什么（建群、加成员走这条） */
   inserts: [] as { kind?: string; id?: string; data?: unknown; club_id?: string }[],
   /** 每次 upsert 推了哪些行，按顺序记下来 */
@@ -66,25 +70,43 @@ vi.mock('@/lib/supabase', () => {
      * 顺带把过滤条件记下来 —— 「拉取有没有按球群过滤」是这次改动的
      * 重点之一，能断言比只让测试变绿有用。
      */
-    select: () => {
+    select: (cols?: string) => {
       const filters: Record<string, unknown> = {}
       const nots: Record<string, unknown> = {}
+      let orderedBy: string | null = null
+      let take: number | null = null
       const builder = {
         eq(col: string, val: unknown) {
           filters[col] = val
-          cloud.lastSelectFilters = filters
           return builder
         },
         neq(col: string, val: unknown) {
           nots[col] = val
           return builder
         },
-        limit() {
+        order(col: string) {
+          orderedBy = col
+          return builder
+        },
+        limit(n: number) {
+          take = n
           return builder
         },
         then(resolve: (r: unknown) => void) {
           if (cloud.selectError) {
             resolve({ data: null, error: cloud.selectError })
+            return
+          }
+          /*
+           * 心跳那一问：只取 updated_at，按它倒序取一行。
+           * 它问的不是「有哪些数据」，是「这个群最后一次改动是什么时候」——
+           * 所以在这里单独答，别跟下面拉数据那条混在一起。
+           */
+          if (cols === 'updated_at' && orderedBy === 'updated_at' && take === 1) {
+            resolve({
+              data: cloud.updatedAt ? [{ updated_at: cloud.updatedAt }] : [],
+              error: null,
+            })
             return
           }
           /*
@@ -101,6 +123,15 @@ vi.mock('@/lib/supabase', () => {
            * 合在一起查很要紧：拉数据那句要是忘了排掉 club，一个刚建的
            * 群看起来就不是空的，「把本机已有的数据推上去」那一步会被跳过。
            */
+          /*
+           * 走到这里就是真的在拉数据了（心跳那一问在上面已经答完返回）。
+           *
+           * 过滤条件在这里才记，不在 eq() 里记：心跳那一问也走 eq()，
+           * 在 eq() 里记的话它会把拉数据那次的条件盖掉，
+           * 「拉取有没有按球群过滤」那条断言就看到心跳的条件了。
+           */
+          cloud.lastSelectFilters = filters
+          if (nots.kind === 'club') cloud.pulls += 1
           const data = [...cloud.rows, ...cloud.clubs].filter(
             (r) =>
               (filters.kind === undefined || r.kind === filters.kind) &&
@@ -214,6 +245,8 @@ beforeEach(() => {
    * 移出去了」，把本机切到别处。
    */
   cloud.allClubs = null
+  cloud.updatedAt = null
+  cloud.pulls = 0
   cloud.clubs = [
     /*
      * 这个群的邀请码故意就是「默认球群」那一个。
@@ -578,6 +611,71 @@ describe('清空 store 和同步撞在一起', () => {
     expect(cloud.lastSelectFilters).toMatchObject({
       club_id: 'club_test',
       deleted: false,
+    })
+  })
+
+  /*
+   * 心跳。
+   *
+   * 这一组是从一个真实故障倒推出来的：有人开了局，别人首页上一片空白。
+   * 球群没错、成员没错、云端有那一行 —— 就是那台手机没去拉。
+   * realtime 是尽力而为的，不是保证送到，所以得有一条不靠长连接的路。
+   */
+  describe('心跳：别人开的局会自己出现', () => {
+    it('云端有新东西就整份拉一次', async () => {
+      cloud.session = { user: { id: 'uid-1' } }
+      cloud.updatedAt = '2026-09-10T00:00:00Z'
+      await startSync()
+      await vi.advanceTimersByTimeAsync(700)
+
+      // 同步开起来之后，别人开了一局
+      cloud.rows = [
+        {
+          kind: 'session',
+          id: 's-other',
+          data: { id: 's-other', date: '2026-09-10', venue: '城中', status: 'active' },
+        },
+      ]
+      cloud.updatedAt = '2026-09-10T01:00:00Z'
+      expect(useApp.getState().sessions).toHaveLength(0)
+
+      await vi.advanceTimersByTimeAsync(31_000)
+
+      expect(useApp.getState().sessions.map((s) => s.id)).toEqual(['s-other'])
+    })
+
+    it('云端没变就不拉 —— 心跳那一问几十个字节，整份拉不是', async () => {
+      cloud.session = { user: { id: 'uid-1' } }
+      cloud.updatedAt = '2026-09-10T00:00:00Z'
+      cloud.rows = [
+        { kind: 'player', id: 'p1', data: { id: 'p1', name: '阿明' } },
+      ]
+      await startSync()
+      await vi.advanceTimersByTimeAsync(700)
+
+      /*
+       * 数「整份拉」发生了几次，而不是看数据对不对 ——
+       * 第一版这条断言看的是 players 还等不等于 ['p1']，
+       * 可每次都整份拉出来也还是 ['p1']，那条断言什么都测不出来。
+       */
+      cloud.pulls = 0
+      await vi.advanceTimersByTimeAsync(31_000 * 3)
+
+      expect(cloud.pulls).toBe(0)
+    })
+
+    it('云端变一次就只拉一次，之后又安静下来', async () => {
+      cloud.session = { user: { id: 'uid-1' } }
+      cloud.updatedAt = '2026-09-10T00:00:00Z'
+      cloud.rows = [{ kind: 'player', id: 'p1', data: { id: 'p1', name: '阿明' } }]
+      await startSync()
+      await vi.advanceTimersByTimeAsync(700)
+
+      cloud.pulls = 0
+      cloud.updatedAt = '2026-09-10T01:00:00Z'
+      await vi.advanceTimersByTimeAsync(31_000 * 3)
+
+      expect(cloud.pulls).toBe(1)
     })
   })
 
