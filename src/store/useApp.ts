@@ -255,6 +255,13 @@ type AppState = {
   equipItem: (playerId: string, slot: AvatarSlot, itemId: string | null) => void
 
   /** 发一条公告。空字符串不发，返回发出去的那条（没发就是 null） */
+  /**
+   * 球员发一条局内消息。一定要带球局 id —— 没有球局就没有收信人。
+   *
+   * 首页那排公告不走这里：那些要么是从比赛记录现算出来的（谁升段、
+   * 谁连胜），要么以后由管理员发。球员发不了全群公告，
+   * 不然首页第一屏迟早变成谁都能贴的广告墙。
+   */
   postAnnouncement: (
     text: string,
     authorId: string,

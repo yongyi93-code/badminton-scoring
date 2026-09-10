@@ -1,8 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { activeSessionOf, isFull, lastActivityAt, spotsLeft, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
-import { Button, Card, Pill, SectionTitle } from '@/components/ui'
+import { Button, Card, Pill, SectionTitle, cx, inputClass } from '@/components/ui'
 import { formatDate, formatTime } from '@/lib/format'
 import { venueLabel } from '@/lib/venues'
 
@@ -37,6 +37,7 @@ export function OpenSessions() {
   const joinSession = useApp((s) => s.joinSession)
   const push = useNav((s) => s.push)
   const switchTab = useNav((s) => s.switchTab)
+  const [query, setQuery] = useState('')
 
   const nameOf = useMemo(
     () => new Map(players.map((p) => [p.id, p.name])),
@@ -60,7 +61,7 @@ export function OpenSessions() {
    * 活的，真散了才开始倒数。12 小时是按羽球的节奏定的：散场之后
    * 隔了半天还没人碰，那一定是忘了按结束。
    */
-  const others = useMemo(() => {
+  const fresh = useMemo(() => {
     const cutoff = Date.now() - STALE_MS
     return sessions
       .filter(
@@ -70,14 +71,64 @@ export function OpenSessions() {
           lastActivityAt(s, matches) >= cutoff,
       )
       .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, MAX_SHOWN)
   }, [sessions, matches, meId])
 
-  if (others.length === 0) return null
+  /*
+   * 搜索：球馆名或者开局的人。
+   *
+   * 只搜这两样，因为找球局时人脑子里想的就是这两句 ——
+   * 「今晚城中有没有人打」或者「阿伟开局了没」。
+   *
+   * 搜的时候不再截断到 MAX_SHOWN：那个上限是为了「首页不是球局列表」，
+   * 而一个人特意打了字，他要的就是全部结果。
+   */
+  const key = query.trim().toLowerCase()
+  const others = useMemo(() => {
+    if (!key) return fresh.slice(0, MAX_SHOWN)
+    return fresh.filter((s) => {
+      const host = s.createdBy ? (nameOf.get(s.createdBy) ?? '') : ''
+      return (
+        s.venue.toLowerCase().includes(key) || host.toLowerCase().includes(key)
+      )
+    })
+  }, [fresh, key, nameOf])
+
+  /*
+   * 一个球局都没有的时候整块不出现 —— 包括搜索框。
+   * 摆一个搜不到任何东西的搜索框，只会让人以为是自己搜错了。
+   */
+  if (fresh.length === 0) return null
 
   return (
     <>
-      <SectionTitle>{t('别人开的局', 'Other sessions')}</SectionTitle>
+      <SectionTitle>{t('正在开放的球局', 'Open sessions')}</SectionTitle>
+
+      {/* 球局多起来之后，翻列表不如打两个字 —— 所以搜索框摆在列表正上方 */}
+      <div className="relative">
+        <span className="text-ink-300 pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+        </span>
+        <input
+          className={cx(inputClass, 'pl-11')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t('搜球馆、搜开局的人', 'Search venue or host')}
+          aria-label={t('搜索球局', 'Search sessions')}
+        />
+      </div>
+
+      {others.length === 0 && (
+        <p className="text-ink-500 py-2 text-center text-label">
+          {t(
+            `没有球局对得上「${query.trim()}」`,
+            `No open session matches “${query.trim()}”`,
+          )}
+        </p>
+      )}
       {others.map((s) => {
         const host = s.createdBy ? nameOf.get(s.createdBy) : undefined
         const full = isFull(s)

@@ -122,5 +122,19 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    /*
+     * 测试跑在马来西亚时区，不是 UTC。
+     *
+     * 用户全在 UTC+8，而这个 App 里到处是「今天是哪一天」的判断 ——
+     * 球局按 date 归属、日历按周走、跨零点还在打的那种局算前一天。
+     * 这类 bug 最典型的样子是 `d.toISOString().slice(0,10)`：在 UTC 上
+     * 完全正确，一到 UTC+8 就把晚上八点的球局记成前一天，
+     * 而晚上八点正是羽球局最常见的时间。
+     *
+     * CI 默认是 UTC，那种环境下这类错的测试根本不会红 ——
+     * 这一行是实测出来的：不加它，「用本地时区不是 UTC」那条测试
+     * 换成错的实现照样通过。
+     */
+    env: { TZ: 'Asia/Kuala_Lumpur' },
   },
 })

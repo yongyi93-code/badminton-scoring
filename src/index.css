@@ -225,3 +225,15 @@
 @utility pad-nav {
   padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
 }
+
+/*
+ * 横划的那几排（首页公告、球局页的星期条）不要那条滚动条：
+ * 手机上它本来就是叠在内容上的一条灰杠，占着位置又说明不了什么 ——
+ * 「还有」这件事由下面那排小点负责说。
+ */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

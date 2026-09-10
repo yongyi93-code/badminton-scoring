@@ -29,6 +29,47 @@ export function formatDate(iso: string): string {
     : `${d} ${MONTHS_EN[m - 1]}, ${WEEKDAYS_EN[day]}`
 }
 
+/** 一天的毫秒数 */
+const DAY = 24 * 60 * 60 * 1000
+
+/** Date → "yyyy-mm-dd"，按本地时区。不能用 toISOString()，那是 UTC */
+export function toISODate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+/** "yyyy-mm-dd" → Date（本地当天零点） */
+export function fromISODate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, (m ?? 1) - 1, d ?? 1)
+}
+
+/**
+ * 含某一天的那一周，周一到周日七个 "yyyy-mm-dd"。
+ *
+ * 从周一起头而不是周日：马来西亚和国内都是这么看日历的，
+ * 而且羽球局大多在周中到周末，周一起头能把「这周还剩几天」看得更顺。
+ */
+export function weekOf(iso: string): string[] {
+  const d = fromISODate(iso)
+  // getDay() 周日是 0，换算成「周一是 0」
+  const offset = (d.getDay() + 6) % 7
+  const monday = new Date(d.getTime() - offset * DAY)
+  return Array.from({ length: 7 }, (_, i) =>
+    toISODate(new Date(monday.getTime() + i * DAY)),
+  )
+}
+
+/** 往前 / 往后挪几天 */
+export const shiftDays = (iso: string, days: number): string =>
+  toISODate(new Date(fromISODate(iso).getTime() + days * DAY))
+
+/** 星期几的短名，给日历那一条用 */
+export function weekdayShort(iso: string): string {
+  const day = fromISODate(iso).getDay()
+  return lang() === 'zh' ? WEEKDAYS_ZH[day] : WEEKDAYS_EN[day].slice(0, 3).toUpperCase()
+}
+
 /**
  * 往后取整到下一个半点，"HH:mm"。
  *

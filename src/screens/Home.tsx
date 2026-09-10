@@ -1,52 +1,27 @@
-import { lang, useT } from '@/lib/i18n'
+import { useT } from '@/lib/i18n'
 import { useMemo } from 'react'
-import { playerMap, useApp } from '@/store/useApp'
+import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { OpenSessions } from '@/components/OpenSessions'
 import { InstallCard } from '@/components/InstallCard'
 import { Body, Button, Card, Pill, Screen } from '@/components/ui'
-import { Ticker } from '@/components/Ticker'
+import { NoticeBoard } from '@/components/NoticeBoard'
 import { formatDate, formatTime } from '@/lib/format'
 import { buildFeed, type FeedItem } from '@/lib/feed'
-import { progressOf } from '@/lib/avatar'
-import { RankChip } from '@/components/RankMedal'
 import { scoreLine } from '@/lib/scoring'
 import { venueLabel } from '@/lib/venues'
 import { TeamNames } from '@/components/PlayerBits'
-
-/**
- * 早上好 / 下午好 / 晚上好 —— 球局大多在晚上，这句得对得上。
- * 中英文的分段不一样：英文没有「中午好」这个说法，
- * 直译成 Good noon 会很怪，所以两边各按各的习惯分。
- */
-function greeting(name: string): string {
-  const h = new Date().getHours()
-  if (lang() === 'zh') {
-    if (h < 6) return `夜里好，${name}`
-    if (h < 11) return `早上好，${name}`
-    if (h < 14) return `中午好，${name}`
-    if (h < 18) return `下午好，${name}`
-    return `晚上好，${name}`
-  }
-  if (h < 5) return `Still up, ${name}?`
-  if (h < 12) return `Good morning, ${name}`
-  if (h < 18) return `Good afternoon, ${name}`
-  return `Good evening, ${name}`
-}
 
 
 export function Home() {
   const t = useT()
   const { players, sessions, matches, meId } = useApp()
   const push = useNav((s) => s.push)
-  const switchTab = useNav((s) => s.switchTab)
 
-  const names = useMemo(() => playerMap(players), [players])
   const nameOf = useMemo(
     () => new Map(players.map((p) => [p.id, p.name])),
     [players],
   )
-  const me = meId ? names.get(meId) : undefined
 
   /*
    * 主行动卡只认「我在里面的那一场」。
@@ -85,38 +60,25 @@ export function Home() {
     else push({ name: 'summary', sessionId: l.sessionId })
   }
 
-  /*
-   * 只留段位，给右上角那枚徽章用。
-   *
-   * 详细的进度（MMR、近 5 场胜负）不在首页重复一遍 —— 那是「我的」
-   * 那一屏的内容，首页放一份只是把同一件事说两次。首页要回答的是
-   * 「现在有什么可以参加」，不是「我打得怎么样」。
-   */
-  const myProgress = useMemo(
-    () => (me ? progressOf(me.id, matches) : null),
-    [me, matches],
-  )
 
   return (
     <Screen tabBar>
+      {/*
+        头部只剩名字。原来这里有一句问候和一枚段位徽章 ——
+        「我打得怎么样」是「我的」那一屏的事，底下 tab 栏一直摆着，
+        在首页再放一份只是把同一件事说两遍，还把正事往下挤了一屏。
+      */}
       <header className="safe-top px-5 pb-2">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-h1 tracking-[0.08em]">RALLY</h1>
-            <p className="text-ink-500 mt-0.5 text-label">
-              {me ? greeting(me.name) : t('羽球社交竞技平台', 'Badminton, together')}
-            </p>
-          </div>
-          {me && myProgress && (
-            <button onClick={() => switchTab('me')} className="shrink-0" aria-label={t('我的', 'Me')}>
-              <RankChip level={myProgress.level} />
-            </button>
-          )}
-        </div>
+        <h1 className="text-h1 tracking-[0.08em]">RALLY</h1>
       </header>
 
       <Body>
-        {feed.length > 0 && <Ticker items={feed} onPick={openFeed} />}
+        {/*
+          最上面一排：公告，横着划。
+          原来这里是一条细细的滚动快讯（Ticker），内容和现在这排是同一份 ——
+          两个都放就是把同一件事说两遍，所以留看得清的那个。
+        */}
+        <NoticeBoard feed={feed} onOpen={openFeed} />
 
         {/*
           「装到手机上」。放在主行动卡上面，因为对一个还没装的人来说，
