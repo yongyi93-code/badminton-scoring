@@ -796,24 +796,47 @@ export async function refreshClubs(): Promise<ClubOutcome<Club[]>> {
   setClubsChecked(true)
 
   /*
-   * 一个群都没有，而配了默认球群 —— 自动进去，不问，不弹引导页。
+   * 配了默认球群时，那个群说了算 —— 不管你手上还有几个别的群。
    *
    * 这就是「取消球群门槛」那件事的全部实现：底下这套按群分区的机制
    * 一行没动（数据库靠它隔离，以后要做分国家的排名还得靠它），
    * 只是对用的人来说，「球群」这个概念不存在了 —— 注册完就在里面。
    *
+   * 第一版只处理「一个群都没有」的人，那是个真洞，而且它的症状
+   * 一点都不像 bug：
+   *
+   *   新人注册 → 一个群都没有 → 自动进默认群
+   *   老用户   → 本来就有群   → 这一段整个跳过，留在他原来那个群里
+   *
+   * 于是两拨人各在各的群里，数据库老老实实地把他们隔开。老用户开了局，
+   * 新人首页上一片空白 —— 而两边看到的界面都完全正常，谁也不会想到
+   * 「我们不在同一个群」。开局的人只会觉得「这 App 的同步坏了」。
+   *
+   * 所以判据不是「有没有群」，是「在不在默认那个群里」。
+   *
    * 放在这里而不是注册那一步：换台手机、清了缓存、重装 App 走的都是
    * 这条路，只在注册时加一次的话，其余几种情况的人照样会卡在门口。
    */
-  if (clubs.length === 0 && defaultClubCode) {
-    const joined = await joinClubByCode(defaultClubCode)
+  if (defaultClubCode) {
+    const wanted = defaultClubCode.trim().toUpperCase()
+    const mine = clubs.find((c) => c.code?.trim().toUpperCase() === wanted)
+    if (mine) {
+      // 已经是成员了。剩下要保证的只有一件事：当前指着的就是它。
+      if (clubId !== mine.id) switchTo(mine.id)
+      return res
+    }
+    const joined = await joinClubByCode(wanted)
     if (joined.ok) {
-      setClubs([joined.value])
+      /*
+       * 加进去并切过去。切群只换 club_id 再重拉，不搬数据 ——
+       * 原来那个群里的东西一行不动，还在那儿。
+       */
+      setClubs([...clubs, joined.value])
       switchTo(joined.value.id)
-      return { ok: true, value: [joined.value] }
+      return { ok: true, value: [...clubs, joined.value] }
     }
     /*
-     * 自动进群失败。不当成「你没有群」——那会把人送到建群那一屏去，
+     * 进不去。不当成「你没有群」——那会把人送到建群那一屏去，
      * 而这多半只是网络抽了一下。记成「问不到」，界面给的是重试。
      */
     setClubsChecked(false)

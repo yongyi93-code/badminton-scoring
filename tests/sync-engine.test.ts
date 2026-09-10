@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useApp } from '@/store/useApp'
+/**
+ * 默认球群的邀请码。
+ *
+ * 这一份要和下面 vi.mock('@/lib/supabase') 里导出的那个对上 ——
+ * 不能 import 真的那个，因为整个模块都被 mock 掉了。
+ */
+const DEFAULT_CODE = 'AAA111'
 
 /*
  * 同步引擎的接线部分：登录那一刻先拉后推、之后本机一改就推。
@@ -23,7 +30,14 @@ const cloud = vi.hoisted(() => ({
    * 都是「云端有哪些球员和比赛」—— 混在一起的话，每次摆数据都要
    * 记得捎上一行群记录，忘一次就是 clubId 被清空、然后十几条一起红。
    */
+  /** 我是成员的那些群。listMyClubs 查的就是它（策略只给我在的） */
   clubs: [] as { kind: string; id: string; data: unknown }[],
+  /**
+   * 世上所有的群，按邀请码查的时候用。
+   * 不设就退回 clubs —— 绝大多数用例里两者一样。
+   * 只有「我还不在这个群里，但它存在」那种局面才需要把它们分开。
+   */
+  allClubs: null as { kind: string; id: string; data: unknown }[] | null,
   /** 每次 insert 插了什么（建群、加成员走这条） */
   inserts: [] as { kind?: string; id?: string; data?: unknown; club_id?: string }[],
   /** 每次 upsert 推了哪些行，按顺序记下来 */
@@ -126,6 +140,27 @@ vi.mock('@/lib/supabase', () => {
   const channel = { on: () => channel, subscribe: () => channel }
   return {
     supabase: {
+      /*
+       * 按邀请码找群。真的那个是数据库里的 security definer 函数 ——
+       * 还没进群的人也查得到「有没有这个码」，否则永远进不去。
+       *
+       * 所以这里查的是 allClubs（世上所有的群），不是 clubs（我在的那些）。
+       * 这两个必须分开：「自动进默认球群」那条路的前提就是
+       * 「我还不在里面，但它存在」，用同一个列表根本造不出这个局面。
+       *
+       * 这个 rpc 原来整个不存在，于是自动进群那条路一次都没被测到。
+       */
+      rpc: (name: string, args: { invite_code?: string }) => {
+        if (name !== 'club_by_code') return Promise.resolve({ data: null, error: null })
+        const all = cloud.allClubs ?? cloud.clubs
+        const hit = all.find(
+          (c) => (c.data as { code?: string }).code === args.invite_code,
+        )
+        return Promise.resolve({
+          data: hit ? [{ id: hit.id, name: (hit.data as { name: string }).name }] : [],
+          error: null,
+        })
+      },
       from: () => table,
       channel: () => channel,
       removeChannel: () => Promise.resolve('ok'),
@@ -143,6 +178,13 @@ vi.mock('@/lib/supabase', () => {
     cloudReady: true,
     /* 测试里永远不是从邮件链接进来的 */
     arrivedFromAuthLink: false,
+    /*
+     * 配了默认球群。这一条必须导出：sync.ts 从这个模块拿它，
+     * mock 里漏掉的话它在测试里永远是 undefined，
+     * 于是「所有人自动进同一个群」那整条路一次都跑不到 ——
+     * 而那正是这次要钉住的东西。
+     */
+    defaultClubCode: 'AAA111',
   }
 })
 
@@ -171,8 +213,16 @@ beforeEach(() => {
    * 都得在名单里 —— 名单里没有的群，refreshClubs 会当成「已经被
    * 移出去了」，把本机切到别处。
    */
+  cloud.allClubs = null
   cloud.clubs = [
-    { kind: 'club', id: 'club_test', data: { id: 'club_test', name: '测试球群', code: 'AAA111', createdAt: 0 } },
+    /*
+     * 这个群的邀请码故意就是「默认球群」那一个。
+     *
+     * 配了默认球群之后，同步开起来的第一件事是把人拨到那个群里去 ——
+     * 夹具里的群要是别的码，每一条测试都会先跑去 join 一个假云端里
+     * 根本不存在的群，然后整份同步就停在那儿了。
+     */
+    { kind: 'club', id: 'club_test', data: { id: 'club_test', name: '测试球群', code: DEFAULT_CODE, createdAt: 0 } },
     { kind: 'club', id: 'club_abc', data: { id: 'club_abc', name: '另一个群', code: 'BBB222', createdAt: 0 } },
   ]
   cloud.upserts = []
@@ -517,7 +567,6 @@ describe('清空 store 和同步撞在一起', () => {
   it('拉取带上球群条件 —— 流量那条靠的就是这一句', async () => {
     cloud.session = { user: { id: 'uid-1' } }
     cloud.lastSelectFilters = null
-    useApp.getState().setClubId('club_abc')
 
     await startSync()
 
@@ -527,8 +576,57 @@ describe('清空 store 和同步撞在一起', () => {
      * 这一句是那个 130 倍差距的解法，所以要有测试盯着它。
      */
     expect(cloud.lastSelectFilters).toMatchObject({
-      club_id: 'club_abc',
+      club_id: 'club_test',
       deleted: false,
+    })
+  })
+
+  /*
+   * 配了默认球群时，那个群说了算。
+   *
+   * 这一组是从一个真实故障倒推出来的：老用户本来就有群，新人注册后
+   * 自动进默认群 —— 两拨人各在各的群里，数据库老老实实把他们隔开。
+   * 老用户开了局，新人首页上一片空白，而两边界面都完全正常。
+   */
+  describe('所有人都会被拨到默认球群', () => {
+    it('本机指着别的群：拉回默认那个', async () => {
+      cloud.session = { user: { id: 'uid-1' } }
+      useApp.getState().setClubId('club_abc')
+
+      await startSync()
+
+      expect(useApp.getState().clubId).toBe('club_test')
+      expect(cloud.lastSelectFilters).toMatchObject({ club_id: 'club_test' })
+    })
+
+    it('一个群都没有：加进默认那个', async () => {
+      cloud.session = { user: { id: 'uid-1' } }
+      useApp.getState().setClubId(null)
+      cloud.inserts = []
+      /*
+       * 我一个群都不在（刚注册的人就是这样），但默认那个群是存在的 ——
+       * 这正是自动进群要处理的局面。
+       */
+      cloud.allClubs = [...cloud.clubs]
+      cloud.clubs = []
+
+      await startSync()
+
+      // 假云端的 club_by_code 认这个码，join 完就该指着它
+      expect(useApp.getState().clubId).toBe('club_test')
+      // 而且真的往 club_members 里插了一条
+      expect(cloud.inserts.some((r) => 'club_id' in r)).toBe(true)
+    })
+
+    it('已经在默认群里：原样不动，不多跑一次 join', async () => {
+      cloud.session = { user: { id: 'uid-1' } }
+      cloud.inserts = []
+
+      await startSync()
+
+      expect(useApp.getState().clubId).toBe('club_test')
+      // 已经是成员了就不该再往 club_members 里插一条
+      expect(cloud.inserts.filter((r) => 'club_id' in r)).toHaveLength(0)
     })
   })
 

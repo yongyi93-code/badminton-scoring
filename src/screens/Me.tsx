@@ -671,8 +671,14 @@ export function Me() {
                     'Just a name. After that this page shows your rank, record and character, and you are put on court automatically when you start a session.',
                   )}
             </p>
-            {/* 在好几个群里的人，最可能想做的其实是切回去，不是再建一个自己 */}
-            {clubs.length > 1 && (
+            {/*
+              在好几个群里的人，最可能想做的其实是切回去，不是再建一个自己。
+
+              配了默认球群时这个按钮不出现：那种模式下每次同步都会把人
+              拨回默认群，按了也会被拨回来 —— 一个点了不起作用的按钮
+              比没有这个按钮糟得多。
+            */}
+            {clubs.length > 1 && !defaultClubCode && (
               <button
                 onClick={() => setClubOpen(true)}
                 className="text-brand-600 mt-2 text-label font-semibold"
