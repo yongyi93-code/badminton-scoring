@@ -22,16 +22,22 @@ const VenueMap = lazy(() =>
 )
 
 /*
- * 发现。
+ * 排名。
  *
- * 现在只有球馆一件事。
+ * 这一屏原来叫「发现」，里面摆着全体排名、地图和一份球馆列表 ——
+ * 「发现」是个什么都能往里塞的名字，而实际上人点进来只为一件事：
+ * 看排名。所以改叫排名，内容也按这个收紧。
+ *
+ * 两种排名：
+ *   全体排名   所有人按 MMR 排。MMR 跨场馆累计，换个馆不会变。
+ *   球馆排名   只算在那个馆打的比赛，所以同一个人在不同馆名次不一样。
+ *              这才是「今晚去城中，谁最能打」的答案。
+ *
+ * 底下那份球馆列表点进去就是那个馆的排名，不再是球馆详情页 ——
+ * 地址和怎么去从地图上的点、以及球局看板里的「怎么去」进。
  *
  * 「球员库」那个入口去掉了就没再回来：翻一遍所有人的名册除了让人
  * 互相打量之外没有用途。
- *
- * 「全体排名」按用户要求加回来了，但和当初那个全员榜不是一回事：
- * 它只排名次，按 MMR —— 一个跨场馆累计、和「今晚谁状态好」无关的
- * 长期数字。名册是「这些人都是谁」，排名是「大家现在到哪一档了」。
  */
 
 export function Discover() {
@@ -63,9 +69,9 @@ export function Discover() {
   return (
     <Screen tabBar>
       <header className="safe-top px-5 pb-3">
-        <h1 className="text-h1">{t('发现', 'Discover')}</h1>
+        <h1 className="text-h1">{t('排名', 'Rankings')}</h1>
         <p className="text-ink-500 mt-1 text-label">
-          {t('全体排名，和你常去的球馆', 'The overall ranking, and your regular venues')}
+          {t('全体排名，和每个球馆各自的排名', 'Overall, and per-venue')}
         </p>
       </header>
 
@@ -129,20 +135,27 @@ export function Discover() {
           </>
         )}
 
-        <SectionTitle>{t('常去的球馆', 'Your venues')}</SectionTitle>
+        <SectionTitle>{t('球馆排名', 'By venue')}</SectionTitle>
         {venues.length === 0 ? (
           <Card>
             <p className="text-ink-500 text-label">
               {t(
-                '打完第一场球之后，去过的球馆会自动出现在这里。',
-                'Venues show up here once you have played a match at one.',
+                '打完第一场球之后，去过的球馆会自动出现在这里，点进去看那个馆的排名。',
+                'Venues show up here once you have played at one — tap for that venue’s ranking.',
               )}
             </p>
           </Card>
         ) : (
           <div className="space-y-3">
             {venues.map((v) => (
-              <Card key={v.key} onClick={() => push({ name: 'venue', venue: v.label })}>
+              /*
+                点进去是那个馆的排名，不是球馆详情页。
+                这一屏叫排名，列表里的每一条就该通向一份排名 ——
+                地址和怎么去走地图上的点，以及球局看板里那行「怎么去」。
+                传的是 key 不是 label：排行榜按归一化后的 key 归组，
+                传 label 会让「城中羽球馆」和「城中 羽球馆」算成两个馆。
+              */
+              <Card key={v.key} onClick={() => push({ name: 'leaderboard', venue: v.key })}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-title">{v.label}</p>

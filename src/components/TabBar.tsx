@@ -5,7 +5,7 @@ import { cx } from '@/components/ui'
 
 /*
  * 底部主导航。规格里写的是「底部四项」，但后面列了五项 ——
- * 首页 / 球局 / + 开球 / 发现 / 我的。按五项做：中间那个不是 tab，
+ * 首页 / 球局 / + 开球 / 排名 / 我的。按五项做：中间那个不是 tab，
  * 它不代表一个可以停留的地方，而是直接开一条新球局的流程，
  * 所以做成凸起的主操作，也不参与选中态。
  */
@@ -34,10 +34,16 @@ const ICONS: Record<TabName, ReactNode> = {
       <path d="M12 5v14M3 12h18" {...stroke} />
     </>
   ),
+  /*
+    领奖台：三根高低不一的柱子，中间最高。
+    原来是个指南针（那时候这一栏叫「发现」）—— 改叫排名之后，
+    指南针指的是「到处逛逛」，和这一屏里的两份榜对不上。
+  */
   discover: (
     <>
-      <circle cx="12" cy="12" r="8.5" {...stroke} />
-      <path d="m15 9-2.2 4.8L8 16l2.2-4.8L15 9Z" {...stroke} />
+      <path d="M9 8.5h6v11H9z" {...stroke} />
+      <path d="M3.5 13h5.5v6.5H3.5z" {...stroke} />
+      <path d="M15 11h5.5v8.5H15z" {...stroke} />
     </>
   ),
   me: (
@@ -51,7 +57,7 @@ const ICONS: Record<TabName, ReactNode> = {
 const LABELS: Record<TabName, [string, string]> = {
   home: ['首页', 'Home'],
   sessions: ['球局', 'Sessions'],
-  discover: ['发现', 'Discover'],
+  discover: ['排名', 'Rankings'],
   me: ['我的', 'Me'],
 }
 
