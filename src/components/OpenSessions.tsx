@@ -3,7 +3,7 @@ import { useT } from '@/lib/i18n'
 import { activeSessionOf, isFull, lastActivityAt, spotsLeft, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Button, Card, Pill, SectionTitle } from '@/components/ui'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatTime } from '@/lib/format'
 import { venueLabel } from '@/lib/venues'
 
 /* ------------------------------------------------------------------ *
@@ -97,10 +97,18 @@ export function OpenSessions() {
               >
                 <Pill tone="brand">{t('进行中', 'Live')}</Pill>
                 <p className="mt-2 truncate text-h2">{venueLabel(s.venue)}</p>
+                {/*
+                  什么时候，单独一行、颜色更重。
+                  这张卡是给不认识这一局的人看的，而「去不去」是靠时间决定的 ——
+                  八点的局和十点的局是两回事，挤在一堆人数场数里根本看不见。
+                  老球局没有时间，那就只显示日期。
+                */}
+                <p className="text-ink-700 mt-1 truncate text-label font-medium">
+                  {formatDate(s.date)}
+                  {formatTime(s.time) ? ` · ${formatTime(s.time)}` : ''}
+                </p>
                 <p className="text-ink-500 mt-0.5 truncate text-label">
-                  {host
-                    ? t(`${host} 开的 · `, `${host} started it · `)
-                    : `${formatDate(s.date)} · `}
+                  {host ? t(`${host} 开的 · `, `${host} started it · `) : ''}
                   {s.maxPlayers
                     ? t(
                         `${s.playerIds.length}/${s.maxPlayers} 人 · 已打 ${playedIn(s.id)} 场`,

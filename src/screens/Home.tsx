@@ -3,11 +3,10 @@ import { useMemo } from 'react'
 import { playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { OpenSessions } from '@/components/OpenSessions'
-import { Announcements } from '@/components/Announcements'
 import { InstallCard } from '@/components/InstallCard'
-import { Body, Button, Card, Pill, Screen, SectionTitle } from '@/components/ui'
+import { Body, Button, Card, Pill, Screen } from '@/components/ui'
 import { Ticker } from '@/components/Ticker'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatTime } from '@/lib/format'
 import { buildFeed, type FeedItem } from '@/lib/feed'
 import { progressOf } from '@/lib/avatar'
 import { RankChip } from '@/components/RankMedal'
@@ -35,12 +34,6 @@ function greeting(name: string): string {
   return `Good evening, ${name}`
 }
 
-const ARROW = (
-  <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
-    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m9 6 6 6-6 6" />
-  </svg>
-)
 
 export function Home() {
   const t = useT()
@@ -62,13 +55,6 @@ export function Home() {
    */
   const active = sessions.find(
     (s) => s.status === 'active' && (!meId || s.playerIds.includes(meId)),
-  )
-  const past = useMemo(
-    () =>
-      sessions
-        .filter((s) => s.status === 'ended')
-        .sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt)),
-    [sessions],
   )
 
   /* 进行中的那几场，首页直接把实时比分摆出来 —— 规格 §A 的主行动卡 */
@@ -133,13 +119,6 @@ export function Home() {
         {feed.length > 0 && <Ticker items={feed} onPick={openFeed} />}
 
         {/*
-          人工发的消息摆在滚动快讯下面、主行动卡上面。
-          快讯是算出来的（谁升段、谁连胜），这些是有人说的（改场地、
-          暂停一次）—— 后者更要紧，所以位置更靠上、不滚动。
-        */}
-        <Announcements />
-
-        {/*
           「装到手机上」。放在主行动卡上面，因为对一个还没装的人来说，
           这是这一屏最要紧的一件事 —— 不装的话他下次根本找不回来。
           装过、或者他划掉过，这块自己不出现。
@@ -157,7 +136,8 @@ export function Home() {
                 <Pill tone="brand">{t('进行中', 'Live')}</Pill>
                 <p className="mt-2 truncate text-h2">{venueLabel(active.venue)}</p>
                 <p className="text-ink-500 mt-0.5 text-label">
-                  {formatDate(active.date)} ·{' '}
+                  {formatDate(active.date)}
+                  {formatTime(active.time) ? ` · ${formatTime(active.time)}` : ''} ·{' '}
                   {t(
                     `${active.playerIds.length} 人 · ${active.courtCount} 片场 · 已打 ${playedIn(active.id)} 场`,
                     `${active.playerIds.length} players · ${active.courtCount} courts · ${playedIn(active.id)} played`,
@@ -215,39 +195,12 @@ export function Home() {
 
         <OpenSessions />
 
-        {/* 最近球局最多三条，完整的历史在「球局」那个 tab 里 */}
-        {past.length > 0 && (
-          <>
-            <SectionTitle
-              right={
-                <Button size="sm" variant="tertiary" onClick={() => switchTab('sessions')}>
-                  {t('查看全部', 'See all')}
-                </Button>
-              }
-            >
-              {t('最近球局', 'Recent sessions')}
-            </SectionTitle>
-            <div className="space-y-3">
-              {past.slice(0, 3).map((s) => (
-                <Card key={s.id} onClick={() => push({ name: 'summary', sessionId: s.id })}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-title">{venueLabel(s.venue)}</p>
-                      <p className="text-ink-500 mt-0.5 text-label">
-                        {formatDate(s.date)} ·{' '}
-                        {t(
-                          `${s.playerIds.length} 人 · ${playedIn(s.id)} 场`,
-                          `${s.playerIds.length} players · ${playedIn(s.id)} matches`,
-                        )}
-                      </p>
-                    </div>
-                    {ARROW}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </>
-        )}
+        {/*
+          首页到此为止。
+          「最近球局」原来摆在这下面，现在没了 —— 它回答的是「我们打过什么」，
+          而这一屏要回答的是「现在有什么可以参加」。翻旧账去「球局」那个 tab，
+          那里本来就有全部历史。
+        */}
       </Body>
     </Screen>
   )

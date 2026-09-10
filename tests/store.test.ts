@@ -1,5 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useApp, avatarOf, activeSessionOf, lastActivityAt } from '@/store/useApp'
+import type { SessionDraft } from '@/store/useApp'
+
+/** 一份能用的开局草稿，只写这一条测试关心的那几项 */
+const draft = (patch: Partial<SessionDraft> = {}): SessionDraft => ({
+  date: '2026-09-10',
+  venue: '城中羽球馆',
+  courtCount: 2,
+  playerIds: [],
+  defaultType: 'doubles',
+  ...patch,
+})
 
 /*
  * store 的行为大多是「改一个字段，另一个字段得跟着动」，
@@ -426,43 +437,83 @@ describe('同一时间只能在一场球局里', () => {
 })
 
 /*
- * 首页那条滚动快讯全部是算出来的（谁升段、谁连胜）。公告是「有人说的」
- * 那一半 —— 改场地、暂停一次这类事算不出来，只能有人发。
+ * 消息是「有人说的」那一半 —— 六点半改去力天、我迟到十分钟，这类事
+ * 算不出来，只能有人发。它跟着球局走：在局内发，只有这一局的人看得见。
  */
-describe('公告', () => {
-  it('发出去之后带着作者和时间', () => {
+describe('局内消息', () => {
+  it('发出去之后带着作者、时间和球局', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const a = useApp.getState().postAnnouncement('这周五改去力天', me.id)
+    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const a = useApp.getState().postAnnouncement('我迟到十分钟', me.id, s.id)
 
     expect(a).not.toBeNull()
     expect(a!.authorId).toBe(me.id)
-    expect(a!.text).toBe('这周五改去力天')
+    expect(a!.text).toBe('我迟到十分钟')
+    expect(a!.sessionId).toBe(s.id)
     expect(useApp.getState().announcements).toHaveLength(1)
+  })
+
+  it('没有球局就发不出去 —— 那样的消息没有收信人', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    expect(useApp.getState().postAnnouncement('随便说说', me.id, '')).toBeNull()
+    expect(useApp.getState().announcements).toHaveLength(0)
   })
 
   it('空白的不发 —— 否则手滑就会冒出一条空消息', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    expect(useApp.getState().postAnnouncement('   ', me.id)).toBeNull()
+    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    expect(useApp.getState().postAnnouncement('   ', me.id, s.id)).toBeNull()
     expect(useApp.getState().announcements).toHaveLength(0)
   })
 
   it('前后空白去掉', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    expect(useApp.getState().postAnnouncement('  记得带钱  ', me.id)!.text).toBe('记得带钱')
+    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    expect(
+      useApp.getState().postAnnouncement('  记得带球  ', me.id, s.id)!.text,
+    ).toBe('记得带球')
+  })
+
+  it('两场球局的消息各归各的', () => {
+    const me = useApp.getState().addPlayer('Yy', 'M')
+    const s1 = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    useApp.getState().endSession(s1.id)
+    const s2 = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    useApp.getState().postAnnouncement('一号局的事', me.id, s1.id)
+    useApp.getState().postAnnouncement('二号局的事', me.id, s2.id)
+
+    const all = useApp.getState().announcements
+    expect(all.filter((a) => a.sessionId === s1.id).map((a) => a.text)).toEqual(['一号局的事'])
+    expect(all.filter((a) => a.sessionId === s2.id).map((a) => a.text)).toEqual(['二号局的事'])
   })
 
   it('撤得掉', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const a = useApp.getState().postAnnouncement('下周暂停', me.id)!
+    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const a = useApp.getState().postAnnouncement('下周暂停', me.id, s.id)!
     useApp.getState().deleteAnnouncement(a.id)
     expect(useApp.getState().announcements).toHaveLength(0)
   })
 
   it('清空数据时一起清掉', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    useApp.getState().postAnnouncement('测试', me.id)
+    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    useApp.getState().postAnnouncement('测试', me.id, s.id)
     useApp.getState().resetAll()
     expect(useApp.getState().announcements).toEqual([])
+  })
+})
+
+describe('球局几点开打', () => {
+  it('开局时填的时间存了下来', () => {
+    const s = useApp.getState().createSession(draft({ time: '20:30' }))
+    expect(s.time).toBe('20:30')
+  })
+
+  it('没填时间也开得了局 —— 老球局就是这样的', () => {
+    const s = useApp.getState().createSession(draft({}))
+    expect(s.time).toBeUndefined()
+    expect(s.status).toBe('active')
   })
 })
 

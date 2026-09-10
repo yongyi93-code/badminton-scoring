@@ -85,6 +85,8 @@ const newId = () =>
 
 export type SessionDraft = {
   date: string
+  /** 几点开打，"HH:mm" */
+  time?: string
   venue: string
   courtCount: number
   playerIds: string[]
@@ -253,7 +255,11 @@ type AppState = {
   equipItem: (playerId: string, slot: AvatarSlot, itemId: string | null) => void
 
   /** 发一条公告。空字符串不发，返回发出去的那条（没发就是 null） */
-  postAnnouncement: (text: string, authorId: string) => Announcement | null
+  postAnnouncement: (
+    text: string,
+    authorId: string,
+    sessionId: string,
+  ) => Announcement | null
   /** 撤掉一条公告 */
   deleteAnnouncement: (id: string) => void
 
@@ -444,6 +450,7 @@ export const useApp = create<AppState>()(
         const session: Session = {
           id: newId(),
           date: draft.date,
+          time: draft.time,
           venue: draft.venue.trim(),
           courtCount: draft.courtCount,
           playerIds: [...draft.playerIds],
@@ -659,14 +666,17 @@ export const useApp = create<AppState>()(
         }))
       },
 
-      postAnnouncement(text, authorId) {
+      postAnnouncement(text, authorId, sessionId) {
         const body = text.trim()
         if (!body) return null
+        // 消息一定属于某一场球局 —— 没有球局就没有收信人
+        if (!sessionId) return null
         const item: Announcement = {
           id: newId(),
           text: body,
           authorId,
           createdAt: Date.now(),
+          sessionId,
         }
         set((s) => ({ announcements: [...s.announcements, item] }))
         return item

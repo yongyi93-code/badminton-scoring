@@ -19,7 +19,7 @@ import {
 } from '@/components/ui'
 import { PlayerRow } from '@/components/PlayerBits'
 import { AddGuest } from '@/components/AddGuest'
-import { todayISO } from '@/lib/format'
+import { nextHalfHour, todayISO } from '@/lib/format'
 import { buildSchedule, matchInput } from '@/lib/sessionFormat'
 import { progressByPlayer } from '@/lib/avatar'
 import { recentVenues, venueKey } from '@/lib/venues'
@@ -74,6 +74,12 @@ export function SessionSetup() {
   const lastCourts = sessions[0]?.courtCount ?? 2
 
   const [date, setDate] = useState(todayISO())
+  /*
+   * 几点的局。默认是「往后取整到下一个半点」——
+   * 绝大多数时候开局就是「现在就开打」，那这一栏不用动；
+   * 要约明天晚上八点的，改一下就是。
+   */
+  const [time, setTime] = useState(nextHalfHour())
   const [venue, setVenue] = useState(lastVenue)
   const [courtCount, setCourtCount] = useState(lastCourts)
   /** 人数上限，0 = 不限 */
@@ -209,6 +215,7 @@ export function SessionSetup() {
 
     const session = createSession({
       date,
+      time,
       venue,
       courtCount,
       playerIds: selected,
@@ -287,6 +294,10 @@ export function SessionSetup() {
       <Body>
         {step === 0 && (
         <Card className="space-y-4">
+          {/*
+            日期和时间并排：球局在首页对所有人公开，别人要靠这两栏决定去不去。
+            光有「9 月 10 号 · 城中」是决定不了的，八点的局和十点的局是两回事。
+          */}
           <div className="grid grid-cols-2 gap-3">
             <Field label={t('日期', 'Date')}>
               <input
@@ -296,10 +307,18 @@ export function SessionSetup() {
                 onChange={(e) => setDate(e.target.value)}
               />
             </Field>
-            <Field label={t('场地数', 'Courts')}>
-              <Stepper value={courtCount} onChange={setCourtCount} min={1} max={8} />
+            <Field label={t('几点开打', 'Start time')}>
+              <input
+                type="time"
+                className={inputClass}
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
             </Field>
           </div>
+          <Field label={t('场地数', 'Courts')}>
+            <Stepper value={courtCount} onChange={setCourtCount} min={1} max={8} />
+          </Field>
 
           {/*
             人数上限。默认不限 —— 大多数时候没人在乎，而一个默认就卡着的

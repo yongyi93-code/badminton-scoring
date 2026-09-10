@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Body, Button, Card, EmptyState, Pill, Screen, Segmented } from '@/components/ui'
-import { formatDate, formatMonth } from '@/lib/format'
+import { formatDate, formatMonth, formatTime } from '@/lib/format'
 import { FORMAT_LABELS, formatOf, type Session } from '@/types'
 import { venueLabel } from '@/lib/venues'
 
@@ -71,7 +71,8 @@ export function Sessions() {
               {active && <Pill tone="brand">{t('进行中', 'Live')}</Pill>}
             </div>
             <p className="text-ink-500 mt-1 text-label">
-              {formatDate(s.date)} ·{' '}
+              {formatDate(s.date)}
+              {formatTime(s.time) ? ` · ${formatTime(s.time)}` : ''} ·{' '}
               {t(`${s.playerIds.length} 人`, `${s.playerIds.length} players`)} ·{' '}
               {t(`${s.courtCount} 片场`, `${s.courtCount} courts`)}
             </p>

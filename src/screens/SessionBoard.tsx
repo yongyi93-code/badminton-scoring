@@ -21,9 +21,10 @@ import {
 import { Avatar } from '@/components/PlayerBits'
 import { AddGuest } from '@/components/AddGuest'
 import { VenueAddressLine } from '@/components/VenueAddress'
+import { Announcements } from '@/components/Announcements'
 import { ShareSessionButton } from '@/components/ShareSession'
 import { activeGameIndex, gamesWon } from '@/lib/scoring'
-import { duration } from '@/lib/format'
+import { duration, formatTime } from '@/lib/format'
 import { pairingNotes, pickNextMatch, playerLoads } from '@/lib/rotation'
 import {
   LOSS_POINTS,
@@ -822,8 +823,12 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       <TopBar
         title={session.venue || t('球局', 'Session')}
         subtitle={t(
-          `${t(...FORMAT_LABELS[format])} · ${session.rules.pointsToWin} 分制 · ${attending.length} 人 · 已打 ${finished.length} 场`,
-          `${t(...FORMAT_LABELS[format])} · to ${session.rules.pointsToWin} · ${attending.length} players · ${finished.length} played`,
+          /*
+            几点开打排在最前面：外人点进来看这一局能不能加入，
+            第一眼要的就是这个。老球局没有时间，那一段就整个不出现。
+          */
+          `${formatTime(session.time) ? `${formatTime(session.time)} · ` : ''}${t(...FORMAT_LABELS[format])} · ${session.rules.pointsToWin} 分制 · ${attending.length} 人 · 已打 ${finished.length} 场`,
+          `${formatTime(session.time) ? `${formatTime(session.time)} · ` : ''}${t(...FORMAT_LABELS[format])} · to ${session.rules.pointsToWin} · ${attending.length} players · ${finished.length} played`,
         )}
         onBack={() => resetTo({ name: 'home' })}
         right={
@@ -849,6 +854,14 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         <StakeBar session={session} />
         {/* 怎么去 —— 只在有人填过地址时出现，没填就当它不存在 */}
         <VenueAddressLine venue={session.venue} />
+        {/*
+          局内消息。只有在这一局里的人看得见、也只有他们发得了 ——
+          「六点半改去力天」对不来的人是噪音。
+          外人点进来看这一局能不能加入时，看到的是纯净的球局信息。
+        */}
+        {meId && session.playerIds.includes(meId) && (
+          <Announcements sessionId={session.id} />
+        )}
         {progress.shouldWrapUp && (
           <div className="rounded-card border border-brand-500 bg-brand-100 px-4 py-3.5">
             <p className="font-semibold text-brand-600">{progress.wrapUpReason}</p>

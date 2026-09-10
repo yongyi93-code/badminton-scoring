@@ -769,7 +769,11 @@ describe('公告也要同步', () => {
     cloud.upserts = []
 
     const me = useApp.getState().addPlayer('Yy', 'M')
-    useApp.getState().postAnnouncement('这周五改去力天', me.id)
+    const s = useApp.getState().createSession({
+      date: '2026-09-10', venue: '城中', courtCount: 1,
+      playerIds: [me.id], defaultType: 'doubles',
+    })
+    useApp.getState().postAnnouncement('我迟到十分钟', me.id, s.id)
     await vi.advanceTimersByTimeAsync(700)
 
     const kinds = cloud.upserts.flat().map((r) => r.kind)

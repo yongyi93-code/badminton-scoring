@@ -29,6 +29,46 @@ export function formatDate(iso: string): string {
     : `${d} ${MONTHS_EN[m - 1]}, ${WEEKDAYS_EN[day]}`
 }
 
+/**
+ * 往后取整到下一个半点，"HH:mm"。
+ *
+ * 开局默认值用它：绝大多数时候开局就是「现在就开打」，那这一栏不用动。
+ * 取整到半点而不是用当前的分钟数，是因为球局本来就是按半小时约的 ——
+ * 「七点四十三分的局」不是一个人会写的东西。
+ */
+export function nextHalfHour(now = new Date()): string {
+  const d = new Date(now)
+  d.setSeconds(0, 0)
+  d.setMinutes(d.getMinutes() <= 30 ? 30 : 60)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * 几点：24 小时制的 "20:30" → 中文「晚上 8:30」/ 英文 "8:30 pm"。
+ *
+ * 中文分早上／中午／下午／晚上，因为「8:30」在中文里天然有歧义 ——
+ * 羽球局早上八点半和晚上八点半都有人打。英文用 am/pm 就够，
+ * 硬翻成 "evening 8:30" 反而没人这么说。
+ *
+ * 拿不准的输入（空的、格式不对）返回 null，让调用方自己决定不显示 ——
+ * 返回原样字符串的话，页面上会冒出一个「undefined」之类的东西。
+ */
+export function formatTime(hhmm: string | undefined): string | null {
+  if (!hhmm) return null
+  const [h, m] = hhmm.split(':').map(Number)
+  if (!Number.isInteger(h) || !Number.isInteger(m)) return null
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null
+  const mm = String(m).padStart(2, '0')
+  if (lang() !== 'zh') {
+    const ampm = h < 12 ? 'am' : 'pm'
+    const h12 = h % 12 === 0 ? 12 : h % 12
+    return `${h12}:${mm} ${ampm}`
+  }
+  const part = h < 6 ? '凌晨' : h < 12 ? '早上' : h < 13 ? '中午' : h < 18 ? '下午' : '晚上'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${part} ${h12}:${mm}`
+}
+
 /** 带年份的完整日期 */
 export function formatDateFull(iso: string): string {
   const [y] = iso.split('-').map(Number)
