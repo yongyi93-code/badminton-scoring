@@ -210,7 +210,16 @@ type AppState = {
   updatePlayer: (id: string, patch: Partial<Omit<Player, 'id'>>) => void
   setPlayerArchived: (id: string, archived: boolean) => void
 
-  createSession: (draft: SessionDraft) => Session
+  /**
+   * 开一个新球局。已经在某一场进行中的球局里就开不了，返回 null。
+   *
+   * 一个人同一时间只能在一场里 —— 加入别人的局早就是这条规矩了
+   * （见 joinSession），开自己的局却一直没拦，于是同一个人能挂着
+   * 五个「进行中」，首页上五条都在，别人根本分不出该进哪个。
+   *
+   * 要开新的就先把手上那一场结束，或者退出去。
+   */
+  createSession: (draft: SessionDraft) => Session | null
   updateSession: (id: string, patch: Partial<Omit<Session, 'id'>>) => void
   endSession: (id: string) => void
   reopenSession: (id: string) => void
@@ -454,6 +463,18 @@ export const useApp = create<AppState>()(
       },
 
       createSession(draft) {
+        /*
+         * 已经在某一场进行中的球局里就不给开。
+         *
+         * 挡在这一层而不是只挡界面：界面上开局的入口有三个
+         * （首页、球局页、底下那个 +），漏一个就等于没挡。
+         *
+         * 按 meId 判，不是按「我建的局」：他被人拉进别人的局里也算
+         * 「在一场里」，那时候再开一个新的同样是两头顾不上。
+         */
+        const me = get().meId
+        if (me && activeSessionOf(get().sessions, me)) return null
+
         const session: Session = {
           id: newId(),
           date: draft.date,

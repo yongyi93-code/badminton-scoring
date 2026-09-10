@@ -228,6 +228,22 @@ let resume: (() => void) | null = null
 const pushedKeys = () =>
   cloud.upserts.flat().map((r) => `${r.kind} ${r.id}`)
 
+/**
+ * 开一个球局，并且断言它真的开出来了。
+ *
+ * createSession 现在可能返回 null（一个人同一时间只能在一场里）。
+ * 绝大多数用例不关心那条规矩，只是需要一个球局 —— 与其每处写一个 `!`，
+ * 不如在这里一次说清楚：走这个口子的，就是「这一场一定开得出来」。
+ * 真要测那条规矩的用例直接调 createSession，看它返不返回 null。
+ */
+const newSession = (
+  draft: Parameters<ReturnType<typeof useApp.getState>['createSession']>[0],
+) => {
+  const s = useApp.getState().createSession(draft)
+  if (!s) throw new Error('球局没开出来 —— 多半是这台设备已经在另一场里了')
+  return s
+}
+
 beforeEach(() => {
   // sync.ts 会挂 online 事件，node 环境里没有 window
   vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
@@ -361,7 +377,7 @@ describe('登录之后本机再改', () => {
 
   it('删掉的推成 deleted，而不是从推送里消失', async () => {
     await startSync()
-    const s = useApp.getState().createSession({
+    const s = newSession({
       date: '2026-09-01',
       venue: '中央球馆',
       courtCount: 2,
@@ -965,7 +981,7 @@ describe('公告也要同步', () => {
     cloud.upserts = []
 
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const s = useApp.getState().createSession({
+    const s = newSession({
       date: '2026-09-10', venue: '城中', courtCount: 1,
       playerIds: [me.id], defaultType: 'doubles',
     })

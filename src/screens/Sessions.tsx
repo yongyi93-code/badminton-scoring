@@ -1,6 +1,6 @@
 import { useT } from '@/lib/i18n'
 import { useMemo, useState } from 'react'
-import { useApp } from '@/store/useApp'
+import { activeSessionOf, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Body, Button, Card, EmptyState, Pill, Screen, Segmented, cx } from '@/components/ui'
 import {
@@ -31,8 +31,10 @@ type Filter = 'byDate' | 'past'
  */
 export function Sessions() {
   const t = useT()
-  const { sessions, matches } = useApp()
+  const { sessions, matches, meId } = useApp()
   const push = useNav((s) => s.push)
+  /** 我现在在哪一场里。在的话就开不了新的（见 store 的 createSession） */
+  const inSession = useMemo(() => activeSessionOf(sessions, meId), [sessions, meId])
   const [filter, setFilter] = useState<Filter>('byDate')
   /** 日历那一条选中的是哪一天 */
   const [day, setDay] = useState(todayISO())
@@ -246,9 +248,21 @@ export function Sessions() {
                     'Try another day, or start one — everyone sees it on their home screen',
                   )}
                 />
-                <Button variant="primary" size="lg" block onClick={() => push({ name: 'setup' })}>
-                  {t('开新球局', 'New session')}
-                </Button>
+                {/* 已经在一场里就开不了新的 —— 那时候给的出路是回去那一场 */}
+                {inSession ? (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    block
+                    onClick={() => push({ name: 'board', sessionId: inSession.id })}
+                  >
+                    {t(`回到「${venueLabel(inSession.venue)}」那一场`, 'Back to your session')}
+                  </Button>
+                ) : (
+                  <Button variant="primary" size="lg" block onClick={() => push({ name: 'setup' })}>
+                    {t('开新球局', 'New session')}
+                  </Button>
+                )}
               </>
             ) : (
               <div className="space-y-3">{onDay.map(row)}</div>

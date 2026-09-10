@@ -17,6 +17,22 @@ const draft = (patch: Partial<SessionDraft> = {}): SessionDraft => ({
  * 这种跨字段的联动最容易在改动别处时悄悄断掉，值得钉死。
  */
 
+/**
+ * 开一个球局，并且断言它真的开出来了。
+ *
+ * createSession 现在可能返回 null（一个人同一时间只能在一场里）。
+ * 绝大多数用例不关心那条规矩，只是需要一个球局 —— 与其每处写一个 `!`，
+ * 不如在这里一次说清楚：走这个口子的，就是「这一场一定开得出来」。
+ * 真要测那条规矩的用例直接调 createSession，看它返不返回 null。
+ */
+const newSession = (
+  draft: Parameters<ReturnType<typeof useApp.getState>['createSession']>[0],
+) => {
+  const s = useApp.getState().createSession(draft)
+  if (!s) throw new Error('球局没开出来 —— 多半是这台设备已经在另一场里了')
+  return s
+}
+
 beforeEach(() => {
   useApp.getState().resetAll()
 })
@@ -136,7 +152,7 @@ describe('认领身份', () => {
 describe('自己加入别人开的球局', () => {
   const openOne = () => {
     const host = useApp.getState().addPlayer('阿伟', 'M')
-    const s = useApp.getState().createSession({
+    const s = newSession({
       date: '2026-09-02',
       venue: '中央球馆',
       courtCount: 2,
@@ -213,7 +229,7 @@ describe('自己加入别人开的球局', () => {
 describe('球局的人数上限', () => {
   const openWithCap = (cap?: number) => {
     const host = useApp.getState().addPlayer('阿伟', 'M')
-    const s = useApp.getState().createSession({
+    const s = newSession({
       date: '2026-09-02',
       venue: '中央球馆',
       courtCount: 1,
@@ -374,7 +390,7 @@ describe('换设备之后认回自己', () => {
  */
 describe('同一时间只能在一场球局里', () => {
   const openAt = (venue: string, host: string) =>
-    useApp.getState().createSession({
+    newSession({
       date: '2026-09-03',
       venue,
       courtCount: 1,
@@ -443,7 +459,7 @@ describe('同一时间只能在一场球局里', () => {
 describe('局内消息', () => {
   it('发出去之后带着作者、时间和球局', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const s = newSession(draft({ playerIds: [me.id] }))
     const a = useApp.getState().postAnnouncement('我迟到十分钟', me.id, s.id)
 
     expect(a).not.toBeNull()
@@ -461,14 +477,14 @@ describe('局内消息', () => {
 
   it('空白的不发 —— 否则手滑就会冒出一条空消息', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const s = newSession(draft({ playerIds: [me.id] }))
     expect(useApp.getState().postAnnouncement('   ', me.id, s.id)).toBeNull()
     expect(useApp.getState().announcements).toHaveLength(0)
   })
 
   it('前后空白去掉', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const s = newSession(draft({ playerIds: [me.id] }))
     expect(
       useApp.getState().postAnnouncement('  记得带球  ', me.id, s.id)!.text,
     ).toBe('记得带球')
@@ -476,9 +492,9 @@ describe('局内消息', () => {
 
   it('两场球局的消息各归各的', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const s1 = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const s1 = newSession(draft({ playerIds: [me.id] }))
     useApp.getState().endSession(s1.id)
-    const s2 = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const s2 = newSession(draft({ playerIds: [me.id] }))
     useApp.getState().postAnnouncement('一号局的事', me.id, s1.id)
     useApp.getState().postAnnouncement('二号局的事', me.id, s2.id)
 
@@ -489,7 +505,7 @@ describe('局内消息', () => {
 
   it('撤得掉', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const s = newSession(draft({ playerIds: [me.id] }))
     const a = useApp.getState().postAnnouncement('下周暂停', me.id, s.id)!
     useApp.getState().deleteAnnouncement(a.id)
     expect(useApp.getState().announcements).toHaveLength(0)
@@ -497,21 +513,76 @@ describe('局内消息', () => {
 
   it('清空数据时一起清掉', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
-    const s = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    const s = newSession(draft({ playerIds: [me.id] }))
     useApp.getState().postAnnouncement('测试', me.id, s.id)
     useApp.getState().resetAll()
     expect(useApp.getState().announcements).toEqual([])
   })
 })
 
+/*
+ * 一个人同一时间只能在一场球局里。
+ *
+ * 加入别人的局早就是这条规矩了，开自己的局却一直没拦 —— 于是同一个人
+ * 能挂着五个「进行中」，首页上五条都在，别人根本分不出该进哪个。
+ */
+describe('一个人只能开一个局', () => {
+  it('已经在一场里就开不了新的', () => {
+    const me = useApp.getState().addPlayer('阿明', 'M')
+    useApp.getState().setMeId(me.id)
+    const first = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    expect(first).not.toBeNull()
+
+    const second = useApp.getState().createSession(draft({ playerIds: [me.id] }))
+    expect(second).toBeNull()
+    expect(useApp.getState().sessions).toHaveLength(1)
+  })
+
+  it('把手上那一场结束了就能开新的', () => {
+    const me = useApp.getState().addPlayer('阿明', 'M')
+    useApp.getState().setMeId(me.id)
+    const first = useApp.getState().createSession(draft({ playerIds: [me.id] }))!
+    useApp.getState().endSession(first.id)
+
+    expect(useApp.getState().createSession(draft({ playerIds: [me.id] }))).not.toBeNull()
+    expect(useApp.getState().sessions).toHaveLength(2)
+  })
+
+  it('被人拉进别人的局里也算「在一场里」', () => {
+    /*
+     * 按 meId 判，不是按「我建的局」：他被拉进别人的局之后再开一个新的，
+     * 同样是两头顾不上，首页上照样两条都在。
+     */
+    const host = useApp.getState().addPlayer('阿伟', 'M')
+    const me = useApp.getState().addPlayer('阿明', 'M')
+    useApp.getState().setMeId(me.id)
+    useApp.getState().createSession(draft({ playerIds: [host.id] }))
+    // 我不是开局的人，但我在里面
+    const theirs = useApp.getState().sessions[0]
+    useApp.getState().joinSession(theirs.id, me.id)
+
+    expect(useApp.getState().createSession(draft({ playerIds: [me.id] }))).toBeNull()
+  })
+
+  it('还没建自己的球员时不拦 —— 那时候「我」是谁都不知道', () => {
+    /*
+     * meId 是空的（刚进群、还没填名字）。这时候拦不住也不该拦：
+     * 拦了的话第一个进群的人连第一场球局都开不了。
+     */
+    const other = useApp.getState().addPlayer('阿伟', 'M')
+    useApp.getState().createSession(draft({ playerIds: [other.id] }))
+    expect(useApp.getState().createSession(draft({ playerIds: [other.id] }))).not.toBeNull()
+  })
+})
+
 describe('球局几点开打', () => {
   it('开局时填的时间存了下来', () => {
-    const s = useApp.getState().createSession(draft({ time: '20:30' }))
+    const s = newSession(draft({ time: '20:30' }))
     expect(s.time).toBe('20:30')
   })
 
   it('没填时间也开得了局 —— 老球局就是这样的', () => {
-    const s = useApp.getState().createSession(draft({}))
+    const s = newSession(draft({}))
     expect(s.time).toBeUndefined()
     expect(s.status).toBe('active')
   })

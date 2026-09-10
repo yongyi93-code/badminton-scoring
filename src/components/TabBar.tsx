@@ -2,6 +2,7 @@ import { useT } from '@/lib/i18n'
 import type { ReactNode } from 'react'
 import { useNav, useRoute, TAB_ROUTES, type TabName } from '@/store/useNav'
 import { cx } from '@/components/ui'
+import { activeSessionOf, useApp } from '@/store/useApp'
 
 /*
  * 底部主导航。规格里写的是「底部四项」，但后面列了五项 ——
@@ -70,6 +71,8 @@ const ITEMS: Item[] = TAB_ROUTES.map((tab) => ({
 export function TabBar() {
   const t = useT()
   const route = useRoute()
+  /** 我现在在哪一场里。在的话，中间那个按钮改成「回去那一场」 */
+  const inSession = useApp((s) => activeSessionOf(s.sessions, s.meId))
   const switchTab = useNav((s) => s.switchTab)
   const push = useNav((s) => s.push)
 
@@ -106,15 +109,32 @@ export function TabBar() {
       <div className="mx-auto flex h-[72px] w-full max-w-2xl items-stretch px-2">
         {left.map(cell)}
 
-        {/* 开球：不参与选中态，任何时候点都是开一局新的 */}
+        {/*
+          开球：不参与选中态。
+
+          已经在一场进行中的球局里的时候，这个按钮改成「回到那一场」——
+          一个人同一时间只能在一场里，点了也开不了新的（store 那层拦着）。
+          与其让他填完四步再被拒，不如直接把他送回他该在的地方。
+        */}
         <div className="flex w-[76px] shrink-0 items-center justify-center">
           <button
-            onClick={() => push({ name: 'setup' })}
-            aria-label={t('开新球局', 'New session')}
+            onClick={() =>
+              inSession
+                ? push({ name: 'board', sessionId: inSession.id })
+                : push({ name: 'setup' })
+            }
+            aria-label={
+              inSession ? t('回到球局', 'Back to your session') : t('开新球局', 'New session')
+            }
             className="bg-brand-solid text-on-brand shadow-pop active:bg-brand-solid-press -mt-6 flex size-14 items-center justify-center rounded-full"
           >
             <svg viewBox="0 0 24 24" className="size-7" aria-hidden>
-              <path d="M12 5v14M5 12h14" {...stroke} />
+              {inSession ? (
+                // 羽球：已经在打了，回去那一场
+                <path d="M9 15l6-6M7.5 16.5a2.1 2.1 0 1 0 0-.1M13 5l6 6-4 3-5-5 3-4Z" {...stroke} />
+              ) : (
+                <path d="M12 5v14M5 12h14" {...stroke} />
+              )}
             </svg>
           </button>
         </div>

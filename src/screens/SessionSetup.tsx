@@ -20,6 +20,7 @@ import {
 import { PlayerRow } from '@/components/PlayerBits'
 import { AddGuest } from '@/components/AddGuest'
 import { nextHalfHour, todayISO } from '@/lib/format'
+import { notifyNewSession } from '@/lib/push'
 import { buildSchedule, matchInput } from '@/lib/sessionFormat'
 import { progressByPlayer } from '@/lib/avatar'
 import { recentVenues, venueKey } from '@/lib/venues'
@@ -99,6 +100,8 @@ export function SessionSetup() {
   const [selected, setSelected] = useState<string[]>(meId ? [meId] : [])
   const [addOpen, setAddOpen] = useState(false)
   const [step, setStep] = useState(0)
+  /** 开不了局的原因。理论上到不了这里，真到了得说话 */
+  const [blocked, setBlocked] = useState<string | null>(null)
 
   const [format, setFormat] = useState<SessionFormat>('free')
   const [homeName, setHomeName] = useState('')
@@ -237,6 +240,26 @@ export function SessionSetup() {
           }
         : undefined,
     })
+
+    /*
+     * 开不了：已经在某一场进行中的球局里。
+     *
+     * 走到这一屏之前界面上就该拦住（三个入口都判了），所以这里理论上
+     * 到不了 —— 但「理论上到不了」和「到了什么都不说」是两回事：
+     * 真到了的话，按下「开始」一点反应都没有，人只会以为 App 卡了。
+     */
+    if (!session) {
+      setBlocked(
+        t(
+          '你还在一场球局里 —— 先把那一场结束或者退出，才能开新的。',
+          'You are still in a session — end it or leave first.',
+        ),
+      )
+      return
+    }
+
+    // 开局提醒：群里其他人手机上弹一条。推不出去不影响开局，见 notifyNewSession
+    void notifyNewSession(session)
 
     // 轮转赛开局就把整份赛程写成排队中的比赛，之后「排下一场」直接顶上去
     if (format === 'rotation') {
@@ -759,6 +782,9 @@ export function SessionSetup() {
           <>
             {genderWarning && (
               <p className="text-warning-600 mb-2 text-center text-caption">{genderWarning}</p>
+            )}
+            {blocked && (
+              <p className="text-danger-600 mb-2 text-center text-caption">{blocked}</p>
             )}
             <Button variant="primary" size="lg" block disabled={!enough} onClick={start}>
               {startHint}

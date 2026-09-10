@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { pick } from './i18n'
+import type { Session } from '@/types'
 import { supabase } from './supabase'
 
 /* ------------------------------------------------------------------ *
@@ -241,5 +242,36 @@ export async function disablePush(): Promise<PushResult> {
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 开局了，通知群里其他人
+ *
+ * notify-session 那个 Edge Function 一直都在，它当初设计成由数据库
+ * Webhook 触发 —— 而那个 Webhook 从来没有人去后台建过。于是整条链路
+ * 缺了最中间一环：函数写好了、订阅存着了、就是没有任何东西去调它。
+ * 症状就是「开局了，谁也没收到通知」，而且哪儿都不报错。
+ *
+ * 改成开局的人自己调一次。这条路有三个好处：
+ *   · 不用去后台点一次配置，装一次就是装好了
+ *   · 能在这边写测试盯着（Webhook 那条在代码里看不见）
+ *   · 立刻发，不用等数据库那一跳
+ *
+ * 那个函数收 `body.record ?? body`，所以直接把这一行原样递过去就行，
+ * 函数一个字都不用改。
+ *
+ * 推不出去绝不能影响开局：断网、函数没部署、密钥没配，任何一种都只是
+ * 「这次没人收到通知」，而球还是要打的。所以整段包着，出错只记一行日志。
+ * ------------------------------------------------------------------ */
+export async function notifyNewSession(session: Session): Promise<void> {
+  if (!supabase) return
+  try {
+    await supabase.functions.invoke('notify-session', {
+      body: { kind: 'session', id: session.id, data: session },
+    })
+  } catch (e) {
+    // 只记不抛 —— 通知发不出去是小事，开不了局是大事
+    console.warn('开局提醒没发出去:', e)
   }
 }
