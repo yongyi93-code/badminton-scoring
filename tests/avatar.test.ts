@@ -747,6 +747,74 @@ describe('碾压', () => {
     expect(w.coins).toBe(WIN_POINTS)
   })
 
+  it('碾压输了，MMR 也扣双倍', () => {
+    /*
+     * 被打到不够一半的分，是场上所有人都看见的事 —— 赢的那边拿双倍，
+     * 输的这边也该照同一个刻度算。不然一场 21:3 和一场 21:19
+     * 对输家是一样的代价。
+     */
+    const bank = Array.from({ length: 4 }, (_, i) =>
+      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
+        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
+    )
+    const crushed = {
+      ...timed('m1', { firstPointAt: 9e6, lastPointAt: 9e6 + MIN }, { seq: 9 }),
+      games: [{ a: 21, b: 3, points: null, serveInit: null }],
+    } as Match
+    const { outcomes } = replayMatches([...bank, crushed])
+    const o = outcomes.get('m1')!
+    expect(o.blowout).toBe(true)
+    const loser = o.impacts.find((i) => !i.won)!
+    expect(loser.mmrBefore - loser.mmrAfter).toBe(LOSS_POINTS * 2)
+  })
+
+  it('碾压输了，金币一分不扣 —— 那不是他点头换来的', () => {
+    /*
+     * 和加注的区别在「同没同意」：加注是四个人各自在自己手机上点过头的，
+     * 输了掏钱是那笔交易的一半；碾压是系统按比分判的，没人点过头。
+     * MMR 是水平的刻度，被打爆就该往下走；金币是劳动所得，不该没收。
+     */
+    const bank = Array.from({ length: 4 }, (_, i) =>
+      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
+        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
+    )
+    const before = replayMatches(bank).progress.get('b1')!.coins
+    const crushed = {
+      ...timed('m1', { firstPointAt: 9e6, lastPointAt: 9e6 + MIN }, { seq: 9 }),
+      games: [{ a: 21, b: 3, points: null, serveInit: null }],
+    } as Match
+    const { progress } = replayMatches([...bank, crushed])
+    expect(progress.get('b1')!.coins).toBe(before)
+  })
+
+  it('爆冷输了不加倍扣 —— 罚错了东西', () => {
+    /*
+     * 爆冷说的是「对手明明分比你低却赢了」，那是对手超常，不是你被打爆。
+     * 输给一个分低的人已经够难受了，再加倍扣是罚错了东西。
+     *
+     * a 队先赢四场不同的对手把分垫到 40 再输 —— 不垫的话他们只有 10 分，
+     * 扣 10 和扣 20 都被 0 封底，两种实现看起来一模一样。
+     * （第一版就是那么写的，红测时一声不吭。）
+     */
+    const bank = Array.from({ length: 4 }, (_, i) =>
+      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
+        { seq: i + 1, teams: [['a1', 'a2'], [`x${i}`, `y${i}`]] }),
+    )
+    // b 队一场没打（0 分），赢分高的 a 队 → 爆冷；比分咬得紧，不算碾压
+    const upsetMatch = {
+      ...timed('m1', { firstPointAt: 9e6, lastPointAt: 9e6 + MIN }, { seq: 9, winner: 'B' }),
+      games: [{ a: 19, b: 21, points: null, serveInit: null }],
+    } as Match
+    const { outcomes } = replayMatches([...bank, upsetMatch])
+    const o = outcomes.get('m1')!
+    expect(o.upset).toBe(true)
+    expect(o.blowout).toBe(false)
+    const loser = o.impacts.find((i) => !i.won)!
+    // 垫到 40 分再输，扣的是原样的 10，不是 20
+    expect(loser.mmrBefore).toBeGreaterThanOrEqual(LOSS_POINTS * 2)
+    expect(loser.mmrBefore - loser.mmrAfter).toBe(LOSS_POINTS)
+  })
+
   it('碾压和爆冷不叠加 —— 最多双倍，不是四倍', () => {
     /*
      * 叠起来一场顶四场：分数忽上忽下失去意义，而且正好给刷分的人
