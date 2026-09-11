@@ -326,8 +326,8 @@ export function MatchResult({ matchId }: { matchId: string }) {
               </p>
               <p className="text-ink-500 mt-1 text-caption">
                 {t(
-                  '从记第一分算到记最后一分。真打完的球没这么快 —— 如果这一场是打完之后才补录的，下次开打时点上场、打完再收，时间就对得上了。战绩里照样记这一场。',
-                  'Measured from the first point to the last. A real game takes longer — if you entered this one after the fact, start it when play starts next time. The match still counts in your record.',
+                  '从点开记分算到记最后一分。真打完的球没这么快 —— 如果这一场是打完之后才补录的，下次开打时先摆上场、打完再收，时间就对得上了。战绩里照样记这一场。',
+                  'Measured from when the match went on court to the last point. A real game takes longer — if you entered this one after the fact, put it on court when play starts next time. The match still counts in your record.',
                 )}
               </p>
             </div>

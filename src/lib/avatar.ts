@@ -430,17 +430,22 @@ export const MIN_SCORING_MS = 3 * 60_000
 /**
  * 这一场从开始记分到最后一次记分，经过了多久。拿不到时间就返回 null。
  *
- * 起点优先用第一分，退回「摆上场」：
- *   摆上场之后热身、等对手、买水，可能过十分钟才真开打，
- *   把那一段算进去等于白送时长。
- *   「直接输入最终比分」的场次没有第一分，只能退回摆上场。
+ * 起点是「摆上场」——也就是点开记分那一刻，不是「记下第一分」那一刻。
+ *
+ * 第一版用的是第一分，理由是「摆上场之后热身、等对手、买水，可能过
+ * 十分钟才真开打，把那一段算进去等于白送时长」。道理没错，但用下来
+ * 太紧了：真实的一场球，从点开记分到打完本来就包着换边、捡球、
+ * 喝水那些，按「第一分到最后一分」算会把正常的短局也判成太快。
+ * 而这条规矩宁可漏掉几个刷分的，也不该冤枉真打了球的人。
+ *
+ * 没有 startedAt 的（老数据、或者从队列直接顶上来的边角）退回第一分。
  *
  * 终点用最后一次记分动作，不用「点打完」：
  *   两者之间可以隔很久。十秒点完 21 分、把手机丢那儿等三分钟再点打完，
  *   用 endedAt 就正好放过这种，而那恰恰是要挡的那一类。
  */
 export function scoringSpan(match: Match): number | null {
-  const first = match.firstPointAt ?? match.startedAt
+  const first = match.startedAt ?? match.firstPointAt
   const last = match.lastPointAt
   if (first == null || last == null) return null
   return Math.max(0, last - first)
@@ -526,6 +531,18 @@ export const STAKE_MULTIPLIER = 2
 
 /** 加注输了扣多少金币。没加注的场次输了一分不扣，这是唯一的例外 */
 export const STAKE_COIN_LOSS = WIN_POINTS * STAKE_MULTIPLIER
+
+/**
+ * 加注的场次又打出碾压：在双倍之上再加一档，MMR 变成 30（双倍 20 + 10）。
+ *
+ * 这是「任何加成最多双倍」唯一的例外，而且是有意开的：说好打大的、
+ * 结果还被打到不够一半的分，那一场在场上就是比别的场重，
+ * 记分也该照这个重量来。输赢同一个数 —— 双方是讲好的，刻度当然一样。
+ *
+ * 金币不跟着加这一档，还是双倍 20。金币是买装备的钱，
+ * 不该跟着「这一场多轰动」一路往上翻；MMR 是水平的刻度，翻得起。
+ */
+export const STAKED_BLOWOUT_BONUS = WIN_POINTS
 
 /** 这一场里所有会被加注影响到的人 */
 export const stakeParticipants = (match: Match): string[] => [
@@ -679,16 +696,22 @@ export function replayMatches(matches: Match[]): {
     const staked = stakeApplies(m)
 
     /*
-     * 三种加成都是双倍，而且互相不叠加 —— 任何加成最多双倍。
+     * 加成一律双倍，互相不叠加 —— 只有一个例外：加注 + 碾压。
      *
-     * 叠起来就是四倍八倍，一场球顶好几场。那既让分数忽上忽下失去意义，
-     * 也正好给刷分的人指路：找个分低的队友，加注，赢一场 21:5。
+     * 不叠加是因为叠起来就是四倍八倍，一场球顶好几场：分数忽上忽下
+     * 失去意义，也正好给刷分的人指路（找个分低的队友，加注，赢一场 21:5）。
      *
-     * 这条封顶顺带解决了加注最让人担心的那件事：刷分的人打 21:0
-     * 本来就拿双倍，加注给不了他更多，所以加注一点没抬高刷分的天花板。
+     * 那个例外没有破坏这件事：加注要场上四个人各自在自己手机上点头，
+     * 刷分的人拿不到 —— 他真正能自己造出来的只有碾压，而碾压本来就是双倍。
+     * 也就是说天花板对一个人独自刷分的人没变，变的只是「四个人讲好打大的、
+     * 结果还被打爆」那一场。
      */
-    const gain =
-      upset || blowout || staked ? WIN_POINTS * UPSET_MULTIPLIER : WIN_POINTS
+    const stakedBlowout = staked && blowout
+    const gain = stakedBlowout
+      ? WIN_POINTS * STAKE_MULTIPLIER + STAKED_BLOWOUT_BONUS
+      : upset || blowout || staked
+        ? WIN_POINTS * UPSET_MULTIPLIER
+        : WIN_POINTS
     /*
      * 金币跟着碾压和加注翻，不跟着爆冷。
      *
@@ -713,8 +736,11 @@ export function replayMatches(matches: Match[]): {
      * 说的是对手超常，不是你被打爆 —— 输给一个分低的人已经够难受了，
      * 再加倍扣是罚错了东西。
      */
-    const lossPoints =
-      staked || blowout ? LOSS_POINTS * STAKE_MULTIPLIER : LOSS_POINTS
+    const lossPoints = stakedBlowout
+      ? LOSS_POINTS * STAKE_MULTIPLIER + STAKED_BLOWOUT_BONUS
+      : staked || blowout
+        ? LOSS_POINTS * STAKE_MULTIPLIER
+        : LOSS_POINTS
     /*
      * 金币只在加注的场次扣 —— 这是「金币只涨不跌」唯一的例外，
      * 而且是本人点头换来的。

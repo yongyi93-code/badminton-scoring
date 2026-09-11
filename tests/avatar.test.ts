@@ -25,6 +25,7 @@ import {
   STARS_PER_TIER,
   STAKE_MULTIPLIER,
   STAKE_COIN_LOSS,
+  STAKED_BLOWOUT_BONUS,
   stakePending,
   stakeSettled,
   starThreshold,
@@ -910,10 +911,16 @@ describe('打得太快不算分', () => {
     expect(progress.get('b1')!.losses).toBe(1)
   })
 
-  it('起点是第一分，不是摆上场 —— 热身那十分钟不算打球', () => {
+  it('起点是摆上场，不是第一分 —— 热身捡球也算这一场的时间', () => {
     /*
-     * 摆上场之后热身、等对手，过了十分钟才开打，一分钟打完。
-     * 从摆上场算是 11 分钟（放行），从第一分算是 1 分钟（该拦）。
+     * 这一条和第一版是反的，是有意改的。
+     *
+     * 第一版从第一分算，理由是「热身那十分钟不该白送时长」。道理没错，
+     * 但用下来太紧：真实的一场球，从点开记分到打完本来就包着换边、
+     * 捡球、喝水那些。这条规矩宁可漏掉几个刷分的，也不该冤枉真打了球的人。
+     *
+     * 摆上场 0 分、热身到 10 分、11 分打完：
+     * 从摆上场算是 11 分钟（放行），从第一分算是 1 分钟（会被拦）。
      */
     const { outcomes } = replayMatches([
       timed('m1', {
@@ -921,6 +928,14 @@ describe('打得太快不算分', () => {
         firstPointAt: 10 * 60_000,
         lastPointAt: 11 * 60_000,
       }),
+    ])
+    expect(outcomes.get('m1')!.tooQuick).toBe(false)
+  })
+
+  it('摆上场到最后一分不够 3 分钟，照样拦', () => {
+    // 起点松了不等于这条规矩没了：整场从头到尾只有 40 秒还是拦
+    const { outcomes } = replayMatches([
+      timed('m1', { startedAt: 0, firstPointAt: 5_000, lastPointAt: 40_000 }),
     ])
     expect(outcomes.get('m1')!.tooQuick).toBe(true)
   })
@@ -1198,21 +1213,62 @@ describe('加注', () => {
     expect(progress.get('a1')!.mmr).toBe(WIN_POINTS)
   })
 
-  it('加注和碾压不叠加 —— 任何加成最多双倍', () => {
+  it('加注又碾压：MMR 在双倍之上再加一档，输赢同一个数', () => {
     /*
-     * 这一条是这个功能能不能上的关键：刷分的人打 21:0 本来就拿双倍，
-     * 加注给不了他更多。也就是说加注一点没抬高刷分的天花板。
+     * 这是「任何加成最多双倍」唯一的例外，而且是有意开的：
+     * 说好打大的、结果还被打到不够一半的分，那一场在场上就是比别的场重。
+     * 输赢同一个数 —— 双方是讲好的，刻度当然一样。
+     *
+     * 刷分的人拿不到这一档：加注要场上四个人各自在自己手机上点头，
+     * 他自己造得出来的只有碾压，而碾压本来就是双倍。
+     */
+    const bank = Array.from({ length: 4 }, (_, i) =>
+      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
+        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
+    )
+    const both = {
+      ...live('m1', agreed, 9),
+      games: [{ a: 21, b: 3, points: null, serveInit: null }],
+    } as Match
+    const { progress, outcomes } = replayMatches([...bank, both])
+    const o = outcomes.get('m1')!
+    expect(o.staked).toBe(true)
+    expect(o.blowout).toBe(true)
+
+    const want = WIN_POINTS * STAKE_MULTIPLIER + STAKED_BLOWOUT_BONUS
+    expect(want).toBe(30)
+    expect(progress.get('a1')!.mmr).toBe(want)
+
+    const loser = o.impacts.find((i) => !i.won)!
+    expect(loser.mmrBefore - loser.mmrAfter).toBe(want)
+  })
+
+  it('加注又碾压：金币还是双倍，不跟着加那一档', () => {
+    /*
+     * 金币是买装备的钱，不该跟着「这一场多轰动」一路往上翻；
+     * MMR 是水平的刻度，翻得起。
      */
     const both = {
       ...live('m1', agreed),
       games: [{ a: 21, b: 3, points: null, serveInit: null }],
     } as Match
-    const { progress, outcomes } = replayMatches([both])
-    const o = outcomes.get('m1')!
-    expect(o.staked).toBe(true)
-    expect(o.blowout).toBe(true)
-    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+    const { progress } = replayMatches([both])
     expect(progress.get('a1')!.coins).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+  })
+
+  it('只加注没碾压：还是双倍，加不到那一档', () => {
+    // 21:15 咬得紧，不算碾压
+    const { progress } = replayMatches([live('m1', agreed)])
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+  })
+
+  it('只碾压没加注：还是双倍，加不到那一档', () => {
+    const crush = {
+      ...live('m1'),
+      games: [{ a: 21, b: 3, points: null, serveInit: null }],
+    } as Match
+    const { progress } = replayMatches([crush])
+    expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * BLOWOUT_MULTIPLIER)
   })
 
   it('加注和爆冷也不叠加', () => {
