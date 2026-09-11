@@ -347,6 +347,67 @@ describe('边界与人工干预', () => {
   })
 })
 
+/*
+ * 两片场时，两边的人会不会掺到一起。
+ *
+ * 这一组是从一次真实反馈来的：8 个人 2 片场，一晚上就是固定的两拨人，
+ * 各在各的场上循环，从头到尾没掺过。
+ */
+describe('多片场：人会不会掺到一起', () => {
+  /** 24 场里出现过多少种不同的「四人组」。越多说明掺得越开 */
+  const foursomes = (ms: Match[]) =>
+    new Set(ms.map((m) => [...m.teamA, ...m.teamB].sort().join(','))).size
+
+  it('满载（人数正好等于场数×4）时掺不开 —— 这是没人可挑，不是算法的错', () => {
+    /*
+     * 8 个人 2 片场：一片打完时，另一片那 4 个还在场上，
+     * 能挑的只有刚下场那 4 个，排出来必然还是他们。
+     *
+     * 这一条不是在要求这个行为，是在把它的边界钉住：
+     * 哪天有人「优化」出了别的结果，那多半是把在场上打球的人也排进了
+     * 下一场 —— 那是错的，人还在场上。
+     * 看板上那条满载提示就是为这个情况写的（fullyBooked）。
+     */
+    const players = makePlayers(8)
+    const matches = simulate(players, 2, 24, 'doubles', 7)
+    expect(foursomes(matches)).toBeLessThanOrEqual(2)
+  })
+
+  it('只要多一个人轮休，两边立刻掺得开', () => {
+    const players = makePlayers(9)
+    const matches = simulate(players, 2, 24, 'doubles', 7)
+    expect(foursomes(matches)).toBeGreaterThan(8)
+  })
+
+  it('有人轮休时，每个人最后都和几乎所有人同过场', () => {
+    /*
+     * 「这四个永远打在一起，不会和另四个掺一起」—— 用户原话。
+     * 那句话的判据不是「每一轮换几个人」，是「一晚上下来，
+     * 我到底跟多少人同过场」。
+     *
+     * 第一版写的是「每一轮都要留几个换几个」，断言没过 ——
+     * 而那是断言错了不是代码错了：两片场碰巧同时打完时，8 个人全空出来，
+     * 这时候整组换恰恰是掺得最开的排法。按「换了几个」判会把最好的
+     * 那种情况判成坏的。
+     */
+    const players = makePlayers(9)
+    const matches = simulate(players, 2, 24, 'doubles', 7)
+    const met = new Map<string, Set<string>>()
+    for (const m of matches) {
+      const four = [...m.teamA, ...m.teamB]
+      for (const a of four) {
+        const set = met.get(a) ?? new Set<string>()
+        for (const b of four) if (b !== a) set.add(b)
+        met.set(a, set)
+      }
+    }
+    for (const p of players) {
+      // 9 个人，除自己外 8 个。24 场下来该见过至少 7 个
+      expect(met.get(p.id)?.size ?? 0).toBeGreaterThanOrEqual(7)
+    }
+  })
+})
+
 describe('配对模式', () => {
   /** 前 4 人 500 分，后 4 人 0 分 —— 两个极端，最容易看出模式有没有生效 */
   const split8 = () => {

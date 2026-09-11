@@ -233,6 +233,7 @@ function CourtCard({
   onManage,
   arranging,
   holder,
+  fullyBooked,
 }: {
   index: number
   match: Match | undefined
@@ -244,6 +245,8 @@ function CourtCard({
   onManage: () => void
   arranging: boolean
   holder?: { ids: string[]; streak: number } | null
+  /** 场上一个空闲的人都没有：现在排下去，还是刚下场那几个 */
+  fullyBooked?: boolean
 }) {
   if (!match) {
     /* 空场是这一屏上最要紧的一件事，按钮就该是大号的 */
@@ -251,6 +254,30 @@ function CourtCard({
       <Card className="border-dashed">
         <p className="text-ink-700 text-title">{pick(`${index + 1} 号场`, `Court ${index + 1}`)}</p>
         <p className="text-ink-500 mt-0.5 text-label">{pick('空着，等下一场', 'Free — waiting for the next match')}</p>
+        {/*
+          满载警告。
+          8 个人 2 片场就是满载：这一片打完时，另一片那 4 个还在打，
+          能挑的只有刚下场这 4 个 —— 于是两拨人各自在各自那片场循环，
+          一晚上都掺不到一起。这不是算法挑得不好，是没人可挑。
+
+          （量过：8 人 2 场，24 场里只出现过 2 种四人组；9 个人就跳到 13 种。）
+
+          所以这里不自作主张替他等，只把「现在排会发生什么」说出来 ——
+          要继续打就继续，想换人就等一下。这是场上的人该做的决定。
+        */}
+        {fullyBooked && (
+          <div className="border-warning-600/30 bg-warning-50 mt-3 rounded-card border px-3 py-2.5">
+            <p className="text-warning-600 text-label font-semibold">
+              {pick('现在只有刚下场那几个有空', 'Only the players who just finished are free')}
+            </p>
+            <p className="text-ink-700 mt-0.5 text-caption">
+              {pick(
+                '现在排，还是他们。等另一片也打完再排，两边的人才换得开 —— 或者多来一个人，就不会卡住了。',
+                'Arranging now gives you the same four again. Wait for the other court to finish and both sides can swap — or one more player fixes it for good.',
+              )}
+            </p>
+          </div>
+        )}
         <Button
           variant="primary"
           size="lg"
@@ -480,6 +507,26 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       loadById,
       (id) => names.get(id)?.name ?? '?',
     )
+
+  /*
+   * 满载：空闲的人正好只够凑一场，而且还有人在别的场上打。
+   *
+   * 8 个人 2 片场就是这个状态。这一片打完时另一片还在打，
+   * 于是能挑的只有刚下场那 4 个 —— 排出来必然还是他们。
+   * 两拨人各自在各自那片场循环，一晚上掺不到一起。
+   *
+   * 这不是算法挑得不好，是没人可挑。量过：8 人 2 场，24 场里只出现过
+   * 2 种四人组；9 个人就跳到 13 种。所以看板上要把这件事说出来，
+   * 不然人只会觉得「这 App 排场有毛病」。
+   *
+   * 车轮赛不算在内 —— 它本来就是「赢的留场、输的排队尾」，
+   * 同一批人连着打正是规则本身。
+   */
+  const fullyBooked =
+    format !== 'king' &&
+    busyIds.length > 0 &&
+    attending.length - restingIds.length - busyIds.length ===
+      (type === 'singles' ? 2 : 4)
 
   // 车轮赛的等待区就是排队顺序（最久没上场的在前），不是按已打场数排
   const waiting =
@@ -929,6 +976,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
               avatars={avatarsById}
               holder={format === 'king' ? courtHolder(matches, i) : null}
               arranging={waiting.length < (type === 'singles' ? 2 : 4) && queued.length === 0}
+              fullyBooked={fullyBooked}
               onScore={() => push({ name: 'score', matchId: onCourt.get(i)!.id })}
               onArrange={() => arrange(i)}
               onManage={() => setManaging(onCourt.get(i)!)}
