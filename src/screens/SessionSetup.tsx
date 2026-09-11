@@ -135,14 +135,8 @@ export function SessionSetup() {
   const toggle = (id: string) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
 
-  const needed = defaultType === 'singles' ? 2 : 4
-  /*
-   * 友谊赛是两队各出一半人，所以两边都要够，不是加起来够就行 ——
-   * 主队 6 人客队 1 人加起来 7 个，一场双打照样排不出来。
-   */
   const namedAway = awayPlayers.filter((g) => g.name.trim())
   const isFriendly = format === 'friendly'
-  const half = needed / 2
   /*
    * 开局的门槛跟着「人是陆陆续续到的」改了。
    *
@@ -155,23 +149,30 @@ export function SessionSetup() {
    *   - 轮转赛的整份赛程是开局那一刻算好的，人不齐算不出来
    *   - 友谊赛是两队对打，客队名字得先写上
    */
-  const enough = isFriendly
-    ? selected.length >= half && namedAway.length >= half
-    : format === 'rotation'
-      ? selected.length >= needed
-      : selected.length >= 1
+  /*
+   * 开局要几个人。
+   *
+   * 全部改成「有一个人就能开」，包括轮转赛和友谊赛。
+   *
+   * 原来这两种要求开局那一刻人就齐：轮转赛的整份赛程是当场算好的，
+   * 友谊赛要两队各够一半。想的是「算不出来就别开」，可那是把因果
+   * 搞反了 —— 球局是先开出来、别人才在首页看得到、才点得进来。
+   * 要求先凑够人再开局，等于要求所有人先到齐、再有一个人去开局，
+   * 而他们根本没有别的地方能「到齐」。实际用下来就是这两种模式开不出局。
+   *
+   * 人齐之后怎么补上：
+   *   轮转赛  看板上有「按现在的人重排」，一按就按当前名单生成整份赛程
+   *   友谊赛  客队是手打的名字（客人不装 App，本来就只能这样），
+   *           主队谁到了谁点进来
+   */
+  const enough = isFriendly ? namedAway.length >= 1 : selected.length >= 1
   const startHint = isFriendly
     ? enough
       ? t(`开始友谊赛（${selected.length} 打 ${namedAway.length}）`, `Start friendly (${selected.length} v ${namedAway.length})`)
-      : t(`两队各至少 ${half} 人：主队 ${selected.length}、客队 ${namedAway.length}`, `Each side needs ${half}: home ${selected.length}, away ${namedAway.length}`)
+      : t('先写上客队的名字 —— 客人不装 App，只能手打', 'Type the away side first — guests do not have the app')
     : enough
       ? t(`开始球局（${selected.length} 人）`, `Start session (${selected.length} players)`)
-      : format === 'rotation'
-        ? t(
-            `轮转赛要先凑够 ${needed} 人 —— 赛程是现在就排好的`,
-            `Rotation needs ${needed} people now — the whole schedule is built upfront`,
-          )
-        : t('先在「我的」里选一下你是哪一位', 'Pick who you are under “Me” first')
+      : t('先在「我的」里选一下你是哪一位', 'Pick who you are under “Me” first')
 
   const chosenPlayers = useMemo(() => {
     const byId = new Map(players.map((p) => [p.id, p]))
@@ -261,7 +262,13 @@ export function SessionSetup() {
     // 开局提醒：群里其他人手机上弹一条。推不出去不影响开局，见 notifyNewSession
     void notifyNewSession(session)
 
-    // 轮转赛开局就把整份赛程写成排队中的比赛，之后「排下一场」直接顶上去
+    /*
+     * 轮转赛开局就把整份赛程写成排队中的比赛，之后「排下一场」直接顶上去。
+     *
+     * 人还不够一场的时候排不出来，那就先不排 —— 球局照开，
+     * 等人到齐了在看板上按「按现在的人重排」。
+     * buildSchedule 人不够时返回空，所以这里不用额外判断。
+     */
     if (format === 'rotation') {
       const schedule = buildSchedule({
         attending: chosenPlayers,

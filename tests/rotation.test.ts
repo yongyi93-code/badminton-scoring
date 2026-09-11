@@ -369,11 +369,57 @@ describe('配对模式', () => {
   }
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
 
-  it('均衡模式：高分带低分，两队平均分基本拉平', () => {
+  it('均衡模式：两队平均分基本拉平', () => {
     const { players, mmrById } = split8()
     const matches = simulate(players, 1, 24, 'doubles', 7, mmrById, 'balanced')
     // 理想分队是每队一高一低 → 两队平均都是 250，差 0
     expect(mean(matches.map((m) => gapOf(m, mmrById)))).toBeLessThan(40)
+  })
+
+  it('均衡模式：每一场都真的有高有低', () => {
+    /*
+     * 这一条是补上去的，因为上面那条「两队平均拉平」单独放着抓不到 bug：
+     * 四个 500 分的打一场，两队平均都是 500，差 0 —— 完美通过。
+     * 四个 0 分的打一场也一样。于是模式叫「高带低」，
+     * 实际排出来是高打高、低打低，而测试全绿。
+     *
+     * 跨度才是「有没有带」的判据：500/0 这种两极分布下，
+     * 一场里只要有高有低，跨度就是 500；清一色则是 0。
+     */
+    const { players, mmrById } = split8()
+    const matches = simulate(players, 1, 24, 'doubles', 7, mmrById, 'balanced')
+    const flat = matches.filter((m) => spreadOf(m, mmrById) === 0)
+    expect(flat).toHaveLength(0)
+  })
+
+  it('均衡模式：分数分层时，搭档也还是换着来', () => {
+    /*
+     * 「高带低」不能压过搭档多样性。
+     *
+     * 用分层的分数而不是 500/0 两极：两极分布里所有高低配都一样好，
+     * 看不出「会不会偏向某一对」。分层之后「最强配最弱」才是唯一最优，
+     * 偏向才显得出来。
+     *
+     * 说清楚这条测试的边界：它拦得住「彻底锁死成几组固定搭档」，
+     * 拦不住两种实现之间的细微偏好差异 —— 实测有界罚款和按跨度奖励
+     * 在这个夹具上是 4 次对 5 次，都在门槛之内。选哪种写法的理由
+     * 写在 rotation.ts 的 sameTier 注释里，不靠这条测试来定。
+     */
+    const players = makePlayers(8)
+    const graded = [200, 190, 180, 170, 60, 50, 40, 30]
+    const mmrById = new Map(players.map((p, i) => [p.id, graded[i]] as const))
+    const matches = simulate(players, 1, 24, 'doubles', 7, mmrById, 'balanced')
+
+    /* 最常见的那一对搭档，出现次数不该超过总场次的三分之一 */
+    const seen = new Map<string, number>()
+    for (const m of matches) {
+      for (const t of [m.teamA, m.teamB]) {
+        const k = [...t].sort().join('+')
+        seen.set(k, (seen.get(k) ?? 0) + 1)
+      }
+    }
+    const most = Math.max(...seen.values())
+    expect(most).toBeLessThanOrEqual(Math.ceil(matches.length / 3))
   })
 
   it('同级模式：高分打高分、低分打低分，同一场不混', () => {

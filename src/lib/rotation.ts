@@ -42,6 +42,29 @@ const W = {
    * 但那个 10 分的上去就是挨打。要高打高、低打低，就得直接罚这个跨度。
    */
   mmrSpread: 2,
+  /**
+   * 均衡模式专用：一支队伍两个人都在同一档（都在中位数以上，或都在以下），
+   * 罚这么多。一场最多罚两次。
+   *
+   * 这一项原来根本不存在，而「均衡（高带低）」这个名字承诺的正是它。
+   * 少了它，关于实力的只有「两队平均要接近」一条 —— 而四个高手打一场、
+   * 四个新手打另一场，两队平均都差 0，代价都是 0。于是模式叫「高带低」，
+   * 排出来却是高打高、低打低，一场不带。
+   *
+   * 为什么是「同档罚一笔」而不是「跨度越大奖励越多」：
+   *
+   * 后者也试过，两种都能让「每一场有高有低」成立。选有界的这个，
+   * 是因为按跨度奖励的那一版，力度会随群里的分差一起膨胀 ——
+   * 同样一句「高带低」，在分差 100 的群里值 80 分代价，在分差 500 的群里
+   * 值 400，压过了 recentPartner(100) 那条。也就是说它的行为取决于
+   * 群的分布，而不取决于我们想要什么。
+   *
+   * 实测两版差别不大（8 人 24 场：都是 16 种搭档，最常见那对 4 次 vs 5 次），
+   * 所以这不是「修掉了一个明显的毛病」，是挑了一个不会随数据漂的写法。
+   *
+   * 70 < recentPartner(100)：先别重复搭档，再谈高带低。
+   */
+  sameTier: 70,
   /** 休息轮数：等得越久越该上，每轮减分 */
   restBonus: 12,
   /** 随机抖动上限，避免每晚排出一模一样的顺序 */
@@ -335,6 +358,18 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
     return { pairing: null, reason: pick('指定上场的球员当前不在等待区', 'A player you pinned is not in the waiting area') }
   }
 
+  /*
+   * 拿中位数把可选的人分成「高」「低」两档，均衡模式用它判「有没有带」。
+   *
+   * 用中位数而不是固定分数线：群里整体水平会变，写死的线过一阵就不对了。
+   * 而且这是相对的判断 —— 「高带低」问的是「这一场里有没有强弱之分」，
+   * 不是「够不够 100 分」。
+   */
+  const mmrOfPool = (id: string) => input.mmrById?.get(id) ?? 0
+  const poolMmrs = available.map((p) => mmrOfPool(p.id)).sort((a, b) => a - b)
+  const median = poolMmrs.length ? poolMmrs[Math.floor(poolMmrs.length / 2)] : 0
+  const isHigh = (id: string) => mmrOfPool(id) >= median
+
   const loads = playerLoads(available, matches)
   const loadById = new Map(loads.map((l) => [l.playerId, l]))
   const counts = pairCounts(matches, lookback)
@@ -408,6 +443,20 @@ export function pickNextMatch(input: RotationInput): RotationOutcome {
         if (pairingMode === 'tiered') {
           const vals = group.map(mmrOf)
           cost += W.mmrSpread * (Math.max(...vals) - Math.min(...vals))
+        } else {
+          /*
+           * 均衡（高带低）：每支队伍都该是一高带一低。
+           *
+           * 「两队平均接近」管的是队伍之间公不公平，管不了「场上四个人
+           * 是不是一个水平」—— 四个高手一场、四个新手一场，两队平均都差 0。
+           * 拿中位数把人分成两档，两个人同档的队伍罚一笔，
+           * 「高带低」这四个字才真的进了算法。
+           */
+          for (const t of teams) {
+            if (t.length < 2) continue
+            const highs = t.filter((id) => isHigh(id)).length
+            if (highs === 0 || highs === t.length) cost += W.sameTier
+          }
         }
 
         // 等久的人优先上场

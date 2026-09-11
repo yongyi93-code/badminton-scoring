@@ -267,13 +267,18 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   const [confirmEnd, setConfirmEnd] = useState(false)
 
   /*
-   * 还能不能改这一场的加注：记第一分之前可以，之后锁死。
+   * 还能不能改这一场的加注：这一场没打完之前，随时都可以。
    *
-   * 判据用 firstPointAt 而不是「比分是不是 0:0」—— 点了一分又撤销的话
-   * 比分回到 0:0，但那一分是真的发生过的，两边都看见了分数变化。
-   * 那之后再开锁，就是「先试探一下再决定押不押」。
+   * 原来卡在「记第一分之前」，想的是「看着比分再决定押不押」不公平。
+   * 实际用下来这条太紧了：一场打到一半觉得有意思想加注，加不了；
+   * 而人真正想加注的时刻，往往正是打起来了之后。
+   *
+   * 放开之后「看着比分押」这件事由另一道闸挡着，而且挡得更对 ——
+   * 加注要场上每个人在自己手机上点头。20:5 的时候提出加注，
+   * 落后那两个不点头就是了。双方都看着同一个比分做的决定，
+   * 那不叫占便宜，那就是赌注本来的样子。
    */
-  const stakeOpen = match?.firstPointAt == null && match?.status !== 'done'
+  const stakeOpen = match?.status !== 'done'
   /** 加过注但还没等齐人 —— 这一场开不了 */
   const stakeWaiting = match?.staked === true && !stakeSettled(match)
 
@@ -807,8 +812,9 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t('这一场', 'This match')}>
         <div className="space-y-2">
           {/*
-            加注只在记第一分之前给点。开打之后还能加，
-            就变成「打到 20:5 再来加注」的白捡，那不叫赌注。
+            加注随时能提，打完之前都行。
+            「打到 20:5 再来加注」这件事由全员确认挡着：
+            落后那两个不点头就是了。
           */}
           {stakeOpen && !match.staked && (
             <Button
@@ -839,8 +845,8 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
               </p>
               <p className="text-ink-500 mt-1 text-caption">
                 {t(
-                  `赢的一方 MMR 和金币都双倍，输的一方扣 ${LOSS_POINTS * STAKE_MULTIPLIER} 分、${STAKE_COIN_LOSS} 金币。每个人要在自己手机上点确认。`,
-                  `Winners get double MMR and coins; losers drop ${LOSS_POINTS * STAKE_MULTIPLIER} MMR and ${STAKE_COIN_LOSS} coins. Everyone confirms on their own phone.`,
+                  `赢的一方 MMR 和金币都双倍，输的一方扣 ${LOSS_POINTS * STAKE_MULTIPLIER} 分、${STAKE_COIN_LOSS} 金币。场上每个人要在自己手机上点确认 —— 不愿意的不点就是了。`,
+                  `Winners get double MMR and coins; losers drop ${LOSS_POINTS * STAKE_MULTIPLIER} MMR and ${STAKE_COIN_LOSS} coins. Everyone on court confirms on their own phone — anyone can decline.`,
                 )}
               </p>
               {stakeOpen && (
@@ -867,12 +873,12 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
           {!stakeOpen && !match.staked && (
             <div className="border-line rounded-card border p-3">
               <p className="text-ink-700 text-label font-semibold">
-                {t('这一场不能再加注了', 'Too late to stake this match')}
+                {t('这一场已经打完了，加不了注', 'This match is over — too late to stake')}
               </p>
               <p className="text-ink-500 mt-1 text-caption">
                 {t(
-                  '加注要在记第一分之前定。开打之后还能加，就成了看着比分再决定。',
-                  'A stake must be set before the first point — otherwise you would be betting with the score already in front of you.',
+                  '打完之前随时都能提加注，打完就不行了 —— 那时候输赢已经定了。',
+                  'A stake can be proposed any time while the match is live, but not once it is over.',
                 )}
               </p>
             </div>
