@@ -25,7 +25,10 @@ import {
   STARS_PER_TIER,
   STAKE_MULTIPLIER,
   STAKE_COIN_LOSS,
+  WIN_COINS,
   STAKED_BLOWOUT_BONUS,
+  STAKED_BLOWOUT_COIN_BONUS,
+  STAKED_BLOWOUT_MULTIPLIER,
   stakePending,
   stakeSettled,
   starThreshold,
@@ -85,7 +88,7 @@ describe('MMR 与金币', () => {
     expect(a.losses).toBe(1)
     // 第一场平手起步赢 +10，第二场输掉扣回 0
     expect(a.mmr).toBe(0)
-    expect(a.coins).toBe(WIN_POINTS)
+    expect(a.coins).toBe(WIN_COINS)
   })
 
   it('输一场正好扣 LOSS_POINTS，扣到 0 为止', () => {
@@ -122,7 +125,7 @@ describe('MMR 与金币', () => {
     // 那一场是低打高，拿双倍
     expect(winner.mmr).toBe(WIN_POINTS * UPSET_MULTIPLIER)
     // 但金币不翻倍，还是按「赢了一场」算
-    expect(winner.coins).toBe(WIN_POINTS)
+    expect(winner.coins).toBe(WIN_COINS)
   })
 
   it('高分赢低分只拿基础分，不翻倍', () => {
@@ -189,8 +192,8 @@ describe('MMR 与金币', () => {
     // 输到 MMR 归零
     expect(after.mmr).toBe(0)
     // 金币一分没少，赢过的 10 场都还算数
-    expect(after.coins).toBe(10 * WIN_POINTS)
-    expect(balanceOf(pet(), after.coins)).toBe(100)
+    expect(after.coins).toBe(10 * WIN_COINS)
+    expect(balanceOf(pet(), after.coins)).toBe(10 * WIN_COINS)
   })
 
   it('余额 = 赚到的 − 花掉的，不会显示负数', () => {
@@ -537,7 +540,7 @@ describe('单场的账（赛后结算页用的）', () => {
     expect(win.mmrBefore).toBe(WIN_POINTS) // 第一场赢来的
     expect(win.delta).toBe(WIN_POINTS)
     expect(win.mmrAfter).toBe(2 * WIN_POINTS)
-    expect(win.coins).toBe(WIN_POINTS)
+    expect(win.coins).toBe(WIN_COINS)
 
     const lose = o.impacts.find((i) => i.playerId === 'p2')!
     expect(lose.won).toBe(false)
@@ -569,7 +572,7 @@ describe('单场的账（赛后结算页用的）', () => {
     const win = o.impacts.find((i) => i.playerId === 'p2')!
     expect(win.delta).toBe(WIN_POINTS * UPSET_MULTIPLIER)
     // 金币不跟着翻倍
-    expect(win.coins).toBe(WIN_POINTS)
+    expect(win.coins).toBe(WIN_COINS)
   })
 
   it('每场的增减加起来，正好是总的 MMR —— 两个口径不许对不上', () => {
@@ -738,14 +741,14 @@ describe('碾压', () => {
     const { progress } = replayMatches([scored('m1', [[21, 6]])])
     const w = progress.get('a1')!
     expect(w.mmr).toBe(WIN_POINTS * BLOWOUT_MULTIPLIER)
-    expect(w.coins).toBe(WIN_POINTS * BLOWOUT_MULTIPLIER)
+    expect(w.coins).toBe(WIN_COINS * BLOWOUT_MULTIPLIER)
   })
 
   it('普通赢球还是原来那样，一分不多', () => {
     const { progress } = replayMatches([scored('m1', [[21, 15]])])
     const w = progress.get('a1')!
     expect(w.mmr).toBe(WIN_POINTS)
-    expect(w.coins).toBe(WIN_POINTS)
+    expect(w.coins).toBe(WIN_COINS)
   })
 
   it('碾压输了，MMR 也扣双倍', () => {
@@ -995,14 +998,14 @@ describe('同一组人重复打要打折', () => {
   it('前 5 场全额', () => {
     const { progress } = replayMatches(streak(5))
     expect(progress.get('a1')!.mmr).toBe(5 * WIN_POINTS)
-    expect(progress.get('a1')!.coins).toBe(5 * WIN_POINTS)
+    expect(progress.get('a1')!.coins).toBe(5 * WIN_COINS)
   })
 
   it('第 6 到第 10 场半额', () => {
     const { progress } = replayMatches(streak(10))
     // 5 场全额 + 5 场半额
     expect(progress.get('a1')!.mmr).toBe(5 * WIN_POINTS + 5 * (WIN_POINTS / 2))
-    expect(progress.get('a1')!.coins).toBe(5 * WIN_POINTS + 5 * (WIN_POINTS / 2))
+    expect(progress.get('a1')!.coins).toBe(5 * WIN_COINS + 5 * (WIN_COINS / 2))
   })
 
   it('第 11 场起一分不给', () => {
@@ -1056,7 +1059,7 @@ describe('同一组人重复打要打折', () => {
     ]
     const { outcomes } = replayMatches(ms)
     expect(outcomes.get('m6')!.repeats).toBe(0)
-    expect(outcomes.get('m6')!.impacts.find((i) => i.won)!.coins).toBe(WIN_POINTS)
+    expect(outcomes.get('m6')!.impacts.find((i) => i.won)!.coins).toBe(WIN_COINS)
   })
 
   it('反过来赢是另一组 —— 互有胜负的一晚上不会被打折', () => {
@@ -1072,7 +1075,7 @@ describe('同一组人重复打要打折', () => {
     expect(outcomes.get('m9')!.repeats).toBe(4)
     expect(outcomes.get('m10')!.repeats).toBe(4)
     const { progress } = replayMatches(ms)
-    expect(progress.get('a1')!.coins).toBe(5 * WIN_POINTS)
+    expect(progress.get('a1')!.coins).toBe(5 * WIN_COINS)
   })
 
   it('换个球局重新数 —— 不然每周固定对手的两个人会永远不涨分', () => {
@@ -1082,13 +1085,13 @@ describe('同一组人重复打要打折', () => {
      */
     // 分成两个球局，各 5 场：两边各自从头数，10 场全是全额
     const across = replayMatches([...streak(5, 's1'), ...streak(5, 's2')])
-    expect(across.progress.get('a1')!.coins).toBe(10 * WIN_POINTS)
+    expect(across.progress.get('a1')!.coins).toBe(10 * WIN_COINS)
     expect(across.outcomes.get('s2-m5')!.repeats).toBe(4)
 
     // 同样 10 场挤在一个球局里，后 5 场就是半额。
     // 两边一对比才说明计数真的按球局分开了 —— 只测其中一边是测不出来的。
     const within = replayMatches(streak(10, 's1'))
-    expect(within.progress.get('a1')!.coins).toBe(5 * WIN_POINTS + 5 * (WIN_POINTS / 2))
+    expect(within.progress.get('a1')!.coins).toBe(5 * WIN_COINS + 5 * (WIN_COINS / 2))
     expect(within.outcomes.get('s1-m10')!.repeats).toBe(9)
   })
 
@@ -1110,7 +1113,7 @@ describe('同一组人重复打要打折', () => {
     expect(o.blowout).toBe(true)
     expect(o.repeats).toBe(5)
     expect(o.impacts.find((i) => i.won)!.coins).toBe(
-      (WIN_POINTS * BLOWOUT_MULTIPLIER) / 2,
+      (WIN_COINS * BLOWOUT_MULTIPLIER) / 2,
     )
   })
 
@@ -1146,7 +1149,7 @@ describe('加注', () => {
     const { progress, outcomes } = replayMatches([live('m1', agreed)])
     expect(outcomes.get('m1')!.staked).toBe(true)
     expect(progress.get('a1')!.mmr).toBe(WIN_POINTS * STAKE_MULTIPLIER)
-    expect(progress.get('a1')!.coins).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+    expect(progress.get('a1')!.coins).toBe(WIN_COINS * STAKE_MULTIPLIER)
   })
 
   it('加注输了，MMR 扣双倍', () => {
@@ -1243,17 +1246,50 @@ describe('加注', () => {
     expect(loser.mmrBefore - loser.mmrAfter).toBe(want)
   })
 
-  it('加注又碾压：金币还是双倍，不跟着加那一档', () => {
+  it('加注又碾压：金币走同一条阶梯，输赢都是 90', () => {
     /*
-     * 金币是买装备的钱，不该跟着「这一场多轰动」一路往上翻；
-     * MMR 是水平的刻度，翻得起。
+     * 金币和 MMR 是两条各自的阶梯，形状一样、基数不同：
+     *   MMR   10 → 20 → 30
+     *   金币  30 → 60 → 90
+     * 两边都是「基数 → 双倍 → 双倍再加一个基数」。
+     *
+     * 基数不同是因为这两件事的尺度本来就不一样：MMR 是长期能力的读数，
+     * 慢才对；金币是花的钱，一晚上打十场该看得见地富起来。
      */
+    const bank = Array.from({ length: 4 }, (_, i) =>
+      timed(`bank${i}`, { firstPointAt: i * 6e5, lastPointAt: i * 6e5 + MIN },
+        { seq: i + 1, teams: [['b1', 'b2'], [`x${i}`, `y${i}`]] }),
+    )
     const both = {
-      ...live('m1', agreed),
+      ...live('m1', agreed, 9),
       games: [{ a: 21, b: 3, points: null, serveInit: null }],
     } as Match
-    const { progress } = replayMatches([both])
-    expect(progress.get('a1')!.coins).toBe(WIN_POINTS * STAKE_MULTIPLIER)
+    const { progress, outcomes } = replayMatches([...bank, both])
+
+    const want = WIN_COINS * STAKE_MULTIPLIER + STAKED_BLOWOUT_COIN_BONUS
+    expect(want).toBe(90)
+    expect(progress.get('a1')!.coins).toBe(want)
+    expect(outcomes.get('m1')!.impacts.find((i) => !i.won)!.coins).toBe(-want)
+  })
+
+  it('当前这一版的四档数值', () => {
+    /*
+     * 数值是会调的，所以别处的用例都从常量现推。
+     * 这一条专门把「现在到底是多少」钉死 —— 改数值时只该动这一条，
+     * 动别的就说明有地方把数字写死了。
+     */
+    expect([WIN_POINTS, LOSS_POINTS, WIN_COINS]).toEqual([10, 10, 30])
+    expect(WIN_POINTS * STAKE_MULTIPLIER).toBe(20)
+    expect(WIN_POINTS * STAKE_MULTIPLIER + STAKED_BLOWOUT_BONUS).toBe(30)
+    expect(WIN_COINS * STAKE_MULTIPLIER).toBe(60)
+    expect(WIN_COINS * STAKE_MULTIPLIER + STAKED_BLOWOUT_COIN_BONUS).toBe(90)
+    expect(STAKE_COIN_LOSS).toBe(60)
+    // MMR 和金币走同一条阶梯，所以顶上那一档对两者是同一个倍数。
+    // 界面上只写一次「3 倍」，靠的就是这一条。
+    expect(STAKED_BLOWOUT_MULTIPLIER).toBe(3)
+    expect(
+      (WIN_COINS * STAKE_MULTIPLIER + STAKED_BLOWOUT_COIN_BONUS) / WIN_COINS,
+    ).toBe(STAKED_BLOWOUT_MULTIPLIER)
   })
 
   it('只加注没碾压：还是双倍，加不到那一档', () => {
@@ -1301,7 +1337,7 @@ describe('加注', () => {
     const o = outcomes.get('m6')!
     expect(o.repeats).toBe(5)
     expect(o.impacts.find((i) => i.won)!.coins).toBe(
-      (WIN_POINTS * STAKE_MULTIPLIER) / 2,
+      (WIN_COINS * STAKE_MULTIPLIER) / 2,
     )
   })
 })

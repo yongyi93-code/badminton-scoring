@@ -21,8 +21,20 @@ import type { Match, TeamSide } from '@/types'
  * 落库的只有「花掉了多少」和「买了什么」，这两个没法从比赛推导。
  * ------------------------------------------------------------------ */
 
-/** 赢一场加多少 MMR（同时也是拿到多少金币） */
+/** 赢一场加多少 MMR */
 export const WIN_POINTS = 10
+
+/**
+ * 赢一场拿多少金币。和 MMR 分开，因为这两件事的尺度本来就不一样。
+ *
+ * MMR 是水平的刻度，一场 10 分，几十场才换一个段位 —— 慢是对的，
+ * 那是长期能力的读数。金币是花的钱，一晚上打十场该看得见地富起来，
+ * 不然商店里那件 200 的衣服要打二十场，中间十九场都没有盼头。
+ *
+ * 三倍于 MMR 是照着商店的价目定的：赢一场 30，最便宜的一件 40，
+ * 打两场就能买到第一件东西；最贵的 1600 要五十几场，是个长期目标。
+ */
+export const WIN_COINS = 30
 
 /**
  * 输一场扣多少 MMR（正数，算的时候是减掉）。
@@ -116,7 +128,9 @@ export type ShopItem = {
 
 /**
  * 商店目录。
- * 价格按「赢几场能买到」来定：赢一场 10 金币，所以 50 金币 = 赢 5 场。
+ * 价格按「赢几场能买到」来定。这批价是照着赢一场 10 金币定的
+ * （80 = 赢 8 场）；金币基数改成 WIN_COINS = 30 之后，同一件东西
+ * 现在不到 3 场就买得起 —— 价目表还没跟着往上调，先记在这里。
  *
  * 段位门槛摊开到八段，每升一段都至少解锁一件新东西 ——
  * 升段本身要有看得见的奖励，不然中间几段爬起来没盼头。
@@ -530,7 +544,7 @@ function matchupKey(match: Match, winners: string[], losers: string[]): string {
 export const STAKE_MULTIPLIER = 2
 
 /** 加注输了扣多少金币。没加注的场次输了一分不扣，这是唯一的例外 */
-export const STAKE_COIN_LOSS = WIN_POINTS * STAKE_MULTIPLIER
+export const STAKE_COIN_LOSS = WIN_COINS * STAKE_MULTIPLIER
 
 /**
  * 加注的场次又打出碾压：在双倍之上再加一档，MMR 变成 30（双倍 20 + 10）。
@@ -538,11 +552,24 @@ export const STAKE_COIN_LOSS = WIN_POINTS * STAKE_MULTIPLIER
  * 这是「任何加成最多双倍」唯一的例外，而且是有意开的：说好打大的、
  * 结果还被打到不够一半的分，那一场在场上就是比别的场重，
  * 记分也该照这个重量来。输赢同一个数 —— 双方是讲好的，刻度当然一样。
- *
- * 金币不跟着加这一档，还是双倍 20。金币是买装备的钱，
- * 不该跟着「这一场多轰动」一路往上翻；MMR 是水平的刻度，翻得起。
  */
 export const STAKED_BLOWOUT_BONUS = WIN_POINTS
+
+/**
+ * 加注又碾压时，金币在双倍之上再加的那一档 —— 90（双倍 60 + 30）。
+ *
+ * 和 MMR 走同一条阶梯：两边都是「基数 → 双倍 → 三倍」。
+ * 分开两套倍数试过，结果是同一场球两个数字讲两个故事，
+ * 场上没人对得上账；同一条阶梯只要记住一句「这一场算三场」。
+ */
+export const STAKED_BLOWOUT_COIN_BONUS = WIN_COINS
+
+/**
+ * 加注 + 碾压那一场相当于几场普通的。MMR 和金币是同一个数，
+ * 所以界面上只要说一次「三倍」，不用分开讲两遍。
+ */
+export const STAKED_BLOWOUT_MULTIPLIER =
+  (WIN_POINTS * STAKE_MULTIPLIER + STAKED_BLOWOUT_BONUS) / WIN_POINTS
 
 /** 这一场里所有会被加注影响到的人 */
 export const stakeParticipants = (match: Match): string[] => [
@@ -719,8 +746,11 @@ export function replayMatches(matches: Match[]): {
      * 按「你打得多干净」给更直观。加注要跟着翻是因为它是双方讲好的，
      * 场上人人知道 —— 说好打大的，赢了却只多拿分不多拿钱，说不过去。
      */
-    const coinGain =
-      blowout || staked ? WIN_POINTS * BLOWOUT_MULTIPLIER : WIN_POINTS
+    const coinGain = stakedBlowout
+      ? WIN_COINS * BLOWOUT_MULTIPLIER + STAKED_BLOWOUT_COIN_BONUS
+      : blowout || staked
+        ? WIN_COINS * BLOWOUT_MULTIPLIER
+        : WIN_COINS
     /*
      * 输的一方只在加注时扣双倍。
      *
@@ -753,11 +783,15 @@ export function replayMatches(matches: Match[]): {
      * 扣到 0 就打住，和 MMR 同一个做法。
      *
      * 有个边角要说清楚：余额 = 赚到的 − 花掉的。一个人把钱花光了
-     * （余额 0）再输一场加注，赚到的那一栏掉了 20，但余额本来就是 0，
+     * （余额 0）再输一场加注，赚到的那一栏掉了 60，但余额本来就是 0，
      * 看起来像没扣。要修得让重放知道他花了多少，而「花掉多少」是落库的、
      * 不是从比赛推出来的 —— 为这个边角把那条界线打通不值得。
      */
-    const coinLoss = staked ? STAKE_COIN_LOSS : 0
+    const coinLoss = stakedBlowout
+      ? WIN_COINS * STAKE_MULTIPLIER + STAKED_BLOWOUT_COIN_BONUS
+      : staked
+        ? STAKE_COIN_LOSS
+        : 0
 
     /*
      * 打折和不算分，最后一起乘上去。

@@ -42,6 +42,7 @@ import {
   SKIN_TONES,
   SLOT_LABELS,
   SLOT_ORDER,
+  WIN_COINS,
   WIN_POINTS,
   type AvatarProfile,
   type AvatarSlot,
@@ -133,10 +134,10 @@ export function Avatar({ playerId }: { playerId: string }) {
             <p className="text-lg font-bold">{t('先选个角色', 'Pick a character')}</p>
             <p className="mt-1 text-sm text-ink-500">
               {hasDressUp
-                ? t(`每赢一场得 ${WIN_POINTS} 金币，买了上衣球鞋球拍就穿上身；段位越高，能买的越好`, `Every win earns ${WIN_POINTS} coins. Buy a top, shoes or a racket and they go straight on. The higher your rank, the better the gear.`)
+                ? t(`每赢一场得 ${WIN_COINS} 金币，买了上衣球鞋球拍就穿上身；段位越高，能买的越好`, `Every win earns ${WIN_COINS} coins. Buy a top, shoes or a racket and they go straight on. The higher your rank, the better the gear.`)
                 : hasArt
                   ? t(`赢球涨 MMR，段位一升角色形象就跟着换，一共 ${STAGES.length} 个阶段`, `Winning raises MMR and the character changes with every rank — ${STAGES.length} stages in all`)
-                  : t(`每赢一场比赛得 ${WIN_POINTS} 金币，用金币买发型、战服和武器`, `Every win earns ${WIN_POINTS} coins to spend on hair, kit and rackets`)}
+                  : t(`每赢一场比赛得 ${WIN_COINS} 金币，用金币买发型、战服和武器`, `Every win earns ${WIN_COINS} coins to spend on hair, kit and rackets`)}
             </p>
           </Card>
 
@@ -323,8 +324,8 @@ export function Avatar({ playerId }: { playerId: string }) {
 
           <p className="text-xs leading-relaxed text-ink-500">
             {t(
-              `MMR：赢一场 +${WIN_POINTS}，输一场 −${LOSS_POINTS}，扣到 0 就打住、不会变负。赢了 MMR 比自己高的一队算爆冷，那一场拿 ${WIN_POINTS * UPSET_MULTIPLIER} 分。每段 5 颗星，星满升段；打到最高段之后每 ${IMMORTAL_STEP} 分加一级。买装备用的是金币，金币只按赢的场次算、输球不扣 —— 段位会掉，但攒下的家当不会被没收。`,
-              `MMR: +${WIN_POINTS} a win, −${LOSS_POINTS} a loss, floored at 0 so it never goes negative. Beating a higher-MMR pair is an upset and pays ${WIN_POINTS * UPSET_MULTIPLIER}. Five stars per rank; past the top rank you gain a level every ${IMMORTAL_STEP}. Gear is bought with coins, and coins only count wins — losing never takes them away, so your rank can drop but your wardrobe never does.`,
+              `MMR：赢一场 +${WIN_POINTS}，输一场 −${LOSS_POINTS}，扣到 0 就打住、不会变负。赢了 MMR 比自己高的一队算爆冷，那一场拿 ${WIN_POINTS * UPSET_MULTIPLIER} 分。每段 5 颗星，星满升段；打到最高段之后每 ${IMMORTAL_STEP} 分加一级。买装备用的是金币，赢一场 +${WIN_COINS}，输了不扣 —— 除非那一场加了注，那是自己点头换来的。段位会掉，家当不会平白被没收。`,
+              `MMR: +${WIN_POINTS} a win, −${LOSS_POINTS} a loss, floored at 0 so it never goes negative. Beating a higher-MMR pair is an upset and pays ${WIN_POINTS * UPSET_MULTIPLIER}. Five stars per rank; past the top rank you gain a level every ${IMMORTAL_STEP}. Gear is bought with coins: +${WIN_COINS} a win, and a loss costs nothing unless you staked that match. Your rank can drop, but your wardrobe is never taken from you.`,
             )}
           </p>
         </Card>
@@ -559,8 +560,8 @@ function ShopPanel({
                         {block === 'money' && (
                           <p className="text-xs text-ink-500">
                             {pick(
-                              `还差 ${item.price - balance} 金币，再赢 ${Math.ceil((item.price - balance) / WIN_POINTS)} 场`,
-                              `${item.price - balance} coins short — ${Math.ceil((item.price - balance) / WIN_POINTS)} more wins`,
+                              `还差 ${item.price - balance} 金币，再赢 ${Math.ceil((item.price - balance) / WIN_COINS)} 场`,
+                              `${item.price - balance} coins short — ${Math.ceil((item.price - balance) / WIN_COINS)} more wins`,
                             )}
                           </p>
                         )}
@@ -585,8 +586,8 @@ function ShopPanel({
 
       <p className="pb-4 text-xs leading-relaxed text-ink-500">
         {pick(
-          `价格看金币（赢一场 +${WIN_POINTS}，输球不扣），门槛看 MMR（赢一场 +${WIN_POINTS}，输一场 −${LOSS_POINTS}）。现在 ${progress.level.display}，MMR ${progress.mmr}，金币 ${balance}。两个数都是从比赛记录实时算的 —— 改了战绩会跟着一起变。`,
-          `Prices are in coins (+${WIN_POINTS} a win, losses cost nothing); the rank gate is MMR (+${WIN_POINTS} a win, −${LOSS_POINTS} a loss). You are ${progress.level.display}, MMR ${progress.mmr}, ${balance} coins. Both are worked out live from the match records — change a result and they change too.`,
+          `价格看金币（赢一场 +${WIN_COINS}，输球不扣，只有加注那几场输了才扣），门槛看 MMR（赢一场 +${WIN_POINTS}，输一场 −${LOSS_POINTS}）。现在 ${progress.level.display}，MMR ${progress.mmr}，金币 ${balance}。两个数都是从比赛记录实时算的 —— 改了战绩会跟着一起变。`,
+          `Prices are in coins (+${WIN_COINS} a win; a loss costs nothing unless you staked the match); the rank gate is MMR (+${WIN_POINTS} a win, −${LOSS_POINTS} a loss). You are ${progress.level.display}, MMR ${progress.mmr}, ${balance} coins. Both are worked out live from the match records — change a result and they change too.`,
         )}
       </p>
     </>

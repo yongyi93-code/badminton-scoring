@@ -22,6 +22,7 @@ import {
   BLOWOUT_MULTIPLIER,
   MIN_SCORING_MS,
   STAKE_MULTIPLIER,
+  STAKED_BLOWOUT_MULTIPLIER,
   REPEAT_FULL,
   REPEAT_HALF,
   UPSET_MULTIPLIER,
@@ -277,28 +278,43 @@ export function MatchResult({ matchId }: { matchId: string }) {
           )}
 
           {/*
-            两个标记都可能同时成立，就都显示 —— 但加成不叠加（见 replayMatches）。
+            几个标记都可能同时成立，就都显示 —— 但加成不叠加（见 replayMatches）。
             所以碾压那一枚写「MMR 和金币都双倍」，爆冷那一枚只写 MMR：
             两枚一起出现时，人看到的仍然是「MMR 双倍、金币双倍」，没有矛盾。
+
+            加注 + 碾压是唯一会叠的一档（三倍）。那时候不能还挂两枚双倍 ——
+            两枚 2 倍摆在一起，人读出来的是 2 倍或者 4 倍，就是不会是 3 倍。
+            所以那一档合成一枚，把真正拿到手的倍数直接写在上面。
           */}
           {(outcome?.upset || outcome?.blowout || outcome?.staked) &&
             !outcome?.tooQuick && (
             <div className="mt-3 flex flex-wrap justify-center gap-2">
-              {outcome?.staked && (
+              {outcome?.staked && outcome?.blowout ? (
                 <Pill tone="brand">
                   {t(
-                    `加注 · MMR 和金币都 ${STAKE_MULTIPLIER} 倍`,
-                    `Staked · ${STAKE_MULTIPLIER}× MMR and coins`,
+                    `加注 + 碾压 · MMR 和金币都 ${STAKED_BLOWOUT_MULTIPLIER} 倍`,
+                    `Staked blowout · ${STAKED_BLOWOUT_MULTIPLIER}× MMR and coins`,
                   )}
                 </Pill>
-              )}
-              {outcome?.blowout && (
-                <Pill tone="brand">
-                  {t(
-                    `碾压 · MMR 和金币都 ${BLOWOUT_MULTIPLIER} 倍`,
-                    `Blowout · ${BLOWOUT_MULTIPLIER}× MMR and coins`,
+              ) : (
+                <>
+                  {outcome?.staked && (
+                    <Pill tone="brand">
+                      {t(
+                        `加注 · MMR 和金币都 ${STAKE_MULTIPLIER} 倍`,
+                        `Staked · ${STAKE_MULTIPLIER}× MMR and coins`,
+                      )}
+                    </Pill>
                   )}
-                </Pill>
+                  {outcome?.blowout && (
+                    <Pill tone="brand">
+                      {t(
+                        `碾压 · MMR 和金币都 ${BLOWOUT_MULTIPLIER} 倍`,
+                        `Blowout · ${BLOWOUT_MULTIPLIER}× MMR and coins`,
+                      )}
+                    </Pill>
+                  )}
+                </>
               )}
               {outcome?.upset && (
                 <Pill tone="warn">
