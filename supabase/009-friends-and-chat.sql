@@ -371,12 +371,34 @@ select '守住「说过的话」的触发器',
          where tgrelid = 'public.messages'::regclass and tgname = 'messages_keep_body'
        ) then '有' else '没有 —— 上面那步没成功' end
 union all
-select '三张表的表级权限（应该是 11）',
-       count(*)::text
-from information_schema.role_table_grants
-where grantee = 'authenticated'
-  and table_schema = 'public'
-  and table_name in ('friendships', 'blocks', 'messages')
+/*
+ * 问的是「我要的那 11 项在不在」，不是「总共有几项」。
+ *
+ * 数总数是错的，第一版就是这么写的：Supabase 自己在 public schema
+ * 上还有一套默认权限，新建的表会顺带拿到别的项 —— 于是总数是多少
+ * 取决于它给了什么，不取决于这段 SQL 做了什么。那种数字对不上时
+ * 说明不了任何事，白吓人一跳。
+ *
+ * 多出来的不碍事（那几张表反正只有 authenticated 能碰，而且每一行
+ * 归谁看还有 RLS 管着）。缺一项才是事，所以只查缺不缺。
+ */
+select '我要的那 11 项权限齐了吗',
+       case when (
+         select count(*) from (values
+           ('friendships', 'SELECT'), ('friendships', 'INSERT'),
+           ('friendships', 'UPDATE'), ('friendships', 'DELETE'),
+           ('blocks', 'SELECT'), ('blocks', 'INSERT'), ('blocks', 'DELETE'),
+           ('messages', 'SELECT'), ('messages', 'INSERT'),
+           ('messages', 'UPDATE'), ('messages', 'DELETE')
+         ) as need(t, p)
+         where exists (
+           select 1 from information_schema.role_table_grants g
+           where g.grantee = 'authenticated'
+             and g.table_schema = 'public'
+             and g.table_name = need.t
+             and g.privilege_type = need.p
+         )
+       ) = 11 then '齐了' else '少了 —— 上面那段 grant 没跑成' end
 union all
 select '一对人只有一行的唯一索引',
        case when exists (
