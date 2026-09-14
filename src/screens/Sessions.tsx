@@ -98,18 +98,14 @@ export function Sessions() {
   const row = (s: Session) => {
     const played = counts.get(s.id) ?? 0
     const active = s.status === 'active'
+    const go = () =>
+      push(
+        active
+          ? { name: 'board', sessionId: s.id }
+          : { name: 'summary', sessionId: s.id },
+      )
     return (
-      <Card
-        key={s.id}
-        className={active ? 'border-brand-500/40' : undefined}
-        onClick={() =>
-          push(
-            active
-              ? { name: 'board', sessionId: s.id }
-              : { name: 'summary', sessionId: s.id },
-          )
-        }
-      >
+      <Card key={s.id} className={active ? 'border-brand-500/40' : undefined}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -128,10 +124,23 @@ export function Sessions() {
               {t(`已打 ${played} 场`, `${played} played`)}
             </p>
           </div>
-          <span className="text-brand-600 shrink-0 text-label">
-            {active ? t('继续记分 →', 'Score →') : t('看战绩 ›', 'Results ›')}
-          </span>
         </div>
+
+        {/*
+          进行中的那几场给一个实心按钮，打完的给一条淡的。
+          原来整张卡都能点、右上角一行小字写「继续记分 →」——
+          一列卡里每一张都长一样，要读完那行小字才知道点进去是记分
+          还是翻旧账。两件事轻重差得远，就别让它们长得一样。
+        */}
+        <Button
+          variant={active ? 'primary' : 'soft'}
+          size={active ? 'md' : 'sm'}
+          block
+          className="mt-3"
+          onClick={go}
+        >
+          {active ? t('进入球局', 'Enter session') : t('看战绩', 'Results')}
+        </Button>
       </Card>
     )
   }
@@ -189,14 +198,14 @@ export function Sessions() {
                         className={cx(
                           'flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 transition-colors',
                           picked
-                            ? 'bg-brand-500 text-on-brand'
+                            ? 'bg-brand-solid text-on-brand'
                             : 'active:bg-fill text-ink-700',
                         )}
                       >
                         <span
                           className={cx(
                             'text-caption',
-                            picked ? 'opacity-80' : 'text-ink-500',
+                            picked ? 'opacity-90' : 'text-ink-500',
                           )}
                         >
                           {weekdayShort(d)}
@@ -265,7 +274,33 @@ export function Sessions() {
                 )}
               </>
             ) : (
-              <div className="space-y-3">{onDay.map(row)}</div>
+              <>
+                <div className="space-y-3">{onDay.map(row)}</div>
+                {/*
+                  列完那天的球局，底下留一个「再开一个」。
+                  原来只有空着的那天才有这个按钮 —— 可是「今晚已经有一场，
+                  但时间／地点不合适，我想自己开一个」正是最常见的一种。
+                  已经在一场里的人开不了新的（store 那层拦着），
+                  那时候这个按钮改成回去那一场，不让他填完四步再被拒。
+                */}
+                {!inSession ? (
+                  <Button variant="ghost" size="lg" block onClick={() => push({ name: 'setup' })}>
+                    {t('发起新球局', 'New session')}
+                  </Button>
+                ) : (
+                  /* 我那一场就在这一天的列表里的话，上面那张卡已经能进去了 */
+                  !onDay.some((x) => x.id === inSession.id) && (
+                    <Button
+                      variant="ghost"
+                      size="lg"
+                      block
+                      onClick={() => push({ name: 'board', sessionId: inSession.id })}
+                    >
+                      {t(`回到「${venueLabel(inSession.venue)}」那一场`, 'Back to your session')}
+                    </Button>
+                  )
+                )}
+              </>
             )}
           </>
         ) : past.length === 0 ? (
