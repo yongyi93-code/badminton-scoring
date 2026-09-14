@@ -29,8 +29,8 @@ function Star({ x, y, r, on, color }: { x: number; y: number; r: number; on: boo
   return (
     <polygon
       points={pts}
-      fill={on ? color : '#2a3040'}
-      stroke={on ? shade(color, -0.35) : '#39415400'}
+      fill={on ? color : '#26362e'}
+      stroke={on ? shade(color, -0.35) : '#2a3a3200'}
       strokeWidth="0.8"
     />
   )

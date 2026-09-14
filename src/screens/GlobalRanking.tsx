@@ -5,6 +5,7 @@ import { useNav } from '@/store/useNav'
 import { Body, Card, EmptyState, Screen, TopBar, cx } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { RankMedal } from '@/components/RankMedal'
+import { Podium } from '@/components/Podium'
 import { progressByPlayer, emptyProgress } from '@/lib/avatar'
 import { homeVenues } from '@/lib/venues'
 
@@ -81,55 +82,17 @@ export function GlobalRanking() {
       />
 
       <Body>
-        {/*
-          前三名单独摆一个领奖台。
-          名次这件事，第一眼要看到的是「谁在最上面」，不是「第 17 名是谁」——
-          一条从上往下的列表把这两件事压成同一个动作，谁都得从头读。
-          台子上站过的人，下面的列表里就不再重复列一遍。
-        */}
+        {/* 前三名单独站出来。台子长什么样见 components/Podium */}
         {top3.length === 3 && (
-          <div className="grid grid-cols-3 items-end gap-2 pt-1">
-            {[top3[1], top3[0], top3[2]].map((r, col) => {
-              const place = col === 1 ? 1 : col === 0 ? 2 : 3
-              return (
-                <button
-                  key={r.player.id}
-                  onClick={() => push({ name: 'profile', playerId: r.player.id })}
-                  className="flex min-w-0 flex-col items-center"
-                >
-                  <span className="text-lg leading-none" aria-hidden>
-                    {place === 1 ? '👑' : place === 2 ? '🥈' : '🥉'}
-                  </span>
-                  <Avatar
-                    name={r.player.name}
-                    avatar={avatarsById.get(r.player.id)}
-                    size={place === 1 ? 'lg' : 'md'}
-                    className="mt-1.5"
-                  />
-                  <span className="mt-1.5 w-full truncate text-center text-label">
-                    {r.player.name}
-                  </span>
-                  <span className="tnum text-ink-500 text-caption">
-                    MMR {r.progress.mmr}
-                  </span>
-                  {/*
-                    台子的高度差就是名次 —— 数字写在台子上，
-                    不用再靠颜色区分金银铜（强光下那三个颜色是分不开的）。
-                  */}
-                  <span
-                    className={cx(
-                      'mt-2 flex w-full items-start justify-center rounded-t-xl pt-1.5 text-title',
-                      place === 1
-                        ? 'bg-brand-solid text-on-brand h-14'
-                        : 'bg-brand-100 text-brand-600 h-9',
-                    )}
-                  >
-                    {place}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+          <Podium
+            entries={top3.map((r) => ({
+              id: r.player.id,
+              name: r.player.name,
+              avatar: avatarsById.get(r.player.id),
+              sub: `MMR ${r.progress.mmr}`,
+            }))}
+            onPick={(id) => push({ name: 'profile', playerId: id })}
+          />
         )}
 
         {/* 我在第几。台子上没有我的时候才有意义 —— 有的话上面已经写着了 */}

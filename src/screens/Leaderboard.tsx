@@ -14,6 +14,7 @@ import {
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { RankTable } from '@/components/RankTable'
+import { Podium } from '@/components/Podium'
 import {
   computeStats,
   matchesInPeriod,
@@ -165,37 +166,19 @@ export function Leaderboard({ sessionId, venue }: Scope) {
           </div>
         )}
 
-        {/* 前三名的领奖台。高度压在 210 以内，不能把榜单挤到第二屏 */}
+        {/* 前三名的领奖台。和全体排名共用一个，见 components/Podium */}
         {podium.length >= 3 && (
-          <div className="border-line bg-surface shadow-card rounded-card flex items-end gap-2 border p-4">
-            {[podium[1], podium[0], podium[2]].map((s, i) => {
-              const place = [2, 1, 3][i]
-              const p = names.get(s.playerId)
-              return (
-                <button
-                  key={s.playerId}
-                  onClick={() => push({ name: 'profile', playerId: s.playerId })}
-                  className="min-w-0 flex-1 text-center"
-                >
-                  <span className={place === 1 ? 'block text-2xl' : 'block text-lg'}>
-                    {place === 1 ? '🥇' : place === 2 ? '🥈' : '🥉'}
-                  </span>
-                  <span className="mt-1 flex justify-center">
-                    <Avatar
-                      name={p?.name ?? '?'}
-                      avatar={avatarsById.get(s.playerId)}
-                      size={place === 1 ? 'lg' : undefined}
-                    />
-                  </span>
-                  <span className="mt-1.5 block truncate text-label font-semibold">
-                    {p?.name ?? t('已删除', 'Deleted')}
-                  </span>
-                  <span className="tnum text-ink-500 block text-caption">
-                    MMR {progressById.get(s.playerId)?.mmr ?? 0}
-                  </span>
-                </button>
-              )
-            })}
+          <div className="border-line bg-surface shadow-card rounded-card border p-4">
+            <Podium
+              entries={podium.map((s) => ({
+                id: s.playerId,
+                name: names.get(s.playerId)?.name ?? t('已删除', 'Deleted'),
+                avatar: avatarsById.get(s.playerId),
+                /* 这一屏按胜率排，副标题就得说胜率 —— 全体那屏说的是 MMR */
+                sub: `${percent(s.winRate)} · ${t(`${s.games} 场`, `${s.games} played`)}`,
+              }))}
+              onPick={(id) => push({ name: 'profile', playerId: id })}
+            />
           </div>
         )}
 

@@ -31,7 +31,7 @@ async function nodeToPngBlob(node: HTMLElement, scale = 2): Promise<Blob> {
   canvas.height = Math.round(height * scale)
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error(pick('浏览器不支持 canvas', 'This browser has no canvas support'))
-  ctx.fillStyle = '#0b1220'
+  ctx.fillStyle = '#0d1d16'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
