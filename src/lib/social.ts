@@ -57,6 +57,25 @@ const noCloud = () => pick('还没接云端，私聊用不了', 'Cloud is not se
 /** 把数据库的报错翻成人话。认不出来的退回原文，至少还能搜 */
 function readable(message: string): string {
   const m = message.toLowerCase()
+  /*
+   * 这两条是「后端还没装好」，不是「你做错了什么」。
+   *
+   * 摆在最前面，而且说的是该去干什么 —— 上线那天真的撞上过：
+   * 界面上原样吐出一句 permission denied for table friendships，
+   * 对着一个只想加好友的人，那句话一个字都没用。
+   */
+  if (m.includes('permission denied')) {
+    return pick(
+      '好友功能还没开通 —— 数据库那边少了一步（009 那段 SQL 里的 grant）。',
+      'Friends is not switched on yet — the database is missing a grant (see migration 009).',
+    )
+  }
+  if (m.includes('does not exist') || m.includes('schema cache')) {
+    return pick(
+      '好友功能还没开通 —— 数据库里还没有这几张表，要先跑 009 那段 SQL。',
+      'Friends is not switched on yet — the tables do not exist. Run migration 009 first.',
+    )
+  }
   if (m.includes('row-level security') || m.includes('violates row-level')) {
     /*
      * 这一条几乎总是同一件事：你们不是好友了，或者被对方拉黑了。

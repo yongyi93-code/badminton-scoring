@@ -93,6 +93,29 @@ alter table public.friendships enable row level security;
 alter table public.blocks enable row level security;
 alter table public.messages enable row level security;
 
+/*
+ * 表级权限。RLS 和 GRANT 是两道门，都得开。
+ *
+ * 这一段是补上去的，因为漏了它真的出过一次事：三张表建好了、
+ * 九条策略也都在，结果谁一点「加好友」都是
+ * 「permission denied for table friendships」。
+ *
+ * 两道门管的是两件不同的事：
+ *   GRANT 管「这个角色碰不碰得到这张表」
+ *   RLS   管「碰得到的那些行里，哪几行是他的」
+ * 少了 GRANT，RLS 写得再细也没机会跑到 —— 请求在更外面就被挡下了。
+ *
+ * 在 Supabase 后台的 SQL Editor 里建表不会自动带上这一句：
+ * 通过界面或 API 建的表才会。所以手写的 SQL 必须自己发。
+ *
+ * 发多少按策略来，不按「方便」来：blocks 没有 update 策略，
+ * 那 update 就不发 —— 发了也用不上，而多发的每一样都是以后
+ * 某次改动可能踩上去的地方。
+ */
+grant select, insert, update, delete on public.friendships to authenticated;
+grant select, insert, delete on public.blocks to authenticated;
+grant select, insert, update, delete on public.messages to authenticated;
+
 -- ===================================================================
 -- 二、两个函数
 --
@@ -347,6 +370,13 @@ select '守住「说过的话」的触发器',
          select 1 from pg_trigger
          where tgrelid = 'public.messages'::regclass and tgname = 'messages_keep_body'
        ) then '有' else '没有 —— 上面那步没成功' end
+union all
+select '三张表的表级权限（应该是 11）',
+       count(*)::text
+from information_schema.role_table_grants
+where grantee = 'authenticated'
+  and table_schema = 'public'
+  and table_name in ('friendships', 'blocks', 'messages')
 union all
 select '一对人只有一行的唯一索引',
        case when exists (
