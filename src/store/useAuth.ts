@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { pick } from '@/lib/i18n'
 import { arrivedFromAuthLink, supabase } from '@/lib/supabase'
 import { flushNow, startSync, stopSync } from '@/lib/sync'
+import { startSocial, stopSocial } from '@/store/useSocial'
 import { useApp } from '@/store/useApp'
 
 /* ------------------------------------------------------------------ *
@@ -61,8 +62,21 @@ const set = (next: AuthState) => {
  */
 function follow(session: Session | null) {
   set({ ...current, session })
-  if (session) void startSync()
-  else stopSync()
+  if (session) {
+    void startSync()
+    /*
+     * 好友和私聊跟着登录一起开。
+     *
+     * 它和 startSync 是两套完全分开的东西：那一套同步的是 records
+     * （球局、比赛、球员，同一个球群的人都读得到），这一套走的是
+     * friendships / messages（只有相关的人读得到）。挂在同一个地方
+     * 只是因为「什么时候该开」是同一件事 —— 有人登录了。
+     */
+    startSocial()
+  } else {
+    stopSync()
+    stopSocial()
+  }
 }
 
 /* 启动时先问一次现有会话，之后交给 onAuthStateChange */

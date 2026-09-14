@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useNav, useRoute, TAB_ROUTES, type TabName } from '@/store/useNav'
 import { cx } from '@/components/ui'
 import { activeSessionOf, useApp } from '@/store/useApp'
+import { socialBadge, useSocial } from '@/store/useSocial'
 
 /*
  * 底部主导航。规格里写的是「底部四项」，但后面列了五项 ——
@@ -73,6 +74,8 @@ export function TabBar() {
   const route = useRoute()
   /** 我现在在哪一场里。在的话，中间那个按钮改成「回去那一场」 */
   const inSession = useApp((s) => activeSessionOf(s.sessions, s.meId))
+  /** 未读私信 + 没处理的好友申请 */
+  const badge = socialBadge(useSocial())
   const switchTab = useNav((s) => s.switchTab)
   const push = useNav((s) => s.push)
 
@@ -80,19 +83,33 @@ export function TabBar() {
 
   const cell = (item: Item) => {
     const on = route.name === item.tab
+    /*
+     * 「我的」上那个小红点：有人加我好友，或者有人跟我说了话。
+     *
+     * 只有一个点，不写数字 —— 24px 的图标角上塞一个两位数，
+     * 读不出来，而这里要说的只是「进去看一眼」。具体几件事
+     * 在「我的」那一屏里写着。
+     */
+    const dot = item.tab === 'me' && badge > 0
     return (
       <button
         key={item.tab}
         onClick={() => switchTab(item.tab)}
         aria-current={on ? 'page' : undefined}
+        aria-label={dot ? t('我的（有新消息）', 'Me (new activity)') : undefined}
         className={cx(
           'flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-1',
           on ? 'text-brand-600' : 'text-ink-500',
         )}
       >
-        <svg viewBox="0 0 24 24" className="size-6" aria-hidden>
-          {item.icon}
-        </svg>
+        <span className="relative">
+          <svg viewBox="0 0 24 24" className="size-6" aria-hidden>
+            {item.icon}
+          </svg>
+          {dot && (
+            <span className="bg-danger-solid border-surface absolute -top-0.5 -right-1 size-2.5 rounded-full border-2" />
+          )}
+        </span>
         <span className={cx('text-caption', on && 'font-semibold')}>
           {t(...item.label)}
         </span>

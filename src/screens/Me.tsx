@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { avatarOf, playerMap, useApp } from '@/store/useApp'
 import type { Gender } from '@/types'
 import { useNav } from '@/store/useNav'
+import { socialBadge, useSocial } from '@/store/useSocial'
 import {
   Body,
   Button,
@@ -375,6 +376,8 @@ export function Me() {
   const setMeId = useApp((s) => s.setMeId)
   const push = useNav((s) => s.push)
   const { theme, setTheme } = useTheme()
+  /* 未读私信 + 没处理的好友申请，合起来一个数 */
+  const badge = socialBadge(useSocial())
 
   const [picking, setPicking] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
@@ -582,6 +585,32 @@ export function Me() {
                 {ARROW}
               </div>
             </Card>
+
+            {/*
+              好友和私聊。放在战绩上面，因为它是唯一一处「别人在等我」——
+              有人加了我、有人跟我说了话，这两件事往下压一屏就等于没有。
+              badge 里的数字是未读私信 + 没处理的好友申请，合起来一个数：
+              两个小红点摆在一起，人只会数不清到底有几件事。
+            */}
+            <SectionTitle>{t('好友', 'Friends')}</SectionTitle>
+            <div className="border-line rounded-card overflow-hidden border">
+              <MenuRow
+                title={t('好友与私聊', 'Friends and chat')}
+                hint={
+                  badge > 0
+                    ? t(`${badge} 条新的`, `${badge} new`)
+                    : t('加了好友才能私聊', 'Chat opens once you are friends')
+                }
+                right={
+                  badge > 0 ? (
+                    <span className="bg-brand-solid text-on-brand tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  ) : undefined
+                }
+                onClick={() => push({ name: 'friends' })}
+              />
+            </div>
 
             <SectionTitle>{t('我的战绩', 'My record')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">

@@ -139,6 +139,35 @@ export function duration(ms: number): string {
 }
 
 /**
+ * 「多久以前」。聊天列表和消息气泡上那一行小字。
+ *
+ * 只到「昨天」为止，再往前就给日期 —— 「7 天前」这种说法，
+ * 读的人还要在脑子里减一次才知道是哪天，不如直接写出来。
+ */
+export function relativeTime(ts: number, now = Date.now()): string {
+  const zh = lang() === 'zh'
+  const diff = now - ts
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return pick('刚刚', 'just now')
+  if (min < 60) return zh ? `${min} 分钟前` : `${min} min ago`
+  const h = Math.floor(min / 60)
+  if (h < 24) return zh ? `${h} 小时前` : `${h}h ago`
+  /*
+   * 「昨天」按日历天算，不按 24 小时算 —— 今天凌晨 1 点看昨天
+   * 晚上 11 点那条，差 2 小时，但那确实是昨天。
+   */
+  const d0 = new Date(now)
+  const d1 = new Date(ts)
+  const days = Math.round(
+    (new Date(d0.getFullYear(), d0.getMonth(), d0.getDate()).getTime() -
+      new Date(d1.getFullYear(), d1.getMonth(), d1.getDate()).getTime()) /
+      DAY,
+  )
+  if (days <= 1) return pick('昨天', 'yesterday')
+  return formatDate(toISODate(d1))
+}
+
+/**
  * 连胜连败。2 场以下不算「连」，返回 null 让调用方别显示。
  *
  * 英文用 W3 / L3 这种战绩表写法，不是 3 in a row —— 这个标签永远

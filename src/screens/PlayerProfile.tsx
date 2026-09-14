@@ -1,9 +1,10 @@
 import { useT } from '@/lib/i18n'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { avatarOf, playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Body,
+  Button,
   Card,
   EmptyState,
   Pill,
@@ -12,6 +13,8 @@ import {
   TopBar,
   cx,
 } from '@/components/ui'
+import { refreshSocial, standingWith, useSocial } from '@/store/useSocial'
+import { acceptFriendRequest, removeFriendship, sendFriendRequest } from '@/lib/social'
 import { Avatar, GenderTag } from '@/components/PlayerBits'
 import {
   bestPartner,
@@ -47,6 +50,94 @@ function HeroStat({ value, label }: { value: string; label: string }) {
     <div className="text-center">
       <p className="tnum text-brand-600 text-h2">{value}</p>
       <p className="text-ink-500 mt-0.5 text-caption">{label}</p>
+    </div>
+  )
+}
+
+/**
+ * 战绩页上那一排「加好友 / 私聊」。
+ *
+ * 四种状态各说各的，靠的是 standingWith 那一个函数 ——
+ * 分散到各处去判 status 和方向，迟早有一处把「他等我」
+ * 显示成「我等他」。
+ *
+ * 没有 ownerId 的球员这一块整个不出现：那是别人代建的、
+ * 没装 App 的球友，他没有账号，加了也没人收得到。
+ */
+function FriendButton({
+  playerId,
+  ownerId,
+}: {
+  playerId: string
+  ownerId?: string | null
+}) {
+  const t = useT()
+  const social = useSocial()
+  const push = useNav((s) => s.push)
+  const meId = useApp((s) => s.meId)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+
+  const standing = useMemo(() => standingWith(social, ownerId), [social, ownerId])
+
+  /* 自己的战绩页上不该有「加自己为好友」 */
+  if (!ownerId || !social.meUid || ownerId === social.meUid || playerId === meId) return null
+
+  const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+    setBusy(true)
+    const r = await fn()
+    setBusy(false)
+    if (!r.ok) setNote(r.error ?? null)
+    else await refreshSocial()
+  }
+
+  return (
+    <div className="border-brand-500/20 mt-3 border-t pt-3">
+      {standing.kind === 'friends' ? (
+        <Button block variant="primary" onClick={() => push({ name: 'chat', uid: ownerId })}>
+          {t('私聊', 'Message')}
+        </Button>
+      ) : standing.kind === 'received' ? (
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            disabled={busy}
+            onClick={() => void run(() => removeFriendship(standing.id))}
+          >
+            {t('不了', 'No')}
+          </Button>
+          <Button
+            className="flex-1"
+            variant="primary"
+            disabled={busy}
+            onClick={() => void run(() => acceptFriendRequest(standing.id))}
+          >
+            {t('他加你了 · 同意', 'Accept request')}
+          </Button>
+        </div>
+      ) : standing.kind === 'sent' ? (
+        <Button
+          block
+          disabled={busy}
+          onClick={() => void run(() => removeFriendship(standing.id))}
+        >
+          {t('等他同意 · 撤回', 'Waiting — cancel')}
+        </Button>
+      ) : standing.kind === 'blocked' ? (
+        <p className="text-ink-500 text-caption">
+          {t('你拉黑了他。去好友页可以解除。', 'You blocked them — undo it on the Friends screen.')}
+        </p>
+      ) : (
+        <Button
+          block
+          variant="ghost"
+          disabled={busy}
+          onClick={() => void run(() => sendFriendRequest(ownerId))}
+        >
+          {t('加好友', 'Add friend')}
+        </Button>
+      )}
+      {note && <p className="text-danger-600 mt-2 text-caption">{note}</p>}
     </div>
   )
 }
@@ -150,6 +241,12 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
             <HeroStat value={String(stats.wins)} label={t('胜场', 'Wins')} />
             <HeroStat value={percent(stats.winRate)} label={t('胜率', 'Win rate')} />
           </div>
+
+          {/*
+            加好友放在这里，不在好友那一屏里搜名字 ——
+            加一个人之前总要先看看他是谁，而「他是谁」正是这一屏。
+          */}
+          <FriendButton playerId={playerId} ownerId={player.ownerId} />
         </Card>
 
         {/* MMR 走势：段位是个结果，这条线才看得出是在往上还是往下 */}

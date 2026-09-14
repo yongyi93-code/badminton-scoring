@@ -23,6 +23,15 @@ export type Route =
   | { name: 'summary'; sessionId: string }
   | { name: 'profile'; playerId: string }
   | { name: 'avatar'; playerId: string }
+  /** 好友：已经是好友的、发来的申请、聊过的那几段对话 */
+  | { name: 'friends' }
+  /*
+   * 一段私聊。按 auth 的 uid 走，不按球员 id ——
+   * 私聊这套东西数据库那边认的就是 uid，而且好友有可能
+   * 在本机根本没有对应的球员记录（他换了球群、或者还没同步过来）。
+   * 按球员 id 走的话，那种人点进去是一片空白。
+   */
+  | { name: 'chat'; uid: string }
 
 /**
  * 底部导航的四个落脚点（中间的「开球」不是 tab，它推一个流程出来）。

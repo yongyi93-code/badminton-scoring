@@ -14,6 +14,8 @@ import { Leaderboard } from '@/screens/Leaderboard'
 import { SessionSummary } from '@/screens/SessionSummary'
 import { PlayerProfile } from '@/screens/PlayerProfile'
 import { Avatar } from '@/screens/Avatar'
+import { Friends } from '@/screens/Friends'
+import { Chat } from '@/screens/Chat'
 import { TabBar } from '@/components/TabBar'
 import { ProgressProvider } from '@/store/progress'
 import { RecoverySheet } from '@/components/RecoverySheet'
@@ -103,5 +105,9 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <PlayerProfile playerId={route.playerId} />
     case 'avatar':
       return <Avatar playerId={route.playerId} />
+    case 'friends':
+      return <Friends />
+    case 'chat':
+      return <Chat uid={route.uid} />
   }
 }
