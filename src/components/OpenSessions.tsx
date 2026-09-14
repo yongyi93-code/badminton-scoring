@@ -133,6 +133,8 @@ export function OpenSessions() {
         const host = s.createdBy ? nameOf.get(s.createdBy) : undefined
         const full = isFull(s)
         const left = spotsLeft(s)
+        /* 审批制的局：我申请过了，还在队列里等 */
+        const waiting = Boolean(meId && s.pendingIds?.includes(meId))
         return (
           /*
             卡片本身不做成可点的。Card 带 onClick 时渲染的是 <button>，
@@ -146,7 +148,14 @@ export function OpenSessions() {
                 onClick={() => push({ name: 'board', sessionId: s.id })}
                 className="min-w-0 flex-1 text-left"
               >
-                <Pill tone="brand">{t('进行中', 'Live')}</Pill>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <Pill tone="brand">{t('进行中', 'Live')}</Pill>
+                  {/*
+                    审批制要在点之前就说，不能等他点完才发现。
+                    「点一下就进去了」和「递个申请等人理你」是两种心理准备。
+                  */}
+                  {s.approval && <Pill tone="warn">{t('要开局的人通过', 'Approval needed')}</Pill>}
+                </span>
                 <p className="mt-2 truncate text-h2">{venueLabel(s.venue)}</p>
                 {/*
                   什么时候，单独一行、颜色更重。
@@ -183,9 +192,9 @@ export function OpenSessions() {
               */}
               <Button
                 size="sm"
-                variant={full || mine ? 'soft' : 'primary'}
+                variant={full || mine || waiting ? 'soft' : 'primary'}
                 className="shrink-0"
-                disabled={full || Boolean(mine)}
+                disabled={full || Boolean(mine) || waiting}
                 onClick={() => {
                   if (!meId) {
                     switchTab('me')
@@ -196,12 +205,40 @@ export function OpenSessions() {
                    * 算出来的 full / mine —— 界面这份是同步过来的数据，
                    * 可能已经过时；加不进去就别跳转，留在原地能看见原因。
                    */
-                  if (joinSession(s.id, meId)) push({ name: 'board', sessionId: s.id })
+                  /*
+                   * 审批制的局只是把申请递上去，人还没进名单 ——
+                   * 这时候把他推进看板是错的：他会看到一整屏
+                   * 「安排下一场 / 记分」，以为自己已经在里面了。
+                   * 留在原地，卡上那行字会变成「等开局的人通过」。
+                   */
+                  if (joinSession(s.id, meId) === 'joined') {
+                    push({ name: 'board', sessionId: s.id })
+                  }
                 }}
               >
-                {full ? t('已满', 'Full') : mine ? t('加不了', 'Busy') : t('加入', 'Join')}
+                {full
+                  ? t('已满', 'Full')
+                  : mine
+                    ? t('加不了', 'Busy')
+                    : waiting
+                      ? t('等通过', 'Pending')
+                      : s.approval
+                        ? t('申请加入', 'Request')
+                        : t('加入', 'Join')}
               </Button>
             </div>
+            {/*
+              申请出去之后要有个交代。没有这一句的话，按钮从「申请加入」
+              变成灰的「等通过」，人看到的是「我点了，然后它坏了」。
+            */}
+            {waiting && (
+              <p className="text-ink-700 mt-2 text-caption">
+                {t(
+                  `申请递上去了，等${host ?? '开局的人'}通过。通过了这一场会出现在你的首页上。`,
+                  `Request sent — waiting for ${host ?? 'the host'}. Once approved, this session shows up on your home screen.`,
+                )}
+              </p>
+            )}
             {!meId && (
               <p className="text-ink-500 mt-2 text-caption">
                 {t(

@@ -12,6 +12,7 @@ import {
   Pill,
   Screen,
   SectionTitle,
+  Toggle,
   Segmented,
   Sheet,
   Stepper,
@@ -469,6 +470,9 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
   const updateSession = useApp((s) => s.updateSession)
   const endSession = useApp((s) => s.endSession)
   const leaveSession = useApp((s) => s.leaveSession)
+  const kickPlayer = useApp((s) => s.kickPlayer)
+  const approveJoin = useApp((s) => s.approveJoin)
+  const rejectJoin = useApp((s) => s.rejectJoin)
   const meId = useApp((s) => s.meId)
 
   const push = useNav((s) => s.push)
@@ -550,6 +554,32 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
 
   const type = nextType ?? session.defaultType
   const restingIds = session.restingIds ?? []
+
+  /*
+   * 我是不是开这一场的人。审批和踢人两件事都只归他。
+   *
+   * 老球局没有 createdBy，那就谁都不是主 —— 这两个入口整块不出现。
+   * 不能退成「谁都算主」：这一场是全马来西亚都看得见的，
+   * 那等于把踢人的按钮发给了所有人。
+   */
+  const iAmHost = Boolean(meId && session.createdBy && meId === session.createdBy)
+
+  /**
+   * 这个人还踢得动吗 —— 打过球的踢不掉。
+   * 和「自己退出」同一条规矩：他那几场比赛还在，人从名单上没了，
+   * 排行榜和 AA 分账就会挂着一个不在名单里的人。
+   */
+  const kickable = (playerId: string) =>
+    !allMatches.some(
+      (m) =>
+        m.sessionId === session.id &&
+        (m.teamA.includes(playerId) || m.teamB.includes(playerId)),
+    )
+
+  /** 排队等通过的人。只有开局的人要处理他们 */
+  const pending = (session.pendingIds ?? [])
+    .map((id) => names.get(id))
+    .filter((p): p is Player => Boolean(p))
   /*
    * 友谊赛的出场人 = 主队（正式球员）+ 客队（只属于这场的客人）。
    * 客队不在 session.playerIds 里，所以要单独接上去，否则自动排场找不到人。
@@ -1040,6 +1070,96 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
           </div>
         )}
 
+        {/*
+          有人在等你放行。
+          摆在看板靠上的位置，因为这件事是「别人在等我」——
+          压到最底下的话，开局的人整晚在排场记分，根本不会翻到那里，
+          而申请的人就一直在那儿等着，最后以为这个功能是坏的。
+        */}
+        {iAmHost && pending.length > 0 && (
+          <div className="border-brand-500 bg-brand-100 rounded-card border p-4">
+            <p className="text-brand-600 font-semibold">
+              {t(`${pending.length} 个人想加进来`, `${pending.length} want to join`)}
+            </p>
+            <div className="mt-3 space-y-2">
+              {pending.map((p) => (
+                <div
+                  key={p.id}
+                  className="border-line bg-surface flex items-center gap-2.5 rounded-xl border px-3 py-2"
+                >
+                  <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-medium">{p.name}</span>
+                      {progressById.get(p.id) && (
+                        <span className="shrink-0">
+                          <RankChip level={progressById.get(p.id)!.level} />
+                        </span>
+                      )}
+                    </span>
+                    {/*
+                      放不放行是看「他打得怎么样、跟我们合不合得来」——
+                      光一个名字答不了这个问题，所以段位和场数要摆出来，
+                      点名字还能进他的战绩页细看。
+                    */}
+                    <button
+                      className="text-brand-600 block text-caption"
+                      onClick={() => push({ name: 'profile', playerId: p.id })}
+                    >
+                      {t(
+                        `打过 ${(progressById.get(p.id)?.wins ?? 0) + (progressById.get(p.id)?.losses ?? 0)} 场 · 看战绩 ›`,
+                        `${(progressById.get(p.id)?.wins ?? 0) + (progressById.get(p.id)?.losses ?? 0)} played · see record ›`,
+                      )}
+                    </button>
+                  </span>
+                  <Button
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => {
+                      rejectJoin(session.id, p.id)
+                      setNotice(null)
+                    }}
+                  >
+                    {t('不了', 'No')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    className="shrink-0"
+                    onClick={() => {
+                      /*
+                       * 批准会重新判一次人满和「他在不在别的局里」——
+                       * 队列里的人可能排了半小时，这中间情况变了。
+                       * 变了就得说出来，不然按钮按下去毫无反应。
+                       */
+                      const r = approveJoin(session.id, p.id)
+                      if (r === 'full') {
+                        setNotice(
+                          t(
+                            '人已经满了 —— 要放他进来先把上限调大，或者请一个人出去。',
+                            'It is full — raise the limit or remove someone first.',
+                          ),
+                        )
+                      } else if (r === 'busy') {
+                        setNotice(
+                          t(
+                            `${p.name} 等的时候进了别的球局，现在放不进来。`,
+                            `${p.name} joined another session while waiting.`,
+                          ),
+                        )
+                      } else {
+                        setNotice(null)
+                      }
+                    }}
+                  >
+                    {t('通过', 'Let in')}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 友谊赛的实时总比分：打的时候两边最想知道的就是现在几比几 */}
         {session.friendly && (
           <div className="flex items-center justify-center gap-4 rounded-xl border border-line bg-surface px-3 py-2.5">
@@ -1173,11 +1293,28 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
               <button className="text-brand-600 text-caption" onClick={() => setPairOpen(true)}>
                 {t('配对设置', 'Pairing')}
               </button>
-              {full ? (
-                <button className="text-warning-600 text-caption" onClick={() => setCapOpen(true)}>
-                  {t(`已满 ${session.playerIds.length}/${session.maxPlayers}`, `Full ${session.playerIds.length}/${session.maxPlayers}`)}
+              {/*
+                「谁能进」这一组设置（上限 + 要不要我点头）归开局的人，
+                而且要一直点得到。原来它只在人满的时候才有入口 ——
+                于是「我想改成要我审批」这件事，只有在已经满了的时候
+                才做得到，而那正是最不需要它的时候。
+              */}
+              {iAmHost && (
+                <button
+                  className={cx('text-caption', full ? 'text-warning-600' : 'text-brand-600')}
+                  onClick={() => setCapOpen(true)}
+                >
+                  {full
+                    ? t(`已满 ${session.playerIds.length}/${session.maxPlayers}`, `Full ${session.playerIds.length}/${session.maxPlayers}`)
+                    : t('谁能进', 'Who can join')}
                 </button>
-              ) : (
+              )}
+              {!iAmHost && full && (
+                <span className="text-warning-600 text-caption">
+                  {t(`已满 ${session.playerIds.length}/${session.maxPlayers}`, `Full ${session.playerIds.length}/${session.maxPlayers}`)}
+                </span>
+              )}
+              {!full && (
                 <button className="text-brand-600 text-caption" onClick={() => setAdding(true)}>
                   {t('+ 加人', '+ Add')}
                 </button>
@@ -1467,8 +1604,41 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         不做成只有开局的人能改 —— 到了球馆现场，谁手边有手机谁就该能调，
         为这个加一层权限只会在最忙的时候挡住人。
       */}
-      <Sheet open={capOpen} onClose={() => setCapOpen(false)} title={t('人数上限', 'Player limit')}>
+      <Sheet open={capOpen} onClose={() => setCapOpen(false)} title={t('谁能进', 'Who can join')}>
         <div className="space-y-4">
+          {/*
+            要不要我点头。开局之后随时改得动 ——
+            人一多起来才想起要挑人，是很常见的。
+
+            从「要审批」改回「不用审批」时，队列里等着的人不会自动进来：
+            他们是在「要审批」的规矩下递的申请，规矩变了不代表他们就被
+            批准了。得开局的人自己一个一个放行，或者他们重新点一次加入。
+          */}
+          <Toggle
+            checked={session.approval === true}
+            onChange={(v) => updateSession(sessionId, { approval: v || undefined })}
+            label={t('要我通过才能加入', 'I approve each person')}
+          />
+          <p className="text-ink-500 text-caption">
+            {session.approval
+              ? t(
+                  '别人点了「申请加入」之后进一个队列，在这一屏上面等你放行。',
+                  'Requests land in a queue at the top of this board for you to let in.',
+                )
+              : t(
+                  '现在是谁点加入谁就进来。',
+                  'Right now anyone who taps join is in.',
+                )}
+            {(session.pendingIds?.length ?? 0) > 0 &&
+              t(
+                ` 还有 ${session.pendingIds!.length} 个人在队列里等着 —— 关掉这个开关他们也不会自动进来，还是要你放行。`,
+                ` ${session.pendingIds!.length} still waiting in the queue — turning this off does not let them in automatically.`,
+              )}
+          </p>
+
+          <div className="border-line border-t pt-4">
+            <p className="mb-2 text-label">{t('人数上限', 'Player limit')}</p>
+          </div>
           <div className="flex items-center gap-3">
             <Stepper
               value={session.maxPlayers ?? 0}
@@ -1606,6 +1776,38 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             >
               {t('看他的战绩', 'See their record')}
             </Button>
+
+            {/*
+              把人请出去。只有开局的人看得到，而且只在他还没打过球的时候。
+              打过了就踢不掉 —— 他那几场比赛还在，人从名单上没了，
+              排行榜和 AA 分账就会挂着一个不存在的人。
+              这时候能做的是「先休息」，那一条上面已经有了。
+            */}
+            {iAmHost && pickingRest.id !== session.createdBy && (
+              kickable(pickingRest.id) ? (
+                <Button
+                  block
+                  variant="dangerSoft"
+                  onClick={() => {
+                    const id = pickingRest.id
+                    if (!kickPlayer(session.id, id)) return
+                    setPickingRest(null)
+                    setNotice(
+                      t(`${pickingRest.name} 被移出这一场了`, `${pickingRest.name} was removed`),
+                    )
+                  }}
+                >
+                  {t('把他移出这一场', 'Remove from this session')}
+                </Button>
+              ) : (
+                <p className="text-ink-500 px-1 text-caption">
+                  {t(
+                    '他已经打过球了，移不出去 —— 那几场比赛还挂在他名下。要他别再上场就按上面的「先休息」。',
+                    'They have already played, so they cannot be removed — those matches are theirs. Use “sit out” above to keep them off court.',
+                  )}
+                </p>
+              )
+            )}
           </div>
         )}
       </Sheet>
@@ -1658,6 +1860,24 @@ function JoinBar({ session }: { session: Session }) {
   if (session.status !== 'active' || !meId || inIt) return null
 
   const full = isFull(session)
+  const waiting = session.pendingIds?.includes(meId) ?? false
+
+  /* 已经在排队了，这一块就只报告状态，不再给按钮 */
+  if (waiting) {
+    return (
+      <div className="border-warning-600/30 bg-warning-50 rounded-card border px-4 py-3.5">
+        <p className="text-warning-600 font-semibold">
+          {t('等开局的人通过', 'Waiting for the host')}
+        </p>
+        <p className="text-ink-700 mt-0.5 text-label">
+          {t(
+            '申请已经递上去了。通过之前你不会被排上场 —— 这一屏你看得到，只是还没算你的人。',
+            'Your request is in. Until it is approved you are not in the rotation — you can watch this board, but you are not counted.',
+          )}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="border-brand-500 bg-brand-100 rounded-card border px-4 py-3.5">
@@ -1667,7 +1887,12 @@ function JoinBar({ session }: { session: Session }) {
       <p className="text-ink-700 mt-0.5 text-label">
         {full
           ? t('人数已经满了 —— 问一下开局的人还能不能加。', 'It is full — ask whoever started it.')
-          : t('加进来就会自动排到你上场。', 'Join and you get put into the rotation.')}
+          : session.approval
+            ? t(
+                '这一场要开局的人点头才进得来。申请递上去，等他通过。',
+                'This session needs the host’s approval. Send a request and wait.',
+              )
+            : t('加进来就会自动排到你上场。', 'Join and you get put into the rotation.')}
       </p>
       {note && <p className="text-danger-600 mt-1 text-label">{note}</p>}
       {!full && (
@@ -1676,22 +1901,29 @@ function JoinBar({ session }: { session: Session }) {
             block
             variant="primary"
             onClick={() => {
-              if (!joinSession(session.id, meId)) {
-                /*
-                 * 加不进去只有两种原因，而两种都不该让按钮默默没反应：
-                 * 人满了（上面那一句已经说了），或者你还在另一场里 ——
-                 * 一个人同一时间只能在一场球局里。
-                 */
+              /*
+               * 四种结果各说各的。原来这里判的是 joinSession 的 boolean，
+               * 一句「加不进去 —— 可能是人满了，也可能是你还在别的局里」
+               * 把两件毫不相干的事糊在一起，人读完还是不知道该干什么。
+               */
+              const r = joinSession(session.id, meId)
+              if (r === 'busy') {
                 setNote(
                   t(
-                    '加不进去 —— 你可能还在另一场球局里，先把那一场结束或者退出。',
-                    'Could not join — you may still be in another session. End or leave that one first.',
+                    '你还在另一场球局里 —— 先把那一场结束或者退出。',
+                    'You are still in another session — end or leave that one first.',
                   ),
                 )
+              } else if (r === 'full') {
+                setNote(t('人数已经满了。', 'It is full.'))
+              } else {
+                setNote(null)
               }
             }}
           >
-            {t('加入这场球局', 'Join this session')}
+            {session.approval
+              ? t('申请加入', 'Request to join')
+              : t('加入这场球局', 'Join this session')}
           </Button>
         </div>
       )}

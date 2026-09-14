@@ -32,6 +32,17 @@ import {
 
 export const STORAGE_KEY = 'badminton-scoring-v1'
 
+/**
+ * 点「加入」之后发生了什么。
+ *
+ * joined    进名单了，可以上场
+ * requested 申请递上去了，等开局的人点头（审批制的局）
+ * waiting   之前就申请过，还在等 —— 再点一次不该看起来像没反应
+ * full      人满了
+ * busy      你还在另一场进行中的球局里
+ */
+export type JoinResult = 'joined' | 'requested' | 'waiting' | 'full' | 'busy'
+
 /** 人数满了没。maxPlayers 缺失或者 0 都当不限 —— 老数据没有这个字段 */
 export const isFull = (session: Pick<Session, 'playerIds' | 'maxPlayers'>) =>
   Boolean(session.maxPlayers) && session.playerIds.length >= session.maxPlayers!
@@ -102,6 +113,8 @@ export type SessionDraft = {
   maxPlayers?: number
   /** 谁开的（球员 id）。首页那份「谁在哪开了局」要显示 */
   createdBy?: string
+  /** 要不要开局的人点头，别人才进得来 */
+  approval?: boolean
 }
 
 type AppState = {
@@ -235,8 +248,29 @@ type AppState = {
    *
    * 已经在另一场进行中的球局里也会被挡（见 activeSessionOf）——
    * 一个人同一时间只能在一场里。
+   *
+   * 返回的是「发生了什么」，不是成没成功。原来返回 boolean，
+   * 于是界面只能说「加不进去 —— 可能是人满了，也可能是你还在别的局里」，
+   * 一句话把两件毫不相干的事糊在一起，人读完还是不知道该干什么。
+   * 现在四种结果各说各的，其中 requested 根本不算失败。
    */
-  joinSession: (sessionId: string, playerId: string) => boolean
+  joinSession: (sessionId: string, playerId: string) => JoinResult
+  /**
+   * 开局的人点头，把申请队列里的人放进名单。
+   *
+   * 这一刻会重新判人满和「他是不是已经在别的局里」—— 申请那一刻
+   * 判过一次，但队列里的人可能排了半小时。
+   */
+  approveJoin: (sessionId: string, playerId: string) => JoinResult
+  /** 开局的人不批。就是把他从队列里拿掉，不留痕迹，也不通知 */
+  rejectJoin: (sessionId: string, playerId: string) => void
+  /**
+   * 开局的人把某个人请出去。返回踢没踢掉。
+   *
+   * 踢不掉的两种：他是开局的人自己，或者他已经打过球了 ——
+   * 后一条和「自己退出」是同一个理由，他那几场比赛还在。
+   */
+  kickPlayer: (sessionId: string, playerId: string) => boolean
   /**
    * 自己退出。返回退没退成。
    *
@@ -500,6 +534,7 @@ export const useApp = create<AppState>()(
           friendly: draft.friendly,
           maxPlayers: draft.maxPlayers,
           createdBy: draft.createdBy,
+          approval: draft.approval,
         }
         set((s) => ({ sessions: [session, ...s.sessions] }))
         return session
@@ -549,9 +584,10 @@ export const useApp = create<AppState>()(
 
       joinSession(sessionId, playerId) {
         const session = get().sessions.find((x) => x.id === sessionId)
-        if (!session) return false
-        if (session.playerIds.includes(playerId)) return true // 已经在里面了
-        if (isFull(session)) return false
+        if (!session) return 'full'
+        if (session.playerIds.includes(playerId)) return 'joined' // 已经在里面了
+        if (session.pendingIds?.includes(playerId)) return 'waiting' // 申请过了，还在等
+        if (isFull(session)) return 'full'
         /*
          * 同一时间只能在一场球局里。
          *
@@ -563,15 +599,79 @@ export const useApp = create<AppState>()(
          * 现实里也只有一个解释：他只有一副身子。排场、休息轮次、AA
          * 分账全都按「名单上的人此刻都在这儿」算的。
          */
-        if (activeSessionOf(get().sessions, playerId)) return false
+        if (activeSessionOf(get().sessions, playerId)) return 'busy'
+
+        /*
+         * 审批制：进的是申请队列，不是名单。
+         *
+         * 开局的人自己不用批自己 —— 他可能开完局才把自己加进名单
+         * （比如先替朋友开），那时候让他排队等自己点头就很荒唐。
+         */
+        const queue = session.approval === true && playerId !== session.createdBy
+        set((s) => ({
+          sessions: s.sessions.map((x) => {
+            if (x.id !== sessionId) return x
+            if (queue) {
+              if (x.pendingIds?.includes(playerId)) return x
+              return { ...x, pendingIds: [...(x.pendingIds ?? []), playerId] }
+            }
+            if (x.playerIds.includes(playerId)) return x
+            return { ...x, playerIds: [...x.playerIds, playerId] }
+          }),
+        }))
+        return queue ? 'requested' : 'joined'
+      },
+
+      approveJoin(sessionId, playerId) {
+        const session = get().sessions.find((x) => x.id === sessionId)
+        if (!session) return 'full'
+        if (session.playerIds.includes(playerId)) return 'joined'
+        /*
+         * 批准的时候才重新判人满和「他是不是已经在别的局里」。
+         *
+         * 申请那一刻判过一次，但队列里的人可能排了半小时 —— 这中间
+         * 别的人先被批进来把位置占满了，或者他自己等不及进了别的局。
+         * 不重判的话，开局的人点一下「通过」，就把一个人塞进了两场球局。
+         */
+        if (isFull(session)) return 'full'
+        if (activeSessionOf(get().sessions, playerId)) return 'busy'
         set((s) => ({
           sessions: s.sessions.map((x) =>
-            x.id === sessionId && !x.playerIds.includes(playerId)
-              ? { ...x, playerIds: [...x.playerIds, playerId] }
+            x.id === sessionId
+              ? {
+                  ...x,
+                  playerIds: x.playerIds.includes(playerId)
+                    ? x.playerIds
+                    : [...x.playerIds, playerId],
+                  pendingIds: x.pendingIds?.filter((id) => id !== playerId),
+                }
               : x,
           ),
         }))
-        return true
+        return 'joined'
+      },
+
+      rejectJoin(sessionId, playerId) {
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === sessionId
+              ? { ...x, pendingIds: x.pendingIds?.filter((id) => id !== playerId) }
+              : x,
+          ),
+        }))
+      },
+
+      kickPlayer(sessionId, playerId) {
+        const session = get().sessions.find((x) => x.id === sessionId)
+        if (!session) return false
+        /*
+         * 开局的人踢不掉自己。要走就用「退出」那条路 ——
+         * 那条路会把局也一并处理掉，而这条不会，
+         * 结果是一场没有主的局挂在所有人的首页上。
+         */
+        if (playerId === session.createdBy) return false
+        // 打过球的人踢不掉，理由和退出那条一样：他的比赛还在
+        return get().leaveSession(sessionId, playerId)
       },
 
       leaveSession(sessionId, playerId) {

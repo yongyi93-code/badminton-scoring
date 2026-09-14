@@ -245,17 +245,17 @@ describe('球局的人数上限', () => {
   it('没设上限就是不限，加多少个都行', () => {
     const s = openWithCap()
     for (const n of ['a', 'b', 'c', 'd', 'e']) {
-      expect(useApp.getState().joinSession(s.id, someone(n))).toBe(true)
+      expect(useApp.getState().joinSession(s.id, someone(n))).toBe('joined')
     }
     expect(useApp.getState().sessions[0].playerIds).toHaveLength(6)
   })
 
-  it('满了就加不进来，而且明确返回 false', () => {
+  it('满了就加不进来，而且说得出是因为满了', () => {
     const s = openWithCap(3)
-    expect(useApp.getState().joinSession(s.id, someone('b'))).toBe(true)
-    expect(useApp.getState().joinSession(s.id, someone('c'))).toBe(true)
+    expect(useApp.getState().joinSession(s.id, someone('b'))).toBe('joined')
+    expect(useApp.getState().joinSession(s.id, someone('c'))).toBe('joined')
     // 第 4 个人：满了
-    expect(useApp.getState().joinSession(s.id, someone('d'))).toBe(false)
+    expect(useApp.getState().joinSession(s.id, someone('d'))).toBe('full')
     expect(useApp.getState().sessions[0].playerIds).toHaveLength(3)
   })
 
@@ -266,8 +266,8 @@ describe('球局的人数上限', () => {
   it('满了之后，已经在里面的人再加一次仍然算成功', () => {
     const s = openWithCap(2)
     const me = someone('b')
-    expect(useApp.getState().joinSession(s.id, me)).toBe(true)
-    expect(useApp.getState().joinSession(s.id, me)).toBe(true)
+    expect(useApp.getState().joinSession(s.id, me)).toBe('joined')
+    expect(useApp.getState().joinSession(s.id, me)).toBe('joined')
     expect(useApp.getState().sessions[0].playerIds).toHaveLength(2)
   })
 
@@ -284,17 +284,191 @@ describe('球局的人数上限', () => {
     useApp.getState().updateSession(s.id, { maxPlayers: 2 })
     expect(useApp.getState().sessions[0].playerIds).toHaveLength(4)
     // 但新人再也进不来了
-    expect(useApp.getState().joinSession(s.id, someone('e'))).toBe(false)
+    expect(useApp.getState().joinSession(s.id, someone('e'))).toBe('full')
   })
 
   it('有人退出之后位置就空出来了', () => {
     const s = openWithCap(2)
     const b = someone('b')
-    expect(useApp.getState().joinSession(s.id, b)).toBe(true)
-    expect(useApp.getState().joinSession(s.id, someone('c'))).toBe(false)
+    expect(useApp.getState().joinSession(s.id, b)).toBe('joined')
+    expect(useApp.getState().joinSession(s.id, someone('c'))).toBe('full')
 
     useApp.getState().leaveSession(s.id, b)
-    expect(useApp.getState().joinSession(s.id, someone('d'))).toBe(true)
+    expect(useApp.getState().joinSession(s.id, someone('d'))).toBe('joined')
+  })
+})
+
+/*
+ * 审批制：开局的人点头，别人才进得来。
+ *
+ * 这一套最要紧的一条是「队列不是名单」—— 排场、休息轮次、AA 分账
+ * 全都读 playerIds，一个还没被批准的人只要漏进了那一栏，
+ * 他当晚就会被排上场。
+ */
+describe('要开局的人通过才能加入', () => {
+  const someone = (name: string) => useApp.getState().addPlayer(name, 'M').id
+  const openApproved = (patch: Partial<SessionDraft> = {}) => {
+    const host = useApp.getState().addPlayer('阿伟', 'M')
+    const s = newSession(
+      draft({ playerIds: [host.id], createdBy: host.id, approval: true, ...patch }),
+    )
+    return { host, s }
+  }
+
+  it('点加入只是递申请，人没进名单', () => {
+    const { host, s } = openApproved()
+    const me = someone('小林')
+    expect(useApp.getState().joinSession(s.id, me)).toBe('requested')
+
+    const after = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(after.playerIds).toEqual([host.id])
+    expect(after.pendingIds).toEqual([me])
+  })
+
+  it('还在队列里的人不算「在一场球局里」—— 他还能去加别的局', () => {
+    const { s } = openApproved()
+    const me = someone('小林')
+    useApp.getState().joinSession(s.id, me)
+
+    const other = newSession(draft({ venue: '另一个馆', playerIds: [] }))
+    expect(useApp.getState().joinSession(other.id, me)).toBe('joined')
+  })
+
+  it('再点一次不会排两遍，返回的是「还在等」', () => {
+    const { s } = openApproved()
+    const me = someone('小林')
+    useApp.getState().joinSession(s.id, me)
+    expect(useApp.getState().joinSession(s.id, me)).toBe('waiting')
+    expect(useApp.getState().sessions.find((x) => x.id === s.id)!.pendingIds).toEqual([me])
+  })
+
+  it('通过之后进名单，队列里也就没他了', () => {
+    const { host, s } = openApproved()
+    const me = someone('小林')
+    useApp.getState().joinSession(s.id, me)
+    expect(useApp.getState().approveJoin(s.id, me)).toBe('joined')
+
+    const after = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(after.playerIds).toEqual([host.id, me])
+    expect(after.pendingIds).toEqual([])
+  })
+
+  it('不通过就是从队列里拿掉，名单一个字不动', () => {
+    const { host, s } = openApproved()
+    const me = someone('小林')
+    useApp.getState().joinSession(s.id, me)
+    useApp.getState().rejectJoin(s.id, me)
+
+    const after = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(after.playerIds).toEqual([host.id])
+    expect(after.pendingIds).toEqual([])
+  })
+
+  /*
+   * 队列里的人可能排了半小时 —— 这中间位置被别人占满了。
+   * 批准那一刻不重判的话，开局的人点一下「通过」就超员了。
+   */
+  it('等的时候位置被占满了，通过不了', () => {
+    const { s } = openApproved({ maxPlayers: 2 })
+    const me = someone('小林')
+    useApp.getState().joinSession(s.id, me)
+
+    const other = someone('阿May')
+    useApp.getState().approveJoin(s.id, other) // 直接放行，把最后一个位置占掉
+    expect(useApp.getState().approveJoin(s.id, me)).toBe('full')
+    expect(useApp.getState().sessions.find((x) => x.id === s.id)!.playerIds).toHaveLength(2)
+  })
+
+  it('等的时候他自己进了别的局，通过不了', () => {
+    const { s } = openApproved()
+    const me = someone('小林')
+    useApp.getState().joinSession(s.id, me)
+
+    const other = newSession(draft({ venue: '另一个馆', playerIds: [] }))
+    useApp.getState().joinSession(other.id, me)
+
+    expect(useApp.getState().approveJoin(s.id, me)).toBe('busy')
+    expect(useApp.getState().sessions.find((x) => x.id === s.id)!.playerIds).not.toContain(me)
+  })
+
+  /*
+   * 开局的人不用批自己。他可能开完局才把自己加进名单
+   * （先替朋友开的那种），排队等自己点头就很荒唐。
+   */
+  it('开局的人自己不用排队', () => {
+    const host = useApp.getState().addPlayer('阿伟', 'M')
+    const s = newSession(draft({ playerIds: [], createdBy: host.id, approval: true }))
+    expect(useApp.getState().joinSession(s.id, host.id)).toBe('joined')
+  })
+
+  it('没开审批的局照旧点了就进', () => {
+    const host = useApp.getState().addPlayer('阿伟', 'M')
+    const s = newSession(draft({ playerIds: [host.id], createdBy: host.id }))
+    const me = someone('小林')
+    expect(useApp.getState().joinSession(s.id, me)).toBe('joined')
+    expect(useApp.getState().sessions.find((x) => x.id === s.id)!.pendingIds).toBeUndefined()
+  })
+})
+
+describe('开局的人把人请出去', () => {
+  const someone = (name: string) => useApp.getState().addPlayer(name, 'M').id
+  const openOne = () => {
+    const host = useApp.getState().addPlayer('阿伟', 'M')
+    const s = newSession(draft({ playerIds: [host.id], createdBy: host.id }))
+    return { host, s }
+  }
+
+  it('还没打过球的人踢得掉', () => {
+    const { host, s } = openOne()
+    const me = someone('小林')
+    useApp.getState().joinSession(s.id, me)
+
+    expect(useApp.getState().kickPlayer(s.id, me)).toBe(true)
+    expect(useApp.getState().sessions.find((x) => x.id === s.id)!.playerIds).toEqual([host.id])
+  })
+
+  /*
+   * 打过球的踢不掉，和「自己退出」同一条规矩：他那几场比赛还在，
+   * 人从名单上没了，排行榜和 AA 分账就会挂着一个不在名单里的人。
+   */
+  it('打过球的人踢不掉', () => {
+    const { host, s } = openOne()
+    const me = someone('小林')
+    const c = someone('阿May')
+    const d = someone('老陈')
+    useApp.getState().joinSession(s.id, me)
+    useApp.getState().addMatch({
+      sessionId: s.id,
+      type: 'doubles',
+      teamA: [host.id, me],
+      teamB: [c, d],
+      games: [{ a: 21, b: 15, points: null, serveInit: null }],
+      status: 'done',
+      courtIndex: 0,
+    })
+
+    expect(useApp.getState().kickPlayer(s.id, me)).toBe(false)
+    expect(useApp.getState().sessions.find((x) => x.id === s.id)!.playerIds).toContain(me)
+  })
+
+  /*
+   * 开局的人踢不掉自己。要走得用「退出」那条路 —— 那条会把局
+   * 一并处理掉，而这条不会，结果是一场没有主的局挂在所有人首页上。
+   */
+  it('开局的人踢不掉自己', () => {
+    const { host, s } = openOne()
+    expect(useApp.getState().kickPlayer(s.id, host.id)).toBe(false)
+    expect(useApp.getState().sessions.find((x) => x.id === s.id)!.playerIds).toContain(host.id)
+  })
+
+  it('踢掉的人身上的「先休息」标记也一起清掉', () => {
+    const { s } = openOne()
+    const me = someone('小林')
+    useApp.getState().joinSession(s.id, me)
+    useApp.getState().updateSession(s.id, { restingIds: [me] })
+
+    useApp.getState().kickPlayer(s.id, me)
+    expect(useApp.getState().sessions.find((x) => x.id === s.id)!.restingIds).not.toContain(me)
   })
 })
 
@@ -404,8 +578,8 @@ describe('同一时间只能在一场球局里', () => {
     const a = openAt('城中羽球馆', 'host-a')
     const b = openAt('力天羽球馆', 'host-b')
 
-    expect(useApp.getState().joinSession(a.id, me.id)).toBe(true)
-    expect(useApp.getState().joinSession(b.id, me.id)).toBe(false)
+    expect(useApp.getState().joinSession(a.id, me.id)).toBe('joined')
+    expect(useApp.getState().joinSession(b.id, me.id)).toBe('busy')
 
     const after = useApp.getState().sessions
     expect(after.find((s) => s.id === a.id)!.playerIds).toContain(me.id)
@@ -419,7 +593,7 @@ describe('同一时间只能在一场球局里', () => {
 
     useApp.getState().joinSession(a.id, me.id)
     useApp.getState().leaveSession(a.id, me.id)
-    expect(useApp.getState().joinSession(b.id, me.id)).toBe(true)
+    expect(useApp.getState().joinSession(b.id, me.id)).toBe('joined')
   })
 
   it('上一场结束了也能加新的', () => {
@@ -429,7 +603,7 @@ describe('同一时间只能在一场球局里', () => {
 
     useApp.getState().joinSession(a.id, me.id)
     useApp.getState().endSession(a.id)
-    expect(useApp.getState().joinSession(b.id, me.id)).toBe(true)
+    expect(useApp.getState().joinSession(b.id, me.id)).toBe('joined')
   })
 
   /* 幂等不能被这条挡掉：同步把同一条改动送回来时会再调一次 */
@@ -437,8 +611,8 @@ describe('同一时间只能在一场球局里', () => {
     const me = useApp.getState().addPlayer('Yy', 'M')
     const a = openAt('城中羽球馆', 'host-a')
 
-    expect(useApp.getState().joinSession(a.id, me.id)).toBe(true)
-    expect(useApp.getState().joinSession(a.id, me.id)).toBe(true)
+    expect(useApp.getState().joinSession(a.id, me.id)).toBe('joined')
+    expect(useApp.getState().joinSession(a.id, me.id)).toBe('joined')
   })
 
   it('activeSessionOf 找得出他在哪一场', () => {

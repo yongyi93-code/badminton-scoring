@@ -85,6 +85,11 @@ export function SessionSetup() {
   const [courtCount, setCourtCount] = useState(lastCourts)
   /** 人数上限，0 = 不限 */
   const [maxPlayers, setMaxPlayers] = useState(0)
+  /*
+   * 要不要我点头别人才进得来。默认关 —— 熟人局谁来都行，
+   * 多一道手续只是添麻烦，而绝大多数局是熟人局。
+   */
+  const [approval, setApproval] = useState(false)
   const [defaultType, setDefaultType] = useState<MatchType>('doubles')
   const [pairingMode, setPairingMode] = useState<PairingMode>('balanced')
   const [pointsToWin, setPointsToWin] = useState(DEFAULT_RULES.pointsToWin)
@@ -224,6 +229,7 @@ export function SessionSetup() {
       courtCount,
       playerIds: selected,
       maxPlayers: maxPlayers > 0 ? maxPlayers : undefined,
+      approval: approval || undefined,
       createdBy: meId ?? undefined,
       defaultType,
       rules: { pointsToWin, winBy2, bestOf, cap: capFor(pointsToWin) },
@@ -389,6 +395,34 @@ export function SessionSetup() {
                 </button>
               )}
             </div>
+          </Field>
+
+          {/*
+            审批制。
+            球局是全马来西亚都看得见的，有几种局开局的人得挑人 ——
+            固定班底的周三局、水平差太多会打得难受的强手局、
+            已经跟场馆报了人数的局。挑不了人，他就干脆不在这儿开了。
+            但这是少数，所以默认关着。
+          */}
+          <Field
+            label={t('谁能进', 'Who can join')}
+            hint={
+              approval
+                ? t(
+                    '别人点了「申请加入」之后进一个队列，你在看板上一个一个放行',
+                    'Requests land in a queue on your session board and you let people in one by one',
+                  )
+                : t(
+                    '谁点加入谁就进来。开局之后随时改得动',
+                    'Anyone who taps join is in. You can change this later.',
+                  )
+            }
+          >
+            <Toggle
+              checked={approval}
+              onChange={setApproval}
+              label={t('要我通过才能加入', 'I approve each person')}
+            />
           </Field>
 
           <Field
