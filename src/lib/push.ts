@@ -94,7 +94,39 @@ export function usePushState(): PushState {
  * 所以不直接 await 它，给它一个上限。等不到就当没就绪，
  * 让调用方说一句人话，而不是让人对着一个不动的按钮。
  */
-const SW_WAIT_MS = 8000
+/*
+ * 上限定成 45 秒，不是随手写的。
+ *
+ * ready 要等的是「Service Worker 装完了」，而装完 = 把整个离线包
+ * 下载一遍 —— 这个 App 的预缓存是 209 个文件、3.4 MB。手机数据
+ * 网络下超过十几秒是常事。
+ *
+ * 第一版写的 8 秒，正好卡在「装到一半」那个区间：提示跳出来说
+ * 「后台服务没起来，重启 App」，而它其实好好地在下载。那句话把人
+ * 指去做一件没用的事，比不说还糟。
+ */
+export const SW_WAIT_MS = 45_000
+
+/**
+ * 现在是哪种情况。分清楚了才说得出该干什么：
+ *
+ *   ready       装好了，能用
+ *   installing  正在装（多半是刚「检查更新」完，在下那 3.4 MB）
+ *   none        一个注册都没有 —— 这个才是真的要重启 App
+ *
+ * getRegistration 和 ready 不一样：它立刻返回，不等装完。
+ */
+export type SwStatus = 'ready' | 'installing' | 'none'
+
+export async function swStatus(): Promise<SwStatus> {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration()
+    if (!reg) return 'none'
+    return reg.active ? 'ready' : 'installing'
+  } catch {
+    return 'none'
+  }
+}
 
 export async function readyOrNull(
   ready: Promise<ServiceWorkerRegistration>,
@@ -116,12 +148,25 @@ export async function readyOrNull(
   }
 }
 
-/** 等不到时统一给这句 —— 它得说清楚下一步干什么，不是「出错了」 */
-const swNotReady = () =>
-  pick(
-    'App 的后台服务还没起来，开不了。多半是刚点过「检查更新」—— 把 App 从后台完全划掉，重新打开一次再试。',
-    'The app’s background service is not up yet. This usually happens right after “Check for updates” — fully close the app and reopen it, then try again.',
+/**
+ * 等不到时说哪一句 —— 两种情况的出路完全不同，不能合成一句。
+ *
+ * 正在装：什么都不用做，等一会儿再点就行。
+ * 一个注册都没有：那才是真的要把 App 重开。
+ */
+async function swNotReady(): Promise<string> {
+  const st = await swStatus()
+  if (st === 'installing') {
+    return pick(
+      '离线包还在下载（大概 3 MB），下完就能开。等半分钟再点一次。',
+      'The offline bundle is still downloading (about 3 MB). Wait half a minute and tap again.',
+    )
+  }
+  return pick(
+    'App 的后台服务没起来。把 App 从后台完全划掉，重新打开一次再试。',
+    'The app’s background service is not running. Fully close the app and reopen it, then try again.',
   )
+}
 
 /** 启动时问一次现在是什么状态 */
 export async function initPush(): Promise<void> {
@@ -233,7 +278,7 @@ export async function enablePush(playerId: string | null): Promise<PushResult> {
     }
 
     const reg = await readyOrNull(navigator.serviceWorker.ready)
-    if (!reg) return { ok: false, error: swNotReady() }
+    if (!reg) return { ok: false, error: await swNotReady() }
     const sub =
       (await reg.pushManager.getSubscription()) ??
       (await reg.pushManager.subscribe({
@@ -282,7 +327,7 @@ export async function enablePush(playerId: string | null): Promise<PushResult> {
 export async function disablePush(): Promise<PushResult> {
   try {
     const reg = await readyOrNull(navigator.serviceWorker.ready)
-    if (!reg) return { ok: false, error: swNotReady() }
+    if (!reg) return { ok: false, error: await swNotReady() }
     const sub = await reg.pushManager.getSubscription()
     if (sub) {
       /*

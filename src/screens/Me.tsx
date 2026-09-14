@@ -35,6 +35,7 @@ import {
   initPush,
   isStandalone,
   pushConfigured,
+  swStatus,
   usePushState,
   watchLangForPush,
 } from '@/lib/push'
@@ -896,6 +897,22 @@ export function Me() {
                   onClick={() => {
                     setPushNote(null)
                     setPushBusy(true)
+                    /*
+                      按下去之前先看一眼后台服务的状态。
+                      正在装的话当场说出来 —— 那一步要下 3 MB 的离线包，
+                      手机数据网络下可能要十几二十秒。不说的话按钮就那样
+                      停在「稍等…」，人只会以为又坏了（上一版正是这样）。
+                    */
+                    void swStatus().then((st) => {
+                      if (st === 'installing') {
+                        setPushNote(
+                          t(
+                            '离线包还在下载（大概 3 MB），下完就会打开，别关这一屏。',
+                            'The offline bundle is still downloading (about 3 MB) — it will turn on once that finishes. Stay on this screen.',
+                          ),
+                        )
+                      }
+                    })
                     const job =
                       pushState === 'on' ? disablePush() : enablePush(meId)
                     /*
@@ -908,7 +925,8 @@ export function Me() {
                     */
                     void job
                       .then((r) => {
-                        if (!r.ok) setPushNote(r.error)
+                        /* 成功了要把「正在下载」那句清掉，否则它会一直挂着 */
+                        setPushNote(r.ok ? null : r.error)
                       })
                       .catch((e: unknown) => {
                         setPushNote(e instanceof Error ? e.message : String(e))

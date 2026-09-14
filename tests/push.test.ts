@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readyOrNull } from '@/lib/push'
+import { readyOrNull, SW_WAIT_MS } from '@/lib/push'
 
 /*
  * 这一份只钉一件事，但那件事线上真的卡住过人：
@@ -39,5 +39,16 @@ describe('等 Service Worker 就绪', () => {
     const fake = { scope: '/' } as unknown as ServiceWorkerRegistration
     const slow = new Promise<ServiceWorkerRegistration>((r) => setTimeout(() => r(fake), 10))
     await expect(readyOrNull(slow, 200)).resolves.toBe(fake)
+  })
+
+  /*
+   * 上限本身也钉一下。这个数不是随手写的：ready 要等的是
+   * 「装完了」，而装完 = 把 3.4 MB 的离线包下载一遍。
+   * 第一版写的 8 秒正好卡在「装到一半」，于是提示跳出来说
+   * 「后台服务没起来，重启 App」—— 而它其实好好地在下载，
+   * 那句话把人指去做一件没用的事。
+   */
+  it('默认上限要给下载留够时间，不能是几秒', () => {
+    expect(SW_WAIT_MS).toBeGreaterThanOrEqual(30_000)
   })
 })
