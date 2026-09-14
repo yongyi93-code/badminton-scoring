@@ -27,6 +27,7 @@ import {
 } from '@/store/useSocial'
 import {
   acceptFriendRequest,
+  isVoice,
   removeFriendship,
   sendFriendRequest,
   unblockUser,
@@ -209,7 +210,10 @@ export function Friends() {
                           )}
                         >
                           {mine && t('我：', 'You: ')}
-                          {th.last.body}
+                          {/* 语音那条没有文字，列表里给一个认得出来的标记 */}
+                          {isVoice(th.last)
+                            ? t('[语音]', '[Voice]')
+                            : th.last.body}
                         </span>
                         <span className="text-ink-500 block text-caption">
                           {relativeTime(Date.parse(th.last.created_at))}

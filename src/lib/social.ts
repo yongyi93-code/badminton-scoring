@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { pick } from '@/lib/i18n'
+import { removeVoice, uploadVoice, type Recording } from '@/lib/voice'
 
 /* ------------------------------------------------------------------ *
  * 好友和私聊 —— 和云端打交道的那一层
@@ -33,10 +34,19 @@ export type Message = {
   id: string
   sender: string
   recipient: string
-  body: string
+  /** 语音消息没有文字，所以这一栏可能是空的 */
+  body: string | null
   created_at: string
   read_at: string | null
+  /** 'text' 或 'voice'。老数据没有这一栏，当成 text */
+  kind?: 'text' | 'voice'
+  /** 语音文件在 Storage 里的路径 */
+  audio_path?: string | null
+  duration_ms?: number | null
 }
+
+/** 一条消息是不是语音。老数据没有 kind，一律当文字 */
+export const isVoice = (m: Message) => m.kind === 'voice' && Boolean(m.audio_path)
 
 export type SocialResult = { ok: true } | { ok: false; error: string }
 
@@ -121,7 +131,7 @@ export async function fetchMessages(): Promise<Message[]> {
   if (!supabase) return []
   const { data, error } = await supabase
     .from('messages')
-    .select('id,sender,recipient,body,created_at,read_at')
+    .select('id,sender,recipient,body,created_at,read_at,kind,audio_path,duration_ms')
     .order('created_at', { ascending: false })
     .limit(MESSAGE_LIMIT)
   if (error) {
@@ -197,6 +207,44 @@ export async function sendMessage(uid: string, body: string): Promise<SocialResu
     .select('id')
     .single()
   if (error) return fail(error)
+  await notifySocial('message', (data as { id: string }).id)
+  return { ok: true }
+}
+
+/**
+ * 发一段语音。
+ *
+ * 顺序是先传文件、再插消息行，而且中间失败要把文件删掉 ——
+ * 反过来（先插行再传文件）的话，传失败就留下一条指着不存在的
+ * 文件的消息，界面上是一个点了没反应的语音气泡，而且永远修不好。
+ * 这个顺序下失败留下的是一个没人引用的文件，占点空间，不难看。
+ */
+export async function sendVoice(
+  meUid: string,
+  toUid: string,
+  rec: Recording,
+): Promise<SocialResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+
+  const up = await uploadVoice(meUid, toUid, rec)
+  if (!up.ok) return up
+
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({
+      recipient: toUid,
+      kind: 'voice',
+      audio_path: up.path,
+      duration_ms: Math.round(rec.durationMs),
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    // 行没插进去，那个文件就是个孤儿，顺手收掉
+    await removeVoice(up.path)
+    return fail(error)
+  }
   await notifySocial('message', (data as { id: string }).id)
   return { ok: true }
 }

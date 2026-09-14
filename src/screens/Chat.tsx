@@ -20,7 +20,9 @@ import {
   threadWith,
   useSocial,
 } from '@/store/useSocial'
-import { blockUser, markRead, removeFriendship, sendMessage } from '@/lib/social'
+import { blockUser, isVoice, markRead, removeFriendship, sendMessage, sendVoice } from '@/lib/social'
+import { VoiceBubble, VoiceRecorder } from '@/components/VoiceBits'
+import type { Recording } from '@/lib/voice'
 import { relativeTime } from '@/lib/format'
 
 /* ------------------------------------------------------------------ *
@@ -42,6 +44,8 @@ export function Chat({ uid }: { uid: string }) {
   const [note, setNote] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [menu, setMenu] = useState(false)
+  /** 正在录音 —— 那会儿输入框和发送键要让位 */
+  const [recording, setRecording] = useState(false)
 
   const other = useMemo(() => players.find((p) => p.ownerId === uid), [players, uid])
   const standing = useMemo(() => standingWith(social, uid), [social, uid])
@@ -83,6 +87,15 @@ export function Chat({ uid }: { uid: string }) {
        */
       setNote(r.error)
     }
+  }
+
+  const sendRecording = async (rec: Recording) => {
+    if (!social.meUid || sending) return
+    setSending(true)
+    const r = await sendVoice(social.meUid, uid, rec)
+    setSending(false)
+    if (r.ok) await refreshSocial()
+    else setNote(r.error)
   }
 
   const title = other?.name ?? t('私聊', 'Chat')
@@ -164,16 +177,24 @@ export function Chat({ uid }: { uid: string }) {
                     </p>
                   )}
                   <div className={cx('flex', mine ? 'justify-end' : 'justify-start')}>
-                    <p
-                      className={cx(
-                        'max-w-[80%] rounded-2xl px-3.5 py-2 text-body whitespace-pre-wrap',
-                        mine
-                          ? 'bg-brand-solid text-on-brand rounded-br-md'
-                          : 'bg-surface border-line text-ink-900 rounded-bl-md border',
-                      )}
-                    >
-                      {m.body}
-                    </p>
+                    {isVoice(m) ? (
+                      <VoiceBubble
+                        path={m.audio_path!}
+                        durationMs={m.duration_ms ?? 0}
+                        mine={mine}
+                      />
+                    ) : (
+                      <p
+                        className={cx(
+                          'max-w-[80%] rounded-2xl px-3.5 py-2 text-body whitespace-pre-wrap',
+                          mine
+                            ? 'bg-brand-solid text-on-brand rounded-br-md'
+                            : 'bg-surface border-line text-ink-900 rounded-bl-md border',
+                        )}
+                      >
+                        {m.body}
+                      </p>
+                    )}
                   </div>
                 </div>
               )
@@ -185,7 +206,24 @@ export function Chat({ uid }: { uid: string }) {
 
       {canWrite && (
         <BottomBar>
+          {/*
+            正在录的时候，那一条占满整行 —— 录音是个有始有终的动作，
+            旁边还摆着一个输入框只会让人以为可以边录边打字。
+          */}
           <div className="flex items-end gap-2">
+            <VoiceRecorder
+              busy={sending}
+              onError={setNote}
+              onRecordingChange={setRecording}
+              onSend={(rec) => void sendRecording(rec)}
+            />
+            {/*
+              录的时候输入框和发送键收起来。留着的话那一条被挤成
+              一小截，「录音中」压成一个「录」字 —— 而且旁边还摆着
+              一个输入框，看起来像可以边录边打字。
+            */}
+            {!recording && (
+              <>
             <textarea
               className={cx(inputClass, 'h-auto max-h-32 min-h-12 resize-none py-3')}
               rows={1}
@@ -209,6 +247,8 @@ export function Chat({ uid }: { uid: string }) {
             >
               {t('发送', 'Send')}
             </Button>
+              </>
+            )}
           </div>
         </BottomBar>
       )}

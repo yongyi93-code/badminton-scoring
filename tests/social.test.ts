@@ -11,6 +11,7 @@ import {
   unreadCount,
   type SocialState,
 } from '@/store/useSocial'
+import { isVoice } from '@/lib/social'
 import type { Friendship, Message } from '@/lib/social'
 
 /*
@@ -226,5 +227,42 @@ describe('小红点上那个数', () => {
 
   it('什么都没有就是 0 —— 不显示，不是显示一个 0', () => {
     expect(socialBadge(state())).toBe(0)
+  })
+})
+
+describe('语音消息', () => {
+  const voice = (sender: string, recipient: string, at: string): Message => ({
+    id: `v-${at}`,
+    sender,
+    recipient,
+    body: null,
+    created_at: at,
+    read_at: null,
+    kind: 'voice',
+    audio_path: `${sender}/${recipient}/abc.webm`,
+    duration_ms: 3200,
+  })
+
+  it('有路径的才算语音', () => {
+    expect(isVoice(voice(A, ME, '2026-09-14T10:00:00Z'))).toBe(true)
+  })
+
+  /*
+   * 老数据一栏都没有（009 那会儿还没有语音），一律当文字。
+   * 判错的后果是界面上给一条纯文字消息画一个点不动的播放按钮。
+   */
+  it('老数据没有 kind，当文字', () => {
+    expect(isVoice(message(A, ME, '一句话', '2026-09-14T10:00:00Z'))).toBe(false)
+  })
+
+  it('说是语音但没有路径的，不当语音 —— 那是一条坏数据，不该去点它', () => {
+    const broken = { ...voice(A, ME, '2026-09-14T10:00:00Z'), audio_path: null }
+    expect(isVoice(broken)).toBe(false)
+  })
+
+  it('语音照样算进未读和会话列表', () => {
+    const s = state({ messages: [voice(A, ME, '2026-09-14T10:00:00Z')] })
+    expect(unreadCount(s)).toBe(1)
+    expect(threads(s)[0].uid).toBe(A)
   })
 })
