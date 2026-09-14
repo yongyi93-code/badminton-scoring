@@ -76,13 +76,62 @@ export function usePushState(): PushState {
   )
 }
 
+/* ------------------------------------------------------------------ *
+ * 等 Service Worker 就绪，但不会等到天荒地老
+ * ------------------------------------------------------------------ */
+
+/**
+ * navigator.serviceWorker.ready 有一个很坑的性质：
+ * **没有注册过 Service Worker 的时候，它既不 resolve 也不 reject，
+ * 就那样一直挂着。**
+ *
+ * 于是 await 它的那段代码整个停住 —— try/catch 抓不到（没有异常），
+ * 界面上那个按钮永远停在「稍等…」，既没成功也没失败，也说不出为什么。
+ * 线上真的这样卡住过一次：点完「检查更新」再来点这个开关。
+ * 「检查更新」做的第一件事正是把 Service Worker 注销掉（见 update.ts
+ * 的 wipeCaches），而注销之后新的还没注册上，ready 就永远等下去。
+ *
+ * 所以不直接 await 它，给它一个上限。等不到就当没就绪，
+ * 让调用方说一句人话，而不是让人对着一个不动的按钮。
+ */
+const SW_WAIT_MS = 8000
+
+export async function readyOrNull(
+  ready: Promise<ServiceWorkerRegistration>,
+  waitMs = SW_WAIT_MS,
+): Promise<ServiceWorkerRegistration | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      ready,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), waitMs)
+      }),
+    ])
+  } catch {
+    /* ready 按规范不会 reject，但真 reject 了也当成「没就绪」 */
+    return null
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+/** 等不到时统一给这句 —— 它得说清楚下一步干什么，不是「出错了」 */
+const swNotReady = () =>
+  pick(
+    'App 的后台服务还没起来，开不了。多半是刚点过「检查更新」—— 把 App 从后台完全划掉，重新打开一次再试。',
+    'The app’s background service is not up yet. This usually happens right after “Check for updates” — fully close the app and reopen it, then try again.',
+  )
+
 /** 启动时问一次现在是什么状态 */
 export async function initPush(): Promise<void> {
   if (!pushConfigured()) return setState('off')
   if (!pushSupported()) return setState('unsupported')
   if (Notification.permission === 'denied') return setState('denied')
   try {
-    const reg = await navigator.serviceWorker.ready
+    /* 启动时等不到就当「还没开」，不卡住整个「我的」那一屏 */
+    const reg = await readyOrNull(navigator.serviceWorker.ready)
+    if (!reg) return setState('idle')
     const sub = await reg.pushManager.getSubscription()
     setState(sub ? 'on' : 'idle')
   } catch {
@@ -183,7 +232,8 @@ export async function enablePush(playerId: string | null): Promise<PushResult> {
       return { ok: false, error: pick('没有允许通知', 'Notifications were not allowed') }
     }
 
-    const reg = await navigator.serviceWorker.ready
+    const reg = await readyOrNull(navigator.serviceWorker.ready)
+    if (!reg) return { ok: false, error: swNotReady() }
     const sub =
       (await reg.pushManager.getSubscription()) ??
       (await reg.pushManager.subscribe({
@@ -223,7 +273,8 @@ export async function enablePush(playerId: string | null): Promise<PushResult> {
 
 export async function disablePush(): Promise<PushResult> {
   try {
-    const reg = await navigator.serviceWorker.ready
+    const reg = await readyOrNull(navigator.serviceWorker.ready)
+    if (!reg) return { ok: false, error: swNotReady() }
     const sub = await reg.pushManager.getSubscription()
     if (sub) {
       /*

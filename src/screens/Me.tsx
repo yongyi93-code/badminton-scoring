@@ -895,10 +895,22 @@ export function Me() {
                     setPushBusy(true)
                     const job =
                       pushState === 'on' ? disablePush() : enablePush(meId)
-                    void job.then((r) => {
-                      setPushBusy(false)
-                      if (!r.ok) setPushNote(r.error)
-                    })
+                    /*
+                      catch 不是走过场。
+                      这里等的是一串浏览器接口（通知权限、Service Worker、
+                      推送订阅），任何一环抛出来都会让 then 不执行 ——
+                      而 then 里那句 setPushBusy(false) 正是把按钮从
+                      「稍等…」放回来的唯一一处。少了 catch，一次异常
+                      就是一个永远按不动的开关，而且不说为什么。
+                    */
+                    void job
+                      .then((r) => {
+                        if (!r.ok) setPushNote(r.error)
+                      })
+                      .catch((e: unknown) => {
+                        setPushNote(e instanceof Error ? e.message : String(e))
+                      })
+                      .finally(() => setPushBusy(false))
                   }}
                 >
                   {pushBusy
