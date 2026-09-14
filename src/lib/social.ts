@@ -153,8 +153,15 @@ export async function fetchBlocked(): Promise<string[]> {
 
 export async function sendFriendRequest(uid: string): Promise<SocialResult> {
   if (!supabase) return { ok: false, error: noCloud() }
-  const { error } = await supabase.from('friendships').insert({ addressee: uid })
-  return error ? fail(error) : { ok: true }
+  /* select() 只是为了拿回那一行的 id —— 提醒那边要靠它回数据库读原文 */
+  const { data, error } = await supabase
+    .from('friendships')
+    .insert({ addressee: uid })
+    .select('id')
+    .single()
+  if (error) return fail(error)
+  await notifySocial('friend', (data as { id: string }).id)
+  return { ok: true }
 }
 
 export async function acceptFriendRequest(id: string): Promise<SocialResult> {
@@ -163,7 +170,9 @@ export async function acceptFriendRequest(id: string): Promise<SocialResult> {
     .from('friendships')
     .update({ status: 'accepted' })
     .eq('id', id)
-  return error ? fail(error) : { ok: true }
+  if (error) return fail(error)
+  await notifySocial('friend', id)
+  return { ok: true }
 }
 
 /**
@@ -182,10 +191,33 @@ export async function sendMessage(uid: string, body: string): Promise<SocialResu
   if (!supabase) return { ok: false, error: noCloud() }
   const text = body.trim()
   if (!text) return { ok: false, error: pick('空的发不出去', 'Nothing to send') }
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('messages')
     .insert({ recipient: uid, body: text.slice(0, 2000) })
-  return error ? fail(error) : { ok: true }
+    .select('id')
+    .single()
+  if (error) return fail(error)
+  await notifySocial('message', (data as { id: string }).id)
+  return { ok: true }
+}
+
+/**
+ * 叫服务端给对方推一条提醒。
+ *
+ * 只递「哪一条」，不递内容 —— 那一头会自己回数据库把那一行读出来。
+ * 这不是多此一举：这个函数任何人都调得到，内容如果来自这里，
+ * 谁都能让别人的手机弹出任意一句话。
+ *
+ * 推不出去不算发失败。消息已经落库了，对方打开 App 一样看得到；
+ * 为了一条没送到的提醒告诉人「发送失败」，只会让他把同一句话再发一遍。
+ */
+async function notifySocial(kind: 'message' | 'friend', id: string): Promise<void> {
+  if (!supabase) return
+  try {
+    await supabase.functions.invoke('notify-social', { body: { kind, id } })
+  } catch (e) {
+    console.warn('提醒没推出去:', e)
+  }
 }
 
 /**

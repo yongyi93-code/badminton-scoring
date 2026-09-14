@@ -21,6 +21,7 @@ import { ProgressProvider } from '@/store/progress'
 import { RecoverySheet } from '@/components/RecoverySheet'
 import { ClubGate, useClubGate } from '@/components/Club'
 import { InviteHandler } from '@/components/InviteHandler'
+import { useOpenFromPush } from '@/lib/openFromPush'
 
 export default function App() {
   const route = useRoute()
@@ -35,6 +36,9 @@ export default function App() {
    * 那一屏自己带着「退出登录」—— 登错账号的人不能被锁在这里。
    */
   const gated = useClubGate()
+
+  /* 点了推送通知，落到该落的那一屏（冷启动和已经开着两条路都管） */
+  useOpenFromPush()
 
   // 让手机系统返回键 / 浏览器后退和界面里的返回一致
   useEffect(() => {
