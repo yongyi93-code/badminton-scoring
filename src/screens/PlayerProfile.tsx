@@ -29,7 +29,7 @@ import { AvatarView } from '@/components/Avatar'
 import { stageOf } from '@/lib/avatarArt'
 import { RankChip } from '@/components/RankMedal'
 import { MmrTrend } from '@/components/MmrTrend'
-import { balanceOf, mmrTimeline, progressOf, WIN_POINTS } from '@/lib/avatar'
+import { balanceOf, mmrTimeline, progressOf, WIN_COINS } from '@/lib/avatar'
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -37,6 +37,16 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       <p className="text-xs text-ink-500">{label}</p>
       <p className="tnum mt-0.5 text-xl font-bold">{value}</p>
       {hint && <p className="text-xs text-ink-500">{hint}</p>}
+    </div>
+  )
+}
+
+/** 抬头里那三个大数。和下面那组 Stat 不一样：那组是卡片，这组是裸的 */
+function HeroStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="text-center">
+      <p className="tnum text-brand-600 text-h2">{value}</p>
+      <p className="text-ink-500 mt-0.5 text-caption">{label}</p>
     </div>
   )
 }
@@ -89,17 +99,22 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
     <Screen>
       <TopBar title={player.name} onBack={back} />
       <Body>
-        <Card>
+        {/*
+          抬头这一块：人在右边，名字和段位在左边。
+          放立绘而不是那个字母圆圈，是因为这一屏是「这个人是谁」——
+          他自己攒出来的那一身行头就是答案的一半，缩成 40px 的圆圈就没了。
+          没有角色的人退回字母圆圈，不留一个空框。
+        */}
+        <Card className="bg-brand-50 border-brand-500/30 relative overflow-hidden">
           <div className="flex items-center gap-4">
-            <Avatar name={player.name} avatar={avatar} size="lg" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="truncate text-xl font-bold">{player.name}</h2>
+                <h2 className="truncate text-h2">{player.name}</h2>
                 <GenderTag gender={player.gender} />
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <RankChip level={level} />
-                <span className="tnum text-xs text-ink-500">
+                <span className="tnum text-ink-500 text-caption">
                   MMR {avatarProgress.mmr}
                 </span>
               </div>
@@ -109,6 +124,31 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                 </div>
               )}
             </div>
+            <span className="size-24 shrink-0">
+              {avatar ? (
+                <AvatarView
+                  sex={avatar.sex}
+                  skin={avatar.skin}
+                  equipped={avatar.equipped}
+                  stage={stageOf(level)}
+                  className="h-full w-full"
+                  title={player.name}
+                />
+              ) : (
+                <Avatar name={player.name} avatar={avatar} size="lg" className="m-auto" />
+              )}
+            </span>
+          </div>
+
+          {/*
+            三个数直接摆在抬头里，不另起一张卡。
+            「打了多少、赢了多少、几成」是看一个人时最先想知道的三件事，
+            让它们和名字待在一起，比往下翻一屏再遇到强得多。
+          */}
+          <div className="border-brand-500/20 mt-4 grid grid-cols-3 border-t pt-3">
+            <HeroStat value={String(stats.games)} label={t('比赛', 'Matches')} />
+            <HeroStat value={String(stats.wins)} label={t('胜场', 'Wins')} />
+            <HeroStat value={percent(stats.winRate)} label={t('胜率', 'Win rate')} />
           </div>
         </Card>
 
@@ -151,8 +191,8 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
                   <p className="text-lg font-semibold">{t('还没有角色', 'No character yet')}</p>
                   <p className="text-sm text-ink-500">
                     {t(
-                    `选个角色，赢一场得 ${WIN_POINTS} 金币买装备`,
-                    `Pick a character — every win earns ${WIN_POINTS} coins for gear`,
+                    `选个角色，赢一场得 ${WIN_COINS} 金币买装备`,
+                    `Pick a character — every win earns ${WIN_COINS} coins for gear`,
                   )}
                   </p>
                 </>
@@ -170,13 +210,11 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
           />
         ) : (
           <>
+            {/*
+              总场数和胜率已经在抬头里了，这里不再重复 ——
+              同一个数字在一屏里出现两次，人会以为它们是两件事。
+            */}
             <div className="grid grid-cols-2 gap-2">
-              <Stat
-            label={t('总场数', 'Matches')}
-            value={String(stats.games)}
-            hint={t(`${stats.wins}胜 ${stats.losses}负`, `${stats.wins}W ${stats.losses}L`)}
-          />
-              <Stat label={t('胜率', 'Win rate')} value={percent(stats.winRate)} />
               <Stat
                 label={t('净分差', 'Point diff')}
                 value={signed(stats.diff)}

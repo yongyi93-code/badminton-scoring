@@ -60,6 +60,52 @@ import type { AvatarProfile } from '@/lib/avatar'
  * 场地卡片
  * ------------------------------------------------------------------ */
 
+/** 一只羽毛球，球头朝下。空场那张卡上唯一的图形 */
+function Shuttle({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <g fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+        {/* 羽毛裙：上宽下窄的一段 */}
+        <path d="M4.5 3.5h15l-3.4 9.5H7.9z" />
+        <path d="M9.2 3.5 8 13M14.8 3.5 16 13M12 3.5v9.5" />
+        {/* 球托 */}
+        <path d="M7.9 13h8.2a4.1 4.1 0 0 1-8.2 0Z" />
+      </g>
+    </svg>
+  )
+}
+
+/** 场地里的半边：这边那两个人。比分在上面那一行，两边共用一条基线 */
+function CourtSide({
+  ids,
+  names,
+  avatars,
+  align,
+}: {
+  ids: string[]
+  names: Map<string, Player>
+  avatars?: Map<string, AvatarProfile>
+  align: 'left' | 'right'
+}) {
+  return (
+    <div
+      className={cx(
+        'flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1',
+        align === 'right' ? 'justify-end' : 'justify-start',
+      )}
+    >
+      {ids.map((id) => (
+        <span key={id} className="flex min-w-0 items-center gap-1">
+          <Avatar name={names.get(id)?.name ?? '?'} avatar={avatars?.get(id)} size="sm" />
+          <span className="truncate text-caption text-on-court/85">
+            {names.get(id)?.name ?? '?'}
+          </span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function TeamLine({
   ids,
   names,
@@ -252,8 +298,21 @@ function CourtCard({
     /* 空场是这一屏上最要紧的一件事，按钮就该是大号的 */
     return (
       <Card className="border-dashed">
-        <p className="text-ink-700 text-title">{pick(`${index + 1} 号场`, `Court ${index + 1}`)}</p>
-        <p className="text-ink-500 mt-0.5 text-label">{pick('空着，等下一场', 'Free — waiting for the next match')}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-ink-700 text-title">{pick(`${index + 1} 号场`, `Court ${index + 1}`)}</p>
+          <Pill tone="neutral">{pick('空闲', 'Free')}</Pill>
+        </div>
+        {/*
+          空场上画一只球，是为了让这张卡和旁边那片深绿的场地看起来
+          是同一类东西 —— 一张只有文字的卡摆在球场旁边，像是提示条，
+          不像「这也是一片场地，只是还没人上」。
+        */}
+        <div className="border-line bg-fill mt-3 flex flex-col items-center rounded-card border border-dashed px-4 py-5 text-center">
+          <Shuttle className="text-ink-300 size-9" />
+          <p className="text-ink-700 mt-2 text-label">
+            {pick('该场地暂未安排比赛', 'Nothing on this court yet')}
+          </p>
+        </div>
         {/*
           满载警告。
           8 个人 2 片场就是满载：这一片打完时，另一片那 4 个还在打，
@@ -328,28 +387,67 @@ function CourtCard({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <TeamLine
-          ids={match.teamA}
-          names={names}
-          avatars={avatars}
-          tone="teamA"
-          score={g?.a ?? 0}
-          leading={(g?.a ?? 0) >= (g?.b ?? 0)}
-        />
-        <TeamLine
-          ids={match.teamB}
-          names={names}
-          avatars={avatars}
-          tone="teamB"
-          score={g?.b ?? 0}
-          leading={(g?.b ?? 0) >= (g?.a ?? 0)}
-        />
-      </div>
+      {/*
+        真的画一片场地出来，比分摆在场中间。
+        场上的人隔着几米看这块屏，要认的只有两个数 —— 深绿底上一对
+        大白字，走过去也读得到；原来那两行「名字 + 小号比分」是坐着
+        看手机的排版，站在场边看就得眯眼睛。
+        名字没丢，压在比分下面，每边一行。
+      */}
+      <div className="bg-court text-on-court relative overflow-hidden rounded-card px-4 py-4">
+        <svg
+          viewBox="0 0 200 120"
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.18]"
+          preserveAspectRatio="none"
+          aria-hidden
+        >
+          <g fill="none" stroke="currentColor" strokeWidth="1">
+            <rect x="10" y="10" width="180" height="100" />
+            <rect x="10" y="22" width="180" height="76" />
+            <path d="M100 10v100" strokeWidth="2" />
+            <path d="M46 10v100M154 10v100M10 60h180" />
+          </g>
+        </svg>
 
-      <Button variant="primary" block className="mt-3" onClick={onScore}>
-        {pick('记分', 'Score')}
-      </Button>
+        {/*
+          比分和名字分成上下两行，不是左右两块各管各的 ——
+          同一行里两个数字才共用一条基线，两位数和一位数摆在一起
+          （21 : 7）也不会一高一低。
+        */}
+        <div className="relative flex items-baseline justify-center gap-3">
+          <span
+            className={cx(
+              'tnum flex-1 text-right text-display leading-none',
+              (g?.a ?? 0) >= (g?.b ?? 0) ? 'text-on-court' : 'text-on-court/55',
+            )}
+          >
+            {g?.a ?? 0}
+          </span>
+          <span className="shrink-0 text-h2 text-on-court/45">:</span>
+          <span
+            className={cx(
+              'tnum flex-1 text-left text-display leading-none',
+              (g?.b ?? 0) >= (g?.a ?? 0) ? 'text-on-court' : 'text-on-court/55',
+            )}
+          >
+            {g?.b ?? 0}
+          </span>
+        </div>
+
+        <div className="relative mt-2.5 flex items-start gap-3">
+          <CourtSide ids={match.teamA} names={names} avatars={avatars} align="right" />
+          <span className="w-3 shrink-0" aria-hidden />
+          <CourtSide ids={match.teamB} names={names} avatars={avatars} align="left" />
+        </div>
+
+        {/* 场上唯一的柠檬绿：这一屏要人做的下一件事就是它 */}
+        <button
+          onClick={onScore}
+          className="bg-accent text-on-accent active:bg-accent-press relative mx-auto mt-4 flex h-11 items-center rounded-full px-7 text-title"
+        >
+          {pick('记分', 'Score')}
+        </button>
+      </div>
     </Card>
   )
 }

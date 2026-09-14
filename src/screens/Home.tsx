@@ -141,10 +141,10 @@ export function Home() {
             onClick={() => push({ name: 'board', sessionId: active.id })}
           >
             {liveMatches.length > 0 && (
-              <div className="mt-4 space-y-2 border-t border-white/20 pt-3">
+              <div className="mt-4 space-y-2 border-t border-on-court/20 pt-3">
                 {liveMatches.map((m) => (
-                  <div key={m.id} className="flex items-center gap-2 text-label text-white/90">
-                    <span className="shrink-0 text-white/60">
+                  <div key={m.id} className="flex items-center gap-2 text-label text-on-court/90">
+                    <span className="shrink-0 text-on-court/60">
                       {t(`${(m.courtIndex ?? 0) + 1} 号场`, `Court ${(m.courtIndex ?? 0) + 1}`)}
                     </span>
                     <TeamNames ids={m.teamA} names={nameOf} className="min-w-0 flex-1 text-right" />
@@ -278,7 +278,7 @@ function HeroCard({
 }) {
   return (
     <div
-      className="bg-brand-solid shadow-card relative overflow-hidden rounded-card p-5 text-white"
+      className="bg-court text-on-court shadow-card relative overflow-hidden rounded-card p-5"
     >
       {/*
         一片羽球场，从上方斜着看下去。画的是真的那几条线 ——
@@ -292,7 +292,7 @@ function HeroCard({
       >
         <g
           fill="none"
-          stroke="#fff"
+          stroke="currentColor"
           strokeWidth="1.2"
           transform="translate(80 60) rotate(-8) translate(-80 -60)"
         >
@@ -309,10 +309,10 @@ function HeroCard({
       />
 
       <div className="relative">
-        <p className="text-caption tracking-[0.18em] text-white/60 uppercase">{eyebrow}</p>
+        <p className="text-caption tracking-[0.18em] text-on-court/60 uppercase">{eyebrow}</p>
         <p className="mt-1.5 text-h2">{title}</p>
         {lines.map((l) => (
-          <p key={l} className="mt-1 text-label text-white/80">
+          <p key={l} className="mt-1 text-label text-on-court/80">
             {l}
           </p>
         ))}

@@ -54,6 +54,21 @@ export function GlobalRanking() {
       )
   }, [players, progressById, homeById])
 
+  /*
+   * 领奖台要三个人才站得住。只有一两个人的时候整块不出现 ——
+   * 一个人的领奖台看着像在庆祝「我是这里唯一的人」。
+   */
+  const top3 = ranked.length >= 3 ? ranked.slice(0, 3) : []
+  const rest = ranked.slice(top3.length)
+
+  /* 我在第几。已经在台子上的话就不再单列一行，那是同一件事说两遍 */
+  const mine = useMemo(() => {
+    if (!meId) return null
+    const idx = ranked.findIndex((r) => r.player.id === meId)
+    if (idx < 0 || idx < top3.length) return null
+    return { r: ranked[idx], place: idx + 1 }
+  }, [ranked, meId, top3.length])
+
   return (
     <Screen>
       <TopBar
@@ -66,6 +81,85 @@ export function GlobalRanking() {
       />
 
       <Body>
+        {/*
+          前三名单独摆一个领奖台。
+          名次这件事，第一眼要看到的是「谁在最上面」，不是「第 17 名是谁」——
+          一条从上往下的列表把这两件事压成同一个动作，谁都得从头读。
+          台子上站过的人，下面的列表里就不再重复列一遍。
+        */}
+        {top3.length === 3 && (
+          <div className="grid grid-cols-3 items-end gap-2 pt-1">
+            {[top3[1], top3[0], top3[2]].map((r, col) => {
+              const place = col === 1 ? 1 : col === 0 ? 2 : 3
+              return (
+                <button
+                  key={r.player.id}
+                  onClick={() => push({ name: 'profile', playerId: r.player.id })}
+                  className="flex min-w-0 flex-col items-center"
+                >
+                  <span className="text-lg leading-none" aria-hidden>
+                    {place === 1 ? '👑' : place === 2 ? '🥈' : '🥉'}
+                  </span>
+                  <Avatar
+                    name={r.player.name}
+                    avatar={avatarsById.get(r.player.id)}
+                    size={place === 1 ? 'lg' : 'md'}
+                    className="mt-1.5"
+                  />
+                  <span className="mt-1.5 w-full truncate text-center text-label">
+                    {r.player.name}
+                  </span>
+                  <span className="tnum text-ink-500 text-caption">
+                    MMR {r.progress.mmr}
+                  </span>
+                  {/*
+                    台子的高度差就是名次 —— 数字写在台子上，
+                    不用再靠颜色区分金银铜（强光下那三个颜色是分不开的）。
+                  */}
+                  <span
+                    className={cx(
+                      'mt-2 flex w-full items-start justify-center rounded-t-xl pt-1.5 text-title',
+                      place === 1
+                        ? 'bg-brand-solid text-on-brand h-14'
+                        : 'bg-brand-100 text-brand-600 h-9',
+                    )}
+                  >
+                    {place}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 我在第几。台子上没有我的时候才有意义 —— 有的话上面已经写着了 */}
+        {mine && (
+          <Card
+            className="border-brand-500 bg-brand-100"
+            onClick={() => push({ name: 'profile', playerId: mine.r.player.id })}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-brand-600 shrink-0">
+                <svg viewBox="0 0 24 24" className="size-5" aria-hidden>
+                  <circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" strokeWidth="2" />
+                  <path
+                    d="M5 20a7 7 0 0 1 14 0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1 text-title">{t('我的排名', 'Your rank')}</span>
+              <span className="tnum text-brand-600 shrink-0 text-title">
+                #{mine.place} · MMR {mine.r.progress.mmr}
+              </span>
+              <span className="text-ink-500 shrink-0">›</span>
+            </div>
+          </Card>
+        )}
+
         {ranked.length === 0 ? (
           <EmptyState
             title={t('还没有人', 'Nobody yet')}
@@ -73,7 +167,8 @@ export function GlobalRanking() {
           />
         ) : (
           <div className="space-y-2">
-            {ranked.map((r, i) => {
+            {rest.map((r, restIndex) => {
+              const i = restIndex + top3.length
               const played = r.progress.wins + r.progress.losses
               const isMe = r.player.id === meId
               return (
@@ -92,7 +187,8 @@ export function GlobalRanking() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="tnum w-7 shrink-0 text-center text-sm font-semibold text-ink-500">
-                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                      {/* 前三名在上面的台子上，这份列表从第 4 名起 */}
+                      {i + 1}
                     </span>
 
                     {/*
