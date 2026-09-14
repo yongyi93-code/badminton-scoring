@@ -116,6 +116,31 @@ grant select, insert, update, delete on public.friendships to authenticated;
 grant select, insert, delete on public.blocks to authenticated;
 grant select, insert, update, delete on public.messages to authenticated;
 
+/*
+ * 服务端那个身份也要单独发一次。
+ *
+ * 这是第二次补权限了，而且是同一个错：上一次只给了 authenticated，
+ * 因为那时候想的是「用 App 的人」。可 Edge Function 用的是
+ * service_role —— 它绕得过 RLS，但绕不过表级权限，这两件事是分开的。
+ *
+ * 漏掉的表现是：推送那个函数每次都炸，日志里一句
+ * 「permission denied for table messages」，而 App 那边一切正常 ——
+ * 谁都不会往「服务端少了个 grant」上想。
+ *
+ * 只发 select：那个函数只是读一下「这条消息是谁发给谁的」，
+ * 再去 push_subscribers 找设备。它不写这三张表，也就不该有能力写。
+ *
+ * 包一层判断是为了这段在普通 Postgres 上也跑得动（本地验的时候用得上）。
+ * Supabase 上 service_role 一定存在。
+ */
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant select on public.friendships to service_role;
+    grant select on public.messages to service_role;
+  end if;
+end $$;
+
 -- ===================================================================
 -- 二、两个函数
 --
@@ -382,6 +407,14 @@ union all
  * 多出来的不碍事（那几张表反正只有 authenticated 能碰，而且每一行
  * 归谁看还有 RLS 管着）。缺一项才是事，所以只查缺不缺。
  */
+select '推送函数读得到 messages / friendships 吗',
+       case when (
+         select count(*) from information_schema.role_table_grants
+         where grantee = 'service_role' and table_schema = 'public'
+           and table_name in ('messages', 'friendships')
+           and privilege_type = 'SELECT'
+       ) >= 2 then '读得到' else '读不到 —— 推送会一直炸' end
+union all
 select '我要的那 11 项权限齐了吗',
        case when (
          select count(*) from (values
