@@ -31,7 +31,7 @@ function paint(theme: Theme) {
 
   // 手机上状态栏和地址栏跟着主题走，否则深色界面顶着一条白边
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])')
-  if (meta) meta.content = theme === 'dark' ? '#0d1d24' : '#f6fafa'
+  if (meta) meta.content = theme === 'dark' ? '#0d1d16' : '#f2f8f2'
 }
 
 export function setTheme(theme: Theme) {

@@ -9,27 +9,45 @@
  * ------------------------------------------------------------------ */
 
 :root {
-  /* 品牌青 —— 只用来表示「主操作、焦点、进行中」，不铺满屏幕 */
-  --t-brand-700: #07817d;
-  --t-brand-600: #0a9f9a;
-  --t-brand-500: #16b8b2;
-  --t-brand-100: #ddf8f5;
-  --t-brand-50: #f1fcfb;
+  /*
+   * 品牌绿 —— 跟着 logo 走。
+   *
+   * 这一组里有两个绿，它们不是深浅关系，是分工关系：
+   * 600 是那个很深的球场绿，字压在白底上 7.9:1，所以文字、描边、
+   * 实心按钮底都归它；500 是 logo 上那个亮绿，它在白底上只有 3.5:1，
+   * 当字会糊，所以只用来画图形 —— 圆点、进度、球场、标记。
+   * 拿反了的后果是整屏的小字都读不清，而那正是最容易犯的错。
+   */
+  --t-brand-700: #01412a;
+  --t-brand-600: #015e3e;
+  --t-brand-500: #029c65;
+  --t-brand-100: #d7efe2;
+  --t-brand-50: #eef7ef;
+
+  /*
+   * 柠檬绿。logo 上那一小块，整套里唯一的暖色。
+   * 它只干一件事：在深绿底上当那个「现在就点这里」的按钮 ——
+   * 深绿底上再放一个深绿按钮是看不出来的，而白色按钮太多了会散。
+   * 所以它稀有，一屏最多一枚。字压在上面走 on-accent，10.7:1。
+   */
+  --t-accent: #ddfb6d;
+  --t-accent-press: #cdee55;
+  --t-on-accent: #013d28;
 
   /* 文字。900 最重（标题/数字），300 最轻（禁用） */
-  --t-ink-900: #102a35;
-  --t-ink-700: #33505a;
-  --t-ink-500: #69808a;
-  --t-ink-300: #b8c7cc;
+  --t-ink-900: #10241c;
+  --t-ink-700: #3c5a4c;
+  --t-ink-500: #5e7a6b;
+  --t-ink-300: #aec5b6;
 
-  --t-canvas: #f6fafa; /* 页面底 */
+  --t-canvas: #f2f8f2; /* 页面底 */
   --t-surface: #ffffff; /* 卡片、弹层 */
-  --t-fill: #eff5f5; /* 输入框、分段轨道、次要按钮 */
-  --t-fill-strong: #e4eded; /* 次要按钮按下、禁用底 */
-  --t-line: #e1ecec;
+  --t-fill: #eaf3eb; /* 输入框、分段轨道、次要按钮 */
+  --t-fill-strong: #dce9de; /* 次要按钮按下、禁用底 */
+  --t-line: #dfece1;
 
-  --t-success-600: #168a61;
-  --t-success-50: #e9f8f1;
+  --t-success-600: #12795a;
+  --t-success-50: #e4f5ee;
   --t-warning-600: #b96e10;
   --t-warning-50: #fff5e5;
   --t-danger-600: #c43e4b;
@@ -40,8 +58,8 @@
    * brand-600 / danger-600 是给「文字和描边」用的，深色下它们会被提亮，
    * 拿去当实心底再压白字就只剩 2:1 —— 所以实心按钮走这四个。
    */
-  --t-brand-solid: #0a9f9a;
-  --t-brand-solid-press: #07817d;
+  --t-brand-solid: #015e3e;
+  --t-brand-solid-press: #01412a;
   --t-on-brand: #ffffff;
   --t-danger-solid: #c43e4b;
   --t-on-danger: #ffffff;
@@ -51,44 +69,53 @@
   --t-male: #1670a8;
   --t-female: #c04a80;
 
-  --t-scrim: rgb(16 42 53 / 0.45);
-  --t-shadow-card: 0 6px 20px rgb(16 42 53 / 0.06);
-  --t-shadow-pop: 0 12px 32px rgb(16 42 53 / 0.14);
+  --t-scrim: rgb(8 36 24 / 0.45);
+  --t-shadow-card: 0 6px 20px rgb(8 36 24 / 0.07);
+  --t-shadow-pop: 0 12px 32px rgb(8 36 24 / 0.16);
 }
 
 /*
  * 深色不是把浅色反过来 —— 底不用纯黑，品牌色要提亮，
- * 否则青色压在深底上对比度掉到 3:1 以下。
+ * 否则深绿压在深底上对比度掉到 3:1 以下。
  */
 :root[data-theme='dark'] {
-  --t-brand-700: #7ee9e2;
-  --t-brand-600: #4ddbd3;
-  --t-brand-500: #35c8c0;
-  --t-brand-100: #17434a;
-  --t-brand-50: #10333b;
+  /*
+   * 深色下 600 和 500 的分工反过来：亮底上「深绿当字、亮绿画图」，
+   * 深底上深绿根本看不见，所以两个都得提亮，600 依旧是更能读的那个。
+   */
+  --t-brand-700: #8ff0c4;
+  --t-brand-600: #5fdca6;
+  --t-brand-500: #34c98b;
+  --t-brand-100: #14432f;
+  --t-brand-50: #0f3324;
 
-  --t-ink-900: #ecf7f7;
-  --t-ink-700: #b7cbd2;
-  --t-ink-500: #8ba3ac;
-  --t-ink-300: #54707b;
+  /* 柠檬绿在深底上已经够亮，不用再提；压在上面的字还是那个深绿 */
+  --t-accent: #c9e85f;
+  --t-accent-press: #ddfb6d;
+  --t-on-accent: #0b2418;
 
-  --t-canvas: #0d1d24;
-  --t-surface: #132933;
-  --t-fill: #1b3742;
-  --t-fill-strong: #24434f;
-  --t-line: #28424b;
+  --t-ink-900: #e9f4ee;
+  --t-ink-700: #b4ccbe;
+  --t-ink-500: #8aa596;
+  --t-ink-300: #547065;
 
-  --t-success-600: #4fcc97;
+  --t-canvas: #0d1d16;
+  --t-surface: #142a21;
+  --t-fill: #1c3a2d;
+  --t-fill-strong: #24483a;
+  --t-line: #274438;
+
+  --t-success-600: #58d3a0;
   --t-success-50: #123729;
   --t-warning-600: #eaa551;
   --t-warning-50: #3a2a12;
   --t-danger-600: #f4909a;
   --t-danger-50: #3b1a20;
 
-  /* 深色下实心底提亮，字反过来压深色 —— 白字压亮青只有 2:1，读不了 */
-  --t-brand-solid: #35c8c0;
-  --t-brand-solid-press: #4ddbd3;
-  --t-on-brand: #05262a;
+  /* 深色下实心底提亮，字反过来压深色 —— 白字压亮绿只有 2:1，读不了 */
+  --t-brand-solid: #34c98b;
+  --t-brand-solid-press: #5fdca6;
+  --t-on-brand: #04261a;
   --t-danger-solid: #e4707d;
   --t-on-danger: #3b1219;
 
@@ -97,7 +124,7 @@
   --t-male: #6ab8e8;
   --t-female: #f08bb8;
 
-  --t-scrim: rgb(3 10 14 / 0.62);
+  --t-scrim: rgb(2 12 8 / 0.62);
   --t-shadow-card: 0 6px 20px rgb(0 0 0 / 0.32);
   --t-shadow-pop: 0 12px 32px rgb(0 0 0 / 0.45);
 }
@@ -112,6 +139,10 @@
   --color-brand-500: var(--t-brand-500);
   --color-brand-100: var(--t-brand-100);
   --color-brand-50: var(--t-brand-50);
+
+  --color-accent: var(--t-accent);
+  --color-accent-press: var(--t-accent-press);
+  --color-on-accent: var(--t-on-accent);
 
   --color-ink-900: var(--t-ink-900);
   --color-ink-700: var(--t-ink-700);

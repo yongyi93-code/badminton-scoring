@@ -29,7 +29,7 @@ const pinIcon = (highlight: boolean) =>
   L.divIcon({
     className: '',
     html: `<svg viewBox="0 0 24 24" width="30" height="30" fill="${
-      highlight ? '#0a9f9a' : '#0a9f9a'
+      highlight ? '#015e3e' : '#015e3e'
     }" stroke="white" stroke-width="1.4" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">
       <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Z"/>
       <circle cx="12" cy="9" r="2.6" fill="white" stroke="none"/>
