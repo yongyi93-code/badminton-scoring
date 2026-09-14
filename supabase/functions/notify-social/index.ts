@@ -148,38 +148,51 @@ async function nameOf(admin: Admin, uid: string): Promise<string> {
   return row?.data?.name?.trim() ?? ''
 }
 
+/** 一句话的两种说法。哪一种由收的那台设备决定 */
+type Line = { zh: string; en: string }
+
 /**
  * 推给这个账号的每一台设备。
  *
  * tag 决定通知栏里会不会互相顶掉，所以由这里给：私聊按人分开，
  * 三个人找你就是三条；好友的事共用一条 —— 那本来就是一件事的
  * 两个阶段（他加你 / 他答应了），后一条盖掉前一条正好。
+ *
+ * 语言一台一台地挑，不是整个人挑一次：同一个人手机上看中文、
+ * iPad 上看英文完全说得通，而 push_subscribers 一行正好就是一台
+ * 设备。lang 是空的（这次改动之前订的那些）就退回中文 ——
+ * 空的意思是「不知道」，不去猜，猜错了是推一条他读不懂的话。
  */
 async function pushTo(
   admin: Admin,
   uid: string,
-  title: string,
-  body: string,
+  title: Line,
+  body: Line,
   tag: string,
 ): Promise<{ sent: number; failed: number }> {
   const { data: subs, error } = await admin
     .from('push_subscribers')
-    .select('endpoint,p256dh,auth')
+    .select('endpoint,p256dh,auth,lang')
     .eq('user_id', uid)
   if (error) throw error
 
   console.log('目标设备数:', subs?.length ?? 0)
   if (!subs || subs.length === 0) return { sent: 0, failed: 0 }
 
-  /*
-   * url 带上 #friends：点开通知直接落在好友那一屏。
-   * 不带的话人落在首页，还得自己找一遍 —— 那一下的摩擦足够
-   * 让一半的人放弃。
-   */
-  const payload = JSON.stringify({ title, body, tag, url: './#friends' })
-
   const results = await Promise.allSettled(
-    subs.map(async (s: { endpoint: string; p256dh: string; auth: string }) => {
+    subs.map(async (s: { endpoint: string; p256dh: string; auth: string; lang?: string | null }) => {
+      const en = s.lang === 'en'
+      /*
+       * url 带上 #friends：点开通知直接落在好友那一屏。
+       * 不带的话人落在首页，还得自己找一遍 —— 那一下的摩擦足够
+       * 让一半的人放弃。
+       */
+      const payload = JSON.stringify({
+        title: en ? title.en : title.zh,
+        body: en ? body.en : body.zh,
+        tag,
+        url: './#friends',
+      })
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
@@ -230,8 +243,8 @@ Deno.serve(async (req) => {
     const admin = await getAdmin()
 
     let to = ''
-    let title = ''
-    let text = ''
+    let title: Line = { zh: '', en: '' }
+    let text: Line = { zh: '', en: '' }
     let tag = 'rally-social'
 
     if (kind === 'message') {
@@ -253,8 +266,11 @@ Deno.serve(async (req) => {
       const m = data as { sender: string; recipient: string }
       to = m.recipient
       const who = await nameOf(admin, m.sender)
-      title = who ? `${who} 给你发了消息` : '你有一条新消息'
-      text = '点开看看'
+      title = {
+        zh: who ? `${who} 给你发了消息` : '你有一条新消息',
+        en: who ? `${who} sent you a message` : 'You have a new message',
+      }
+      text = { zh: '点开看看', en: 'Tap to read it' }
       // 按人分开：三个人找你，就该是三条通知
       tag = `rally-msg-${m.sender}`
     } else {
@@ -279,13 +295,19 @@ Deno.serve(async (req) => {
       if (f.status === 'pending') {
         to = f.addressee
         const who = await nameOf(admin, f.requester)
-        title = who ? `${who} 想加你好友` : '有人想加你好友'
-        text = '同意之后就能私聊'
+        title = {
+          zh: who ? `${who} 想加你好友` : '有人想加你好友',
+          en: who ? `${who} wants to be friends` : 'Someone wants to be friends',
+        }
+        text = { zh: '同意之后就能私聊', en: 'Accept and you can chat' }
       } else {
         to = f.requester
         const who = await nameOf(admin, f.addressee)
-        title = who ? `${who} 同意了你的好友申请` : '好友申请通过了'
-        text = '现在可以私聊了'
+        title = {
+          zh: who ? `${who} 同意了你的好友申请` : '好友申请通过了',
+          en: who ? `${who} accepted your friend request` : 'Your friend request was accepted',
+        }
+        text = { zh: '现在可以私聊了', en: 'You can chat now' }
       }
     }
 

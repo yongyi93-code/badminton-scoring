@@ -189,25 +189,47 @@ Deno.serve(async (req) => {
       hostName = (host?.data as { name?: string } | undefined)?.name ?? ''
     }
 
-    const venue = data.venue?.trim() || '球馆'
-    const title = hostName ? `${hostName} 开球局了` : '有人开球局了'
-    const body_ = data.maxPlayers
-      ? `${venue} · 上限 ${data.maxPlayers} 人，点进来加入`
-      : `${venue} · 点进来加入`
+    const venueZh = data.venue?.trim() || '球馆'
+    const venueEn = data.venue?.trim() || 'a venue'
+
+    /*
+     * 两种说法都备着，发的时候按收的那台设备挑。
+     *
+     * 语言存在每台设备的 localStorage 里，服务端没别的办法知道 ——
+     * 订阅那一行上的 lang 就是设备自己报上来的（见 011 那段 SQL）。
+     * 空的（这次改动之前订的那些）退回中文：空的意思是「不知道」，
+     * 不去猜，猜错了是推一条他读不懂的话。
+     */
+    const title = {
+      zh: hostName ? `${hostName} 开球局了` : '有人开球局了',
+      en: hostName ? `${hostName} started a session` : 'Someone started a session',
+    }
+    const body_ = {
+      zh: data.maxPlayers
+        ? `${venueZh} · 上限 ${data.maxPlayers} 人，点进来加入`
+        : `${venueZh} · 点进来加入`,
+      en: data.maxPlayers
+        ? `${venueEn} · up to ${data.maxPlayers} players — tap to join`
+        : `${venueEn} · tap to join`,
+    }
 
     const { data: subs, error } = await admin
       .from('push_subscribers')
-      .select('endpoint,p256dh,auth,player_id')
+      .select('endpoint,p256dh,auth,player_id,lang')
     if (error) throw error
-    console.log('订阅数:', subs?.length ?? 0, '| 开局的人:', hostName || '(没名字)', '| 球馆:', venue)
-
-    const payload = JSON.stringify({ title, body: body_, url: './' })
+    console.log('订阅数:', subs?.length ?? 0, '| 开局的人:', hostName || '(没名字)', '| 球馆:', venueZh)
 
     const results = await Promise.allSettled(
       (subs ?? [])
         // 开局的人自己不用收 —— 他就是按下那个按钮的人
         .filter((s) => !data.createdBy || s.player_id !== data.createdBy)
         .map(async (s) => {
+          const en = s.lang === 'en'
+          const payload = JSON.stringify({
+            title: en ? title.en : title.zh,
+            body: en ? body_.en : body_.zh,
+            url: './',
+          })
           try {
             await webpush.sendNotification(
               { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { pick } from './i18n'
+import { lang, onLangChange, pick } from './i18n'
 import type { Session } from '@/types'
 import { supabase } from './supabase'
 
@@ -258,6 +258,14 @@ export async function enablePush(playerId: string | null): Promise<PushResult> {
           p256dh: json.keys.p256dh,
           auth: json.keys.auth,
           player_id: playerId,
+          /*
+           * 这台设备用哪种语言。服务端发通知时照着它挑话说。
+           *
+           * 语言存在 localStorage 里，服务端没有别的办法知道 ——
+           * 只能在订阅的时候一起报上去。切语言时也要跟着改，
+           * 见下面的 syncPushLang。
+           */
+          lang: lang(),
         },
         { onConflict: 'endpoint' },
       )
@@ -324,5 +332,43 @@ export async function notifyNewSession(session: Session): Promise<void> {
   } catch (e) {
     // 只记不抛 —— 通知发不出去是小事，开不了局是大事
     console.warn('开局提醒没发出去:', e)
+  }
+}
+
+/**
+ * 语言换了，把订阅上那一栏也改过来。
+ *
+ * 不改的话，一个把界面切成英文的人照样收中文通知 —— 而他多半
+ * 不会想到「通知的语言」和「界面的语言」是两处存的。
+ *
+ * 失败了不声张：这是一件背景里的小事，为它弹一句错只会让人
+ * 以为切语言没成功。下次开关推送时也会顺手带上正确的值。
+ */
+let watchingLang = false
+
+/**
+ * 挂上「语言一变就同步」。在 App 启动时调一次就够。
+ *
+ * 挂在这里而不是某个组件的 effect 里：这件事和界面没关系，
+ * 而组件挂载卸载的时机是另一回事。
+ */
+export function watchLangForPush(): void {
+  if (watchingLang) return
+  watchingLang = true
+  onLangChange(() => void syncPushLang())
+}
+
+export async function syncPushLang(): Promise<void> {
+  if (!supabase || !pushSupported()) return
+  try {
+    const reg = await readyOrNull(navigator.serviceWorker.ready)
+    const sub = await reg?.pushManager.getSubscription()
+    if (!sub) return
+    await supabase
+      .from('push_subscribers')
+      .update({ lang: lang() })
+      .eq('endpoint', sub.endpoint)
+  } catch (e) {
+    console.warn('通知语言没同步上去:', e)
   }
 }

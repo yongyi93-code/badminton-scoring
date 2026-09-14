@@ -36,6 +36,7 @@ import {
   isStandalone,
   pushConfigured,
   usePushState,
+  watchLangForPush,
 } from '@/lib/push'
 import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
 import { InstallSheet } from '@/components/InstallCard'
@@ -429,6 +430,8 @@ export function Me() {
   const [signOutNote, setSignOutNote] = useState<string | null>(null)
   useEffect(() => {
     void initPush()
+    /* 切语言时把通知的语言也报上去 —— 挂一次，之后自己跟着 */
+    watchLangForPush()
   }, [])
   const [updating, setUpdating] = useState(false)
 
