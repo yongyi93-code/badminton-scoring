@@ -31,8 +31,10 @@ export const WIN_POINTS = 10
  * 那是长期能力的读数。金币是花的钱，一晚上打十场该看得见地富起来，
  * 不然商店里那件 200 的衣服要打二十场，中间十九场都没有盼头。
  *
- * 三倍于 MMR 是照着商店的价目定的：赢一场 30，最便宜的一件 40，
- * 打两场就能买到第一件东西；最贵的 1600 要五十几场，是个长期目标。
+ * 三倍于 MMR 是照着商店的价目定的，反过来商店也按这个数排价：
+ * 最便宜的一件要赢两三场，最贵的那顶王冠框要八十场 —— 一个赢到
+ * 手软的人也得打上几个月。改这个数就得回去把价目表一起重排，
+ * 不然整个商店会跟着便宜或者贵一倍（这件事已经发生过一次）。
  */
 export const WIN_COINS = 30
 
@@ -128,9 +130,14 @@ export type ShopItem = {
 
 /**
  * 商店目录。
- * 价格按「赢几场能买到」来定。这批价是照着赢一场 10 金币定的
- * （80 = 赢 8 场）；金币基数改成 WIN_COINS = 30 之后，同一件东西
- * 现在不到 3 场就买得起 —— 价目表还没跟着往上调，先记在这里。
+ *
+ * 定价的单位是「要赢几场」，不是金币 —— 金币那个数字本身没有意义，
+ * 有意义的是「这件东西要打多久才买得到」。所以每一档都是先定场数
+ * 再乘 WIN_COINS（30）得出来的，下面每一组后面标着场数。
+ *
+ * 这三类（背景／头像框／称号）画在人的外面，是分层换装之外的另一条
+ * 线：衣服买到顶的人，金币还有地方花。头像框最贵 —— 它出现在
+ * 排行榜每一行上，是最显摆的一样。
  *
  * 段位门槛摊开到八段，每升一段都至少解锁一件新东西 ——
  * 升段本身要有看得见的奖励，不然中间几段爬起来没盼头。
@@ -140,54 +147,56 @@ export type ShopItem = {
  * 战服和武器男女通用，省一半工作量也省一半商店条目。
  */
 export const SHOP_ITEMS: ShopItem[] = [
+  /* 发型／战服／武器只在没有分层换装素材的性别那边出现（见 shopFor）*/
   // 发型 —— 男
   { id: 'm-short', name: ['利落短发', 'Cropped Hair'], slot: 'hair', price: 0, minLevel: 0, sex: 'm' },
-  { id: 'm-spiky', name: ['刺猬头', 'Spiky Hair'], slot: 'hair', price: 80, minLevel: 0, sex: 'm' },
-  { id: 'm-wolf', name: ['狼尾', 'Wolf Cut'], slot: 'hair', price: 200, minLevel: 2, sex: 'm' },
-  { id: 'm-silver', name: ['银发', 'Silver Hair'], slot: 'hair', price: 700, minLevel: 6, sex: 'm' },
+  { id: 'm-spiky', name: ['刺猬头', 'Spiky Hair'], slot: 'hair', price: 90, minLevel: 0, sex: 'm' },
+  { id: 'm-wolf', name: ['狼尾', 'Wolf Cut'], slot: 'hair', price: 240, minLevel: 2, sex: 'm' },
+  { id: 'm-silver', name: ['银发', 'Silver Hair'], slot: 'hair', price: 900, minLevel: 6, sex: 'm' },
   // 发型 —— 女
   { id: 'f-bob', name: ['齐耳短发', 'Bob Cut'], slot: 'hair', price: 0, minLevel: 0, sex: 'f' },
-  { id: 'f-twin', name: ['双马尾', 'Twin Tails'], slot: 'hair', price: 80, minLevel: 0, sex: 'f' },
-  { id: 'f-long', name: ['黑长直', 'Long Straight'], slot: 'hair', price: 200, minLevel: 2, sex: 'f' },
-  { id: 'f-wavy', name: ['金色大波浪', 'Golden Waves'], slot: 'hair', price: 700, minLevel: 6, sex: 'f' },
+  { id: 'f-twin', name: ['双马尾', 'Twin Tails'], slot: 'hair', price: 90, minLevel: 0, sex: 'f' },
+  { id: 'f-long', name: ['黑长直', 'Long Straight'], slot: 'hair', price: 240, minLevel: 2, sex: 'f' },
+  { id: 'f-wavy', name: ['金色大波浪', 'Golden Waves'], slot: 'hair', price: 900, minLevel: 6, sex: 'f' },
   /*
    * 战服是一条羽球的成长线，不是奇幻装备：
    * 白队服 → 蓝黑队服 → 无袖精英 → 全黑高手 → 金翼传奇。
    * 越往后越像「真的很能打的人」，最后一档加翅膀和金光。
    */
   { id: 'tee', name: ['新手队服', 'Starter Kit'], slot: 'outfit', price: 0, minLevel: 0 },
-  { id: 'jersey', name: ['进阶队服', 'Club Jersey'], slot: 'outfit', price: 60, minLevel: 0 },
-  { id: 'elite', name: ['精英战袍', 'Elite Kit'], slot: 'outfit', price: 150, minLevel: 1 },
-  { id: 'pro', name: ['高手战衣', 'Pro Kit'], slot: 'outfit', price: 400, minLevel: 4 },
-  { id: 'legend', name: ['传奇金翼', 'Legendary Wings'], slot: 'outfit', price: 900, minLevel: 7 },
+  { id: 'jersey', name: ['进阶队服', 'Club Jersey'], slot: 'outfit', price: 90, minLevel: 0 },
+  { id: 'elite', name: ['精英战袍', 'Elite Kit'], slot: 'outfit', price: 240, minLevel: 1 },
+  { id: 'pro', name: ['高手战衣', 'Pro Kit'], slot: 'outfit', price: 600, minLevel: 4 },
+  { id: 'legend', name: ['传奇金翼', 'Legendary Wings'], slot: 'outfit', price: 1200, minLevel: 7 },
   /* 武器全是球拍 —— 这是羽球 App，手里拿剑说不过去 */
   { id: 'racket', name: ['入门球拍', 'Starter Racket'], slot: 'weapon', price: 0, minLevel: 0 },
-  { id: 'racket-blue', name: ['碳素拍', 'Carbon Racket'], slot: 'weapon', price: 70, minLevel: 0 },
-  { id: 'racket-pro', name: ['竞速拍', 'Speed Racket'], slot: 'weapon', price: 250, minLevel: 3 },
-  { id: 'racket-gold', name: ['金标拍', 'Gold Label Racket'], slot: 'weapon', price: 500, minLevel: 5 },
-  { id: 'racket-legend', name: ['传奇战拍', 'Legendary Racket'], slot: 'weapon', price: 1200, minLevel: 7 },
+  { id: 'racket-blue', name: ['碳素拍', 'Carbon Racket'], slot: 'weapon', price: 90, minLevel: 0 },
+  { id: 'racket-pro', name: ['竞速拍', 'Speed Racket'], slot: 'weapon', price: 300, minLevel: 3 },
+  { id: 'racket-gold', name: ['金标拍', 'Gold Label Racket'], slot: 'weapon', price: 750, minLevel: 5 },
+  { id: 'racket-legend', name: ['传奇战拍', 'Legendary Racket'], slot: 'weapon', price: 1500, minLevel: 7 },
   /*
    * 下面三类画在人的外面，不动人本身 ——
    * 所以换成立绘图片之后，金币还有地方花，赢球还是有奔头。
    */
-  // 背景：衬在人后面
-  { id: 'court', name: ['球场', 'Court'], slot: 'background', price: 120, minLevel: 0 },
-  { id: 'night', name: ['夜场灯光', 'Night Lights'], slot: 'background', price: 260, minLevel: 2 },
-  { id: 'podium', name: ['领奖台', 'Podium'], slot: 'background', price: 500, minLevel: 4 },
-  { id: 'final', name: ['决赛主场', 'Finals Arena'], slot: 'background', price: 800, minLevel: 6 },
-  { id: 'galaxy', name: ['星空', 'Starfield'], slot: 'background', price: 1200, minLevel: 7 },
-  // 头像框：套在头像圆圈外面，排行榜上一眼就看得见，最适合拿来显摆
-  { id: 'ring-steel', name: ['钢圈', 'Steel Ring'], slot: 'frame', price: 90, minLevel: 0 },
-  { id: 'ring-jade', name: ['翠环', 'Jade Ring'], slot: 'frame', price: 220, minLevel: 2 },
-  { id: 'ring-gold', name: ['金边', 'Gold Rim'], slot: 'frame', price: 450, minLevel: 4 },
-  { id: 'ring-flame', name: ['烈焰环', 'Flame Ring'], slot: 'frame', price: 900, minLevel: 6 },
-  { id: 'ring-crown', name: ['王冠框', 'Crown Frame'], slot: 'frame', price: 1600, minLevel: 7 },
-  // 称号：写在名字旁边的一行小字
-  { id: 'title-newbie', name: ['初入球场', 'Newcomer'], slot: 'title', price: 40, minLevel: 0 },
-  { id: 'title-grinder', name: ['球场劳模', 'Court Regular'], slot: 'title', price: 150, minLevel: 1 },
-  { id: 'title-upset', name: ['爆冷专家', 'Giant Killer'], slot: 'title', price: 300, minLevel: 3 },
-  { id: 'title-streak', name: ['连胜王', 'Streak King'], slot: 'title', price: 600, minLevel: 5 },
-  { id: 'title-king', name: ['无可匹敌', 'Untouchable'], slot: 'title', price: 1400, minLevel: 7 },
+  // 背景：衬在人后面。要赢 7 / 18 / 35 / 55 / 70 场
+  { id: 'court', name: ['球场', 'Court'], slot: 'background', price: 210, minLevel: 0 },
+  { id: 'night', name: ['夜场灯光', 'Night Lights'], slot: 'background', price: 540, minLevel: 2 },
+  { id: 'podium', name: ['领奖台', 'Podium'], slot: 'background', price: 1050, minLevel: 4 },
+  { id: 'final', name: ['决赛主场', 'Finals Arena'], slot: 'background', price: 1650, minLevel: 6 },
+  { id: 'galaxy', name: ['星空', 'Starfield'], slot: 'background', price: 2100, minLevel: 7 },
+  // 头像框：排行榜上一眼就看得见，最适合显摆，所以这一列最贵。
+  // 要赢 5 / 15 / 30 / 50 / 80 场 —— 王冠框是整个商店最贵的一件
+  { id: 'ring-steel', name: ['钢圈', 'Steel Ring'], slot: 'frame', price: 150, minLevel: 0 },
+  { id: 'ring-jade', name: ['翠环', 'Jade Ring'], slot: 'frame', price: 450, minLevel: 2 },
+  { id: 'ring-gold', name: ['金边', 'Gold Rim'], slot: 'frame', price: 900, minLevel: 4 },
+  { id: 'ring-flame', name: ['烈焰环', 'Flame Ring'], slot: 'frame', price: 1500, minLevel: 6 },
+  { id: 'ring-crown', name: ['王冠框', 'Crown Frame'], slot: 'frame', price: 2400, minLevel: 7 },
+  // 称号：写在名字旁边的一行小字。要赢 3 / 10 / 20 / 40 / 70 场
+  { id: 'title-newbie', name: ['初入球场', 'Newcomer'], slot: 'title', price: 90, minLevel: 0 },
+  { id: 'title-grinder', name: ['球场劳模', 'Court Regular'], slot: 'title', price: 300, minLevel: 1 },
+  { id: 'title-upset', name: ['爆冷专家', 'Giant Killer'], slot: 'title', price: 600, minLevel: 3 },
+  { id: 'title-streak', name: ['连胜王', 'Streak King'], slot: 'title', price: 1200, minLevel: 5 },
+  { id: 'title-king', name: ['无可匹敌', 'Untouchable'], slot: 'title', price: 2100, minLevel: 7 },
 ]
 
 /** 画在人身上的老三样。有分层换装素材时它们下架，换成四个新槽位 */

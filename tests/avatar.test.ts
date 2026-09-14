@@ -36,6 +36,7 @@ import {
   winCount,
   type AvatarProfile,
 } from '@/lib/avatar'
+import { DRESS_ITEMS } from '@/lib/dressup'
 import { DRAWN_IDS } from '@/components/Avatar'
 import type { Match } from '@/types'
 
@@ -374,12 +375,13 @@ describe('商店', () => {
   })
 
   it('花掉的金币会让后面买不起', () => {
-    const jersey = itemById('jersey')! // 60
-    const carbon = itemById('racket-blue')! // 70
+    const jersey = itemById('jersey')!
+    const carbon = itemById('racket-blue')!
+    // 攒的钱差一个金币买不下这两件：买了第一件，第二件就买不起了
+    const earned = jersey.price + carbon.price - 1
     const after = pet({ owned: [jersey.id], spent: jersey.price })
-    // 赚了 100，买过 60，剩 40 不够买 70 的短刃
-    expect(balanceOf(after, 100)).toBe(40)
-    expect(buyBlocker(carbon, after, prog(100, 100))).toBe('money')
+    expect(balanceOf(after, earned)).toBe(carbon.price - 1)
+    expect(buyBlocker(carbon, after, prog(100, earned))).toBe('money')
   })
 
   it('发型分男女，一款只归一边', () => {
@@ -418,6 +420,54 @@ describe('商店', () => {
     expect(fresh.equipped.hair).toBe('f-bob')
     expect(fresh.equipped.outfit).toBe('tee')
     expect(fresh.equipped.weapon).toBe('racket')
+  })
+})
+
+describe('价目表的单位是「要赢几场」', () => {
+  /*
+   * 这条测试是为了下一次改金币基数时先红。
+   *
+   * 上一次改（赢一场 10 → 30）价目表没跟着重排，整个商店一夜之间
+   * 便宜了三倍：最便宜的一件从「赢 4 场」掉到「赢 1.3 场」，
+   * 第一晚就能把前面几档买空。当时没有任何一条测试红 ——
+   * 每条测试都在验价格之间的相对关系，而整排一起变的时候，
+   * 相对关系全是对的。
+   *
+   * 所以这里钉的不是价格，是场数：price / WIN_COINS。
+   * 那才是玩家真正感觉到的东西。
+   */
+  const ALL = [...SHOP_ITEMS, ...DRESS_ITEMS].filter((i) => i.price > 0)
+  const wins = (price: number) => price / WIN_COINS
+
+  it('最便宜的一件两三场就买得到', () => {
+    // 太贵的话新人第一晚什么都摸不到；白菜价的话第一晚就买空了
+    const cheapest = Math.min(...ALL.map((i) => wins(i.price)))
+    expect(cheapest).toBeGreaterThanOrEqual(2)
+    expect(cheapest).toBeLessThanOrEqual(4)
+  })
+
+  it('最贵的一件要打上几个月，但不至于遥不可及', () => {
+    const dearest = Math.max(...ALL.map((i) => wins(i.price)))
+    expect(dearest).toBeGreaterThanOrEqual(50)
+    expect(dearest).toBeLessThanOrEqual(90)
+  })
+
+  it('每条线从便宜到贵，段位门槛只升不降', () => {
+    // 重排价目表时最容易出的错是某一档手滑写小了，这里一眼就看得见
+    const lines = new Map<string, typeof SHOP_ITEMS>()
+    for (const item of SHOP_ITEMS) {
+      // 发型分男女，两套交替排在一起，要分开看
+      const key = `${item.slot}/${item.sex ?? '-'}`
+      lines.set(key, [...(lines.get(key) ?? []), item])
+    }
+    for (const [key, line] of lines) {
+      for (let i = 1; i < line.length; i++) {
+        expect(line[i].price, `${key}#${i}`).toBeGreaterThan(line[i - 1].price)
+        expect(line[i].minLevel, `${key}#${i}`).toBeGreaterThanOrEqual(
+          line[i - 1].minLevel,
+        )
+      }
+    }
   })
 })
 
@@ -473,20 +523,29 @@ describe('旧装备换成羽球装备', () => {
     expect(itemById(p.equipped.weapon!)).toBeDefined()
   })
 
-  it('换出来的新装备和旧的同价同门槛，不用补差价也不掉级', () => {
-    const same = (oldId: string) => {
+  it('换出来的新装备档位和旧的一样，不用补差价也不掉级', () => {
+    /*
+     * 比的是「档位」，不是价格。
+     *
+     * 旧装备的段位门槛是钉死的历史事实（轻甲 1 段、短刃 0 段），
+     * 价格不是 —— 商店整条价目表重排过一次。拿那个会变的数字当
+     * 判据，等于每次调价都要回来改这条测试，而它本来想守的
+     * 「换过去还在同一条线的同一格」一个字都没验到。
+     */
+    const at = (oldId: string) => {
       const now = itemById(retireOldGear(pet({ owned: [oldId] })).owned[0])!
-      return [now.price, now.minLevel]
+      const line = SHOP_ITEMS.filter((i) => i.slot === now.slot)
+      return [line.findIndex((i) => i.id === now.id), now.minLevel]
     }
-    // 旧价：轻甲 150/1、骑士铠 400/4、暗影战衣 900/7
-    expect(same('leather')).toEqual([150, 1])
-    expect(same('knight')).toEqual([400, 4])
-    expect(same('shadow')).toEqual([900, 7])
-    // 旧价：短刃 70/0、长剑 250/3、法杖 500/5、巨剑 1200/7
-    expect(same('dagger')).toEqual([70, 0])
-    expect(same('sword')).toEqual([250, 3])
-    expect(same('staff')).toEqual([500, 5])
-    expect(same('greatsword')).toEqual([1200, 7])
+    // 战服：新手 → 进阶 → 精英（轻甲）→ 高手（骑士铠）→ 传奇（暗影战衣）
+    expect(at('leather')).toEqual([2, 1])
+    expect(at('knight')).toEqual([3, 4])
+    expect(at('shadow')).toEqual([4, 7])
+    // 球拍：入门 → 碳素（短刃）→ 竞速（长剑）→ 金标（法杖）→ 传奇（巨剑）
+    expect(at('dagger')).toEqual([1, 0])
+    expect(at('sword')).toEqual([2, 3])
+    expect(at('staff')).toEqual([3, 5])
+    expect(at('greatsword')).toEqual([4, 7])
   })
 
   it('本来就是新装备的角色一点都不动', () => {
