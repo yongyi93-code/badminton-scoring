@@ -3,7 +3,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { isFull, rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { matchWinnerBySets } from '@/lib/ranking'
-import { CLEAR_CONFIRMATIONS, disputed, opponentConfirmed } from '@/lib/confirm'
+import {
+  applyDispute,
+  CLEAR_CONFIRMATIONS,
+  disputed,
+  opponentConfirmed,
+  scoreText,
+} from '@/lib/confirm'
 import { ConfirmScore } from '@/components/ConfirmScore'
 import {
   Body,
@@ -225,10 +231,13 @@ function FinishedRow({
   match,
   names,
   onReopen,
+  onAccept,
 }: {
   match: Match
   names: Map<string, Player>
   onReopen: () => void
+  /** 采纳某个人报的比分。传他的球员 id */
+  onAccept: (by: string) => void
 }) {
   const winner = matchWinnerBySets(match)
   const side = (ids: string[], team: 'A' | 'B') => (
@@ -258,7 +267,29 @@ function FinishedRow({
         提异议的人写名字，不写「有人」：一场四个人，不说是谁的话，
         拿着手机的那个只能挨个问过去。
       */}
-      {disputed(match) && (
+      {(match.disputes ?? []).map((d) => {
+        const who = names.get(d.by)?.name ?? '?'
+        return (
+          <div key={d.by} className="mt-1.5">
+            <p className="text-danger-600 text-xs">
+              {pick(
+                `${who} 说应该是 ${scoreText(d.games)}`,
+                `${who} says it was ${scoreText(d.games)}`,
+              )}
+            </p>
+            {/*
+              一个按钮就改完。这是这一整套里真正省事的那一下 ——
+              争议多半是手滑多点了一分，对方把数报出来，看一眼就认得。
+              改完这一场的确认全部作废，大家重新认一次（见 applyDispute）。
+            */}
+            <button className="text-brand-600 mt-0.5 text-xs" onClick={() => onAccept(d.by)}>
+              {pick(`改成 ${scoreText(d.games)} ›`, `Change it to ${scoreText(d.games)} ›`)}
+            </button>
+          </div>
+        )
+      })}
+      {/* 老版本那种只说「不对」、没说是多少的。显示，但没法一键改 */}
+      {(match.disputedBy ?? []).length > 0 && (
         <p className="text-danger-600 mt-1.5 text-xs">
           {pick(
             `${(match.disputedBy ?? []).map((id) => names.get(id)?.name ?? '?').join('、')} 说这个比分不对`,
@@ -1532,6 +1563,10 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                     match={m}
                     names={names}
                     onReopen={() => reopenMatch(m)}
+                    onAccept={(by) => {
+                      const patch = applyDispute(m, by)
+                      if (patch) updateMatch(m.id, patch)
+                    }}
                   />
                 ))}
               {finished.length > 3 && (

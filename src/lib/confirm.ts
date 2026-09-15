@@ -66,14 +66,76 @@ const claimed = (match: Match, players: Player[]): string[] => {
 export const confirmers = (match: Match, players: Player[]): string[] =>
   claimed(match, players).filter((id) => id !== match.recordedBy)
 
+/**
+ * 提过异议的人。
+ *
+ * 两处都要看：新的记在 disputes 里（带他报的比分），老的在 disputedBy
+ * 里（只有名字）。老的那种活了不到一个下午，但线上真可能有几条。
+ */
+export const disputers = (match: Match): string[] => [
+  ...new Set([
+    ...(match.disputes ?? []).map((d) => d.by),
+    ...(match.disputedBy ?? []),
+  ]),
+]
+
 /** 还没表过态的那些人（既没点确认，也没提异议） */
 export function confirmPending(match: Match, players: Player[]): string[] {
-  const said = new Set([...(match.scoreOk ?? []), ...(match.disputedBy ?? [])])
+  const said = new Set([...(match.scoreOk ?? []), ...disputers(match)])
   return confirmers(match, players).filter((id) => !said.has(id))
 }
 
 /** 有人说这个比分不对 */
-export const disputed = (match: Match): boolean => (match.disputedBy?.length ?? 0) > 0
+export const disputed = (match: Match): boolean => disputers(match).length > 0
+
+/** 比分写成「21-18 15-21」这样，给人看的 */
+export const scoreText = (games: { a: number; b: number }[]): string =>
+  games.map((g) => `${g.a}-${g.b}`).join(' ')
+
+/** 他报的和现在记着的是不是同一个数 */
+export const sameScore = (
+  x: { a: number; b: number }[],
+  y: { a: number; b: number }[],
+): boolean =>
+  x.length === y.length && x.every((g, i) => g.a === y[i].a && g.b === y[i].b)
+
+/**
+ * 采纳某个人报的比分。
+ *
+ * 三件事一起做，缺一件都会留下一个自相矛盾的记录：
+ *
+ * 1. 换掉比分
+ * 2. **把那一局的逐分记录清掉。** 那份记录是记分的人一分一分点出来的，
+ *    和新的总分对不上了。留着的话，撤销和发球方推导会照着一份
+ *    已经作废的账走。只清真的改了的那几局 —— 三局两胜里没动的那局
+ *    没道理连坐。
+ * 3. 抹掉所有确认和异议。它们是对**旧的**那个比分说的。
+ *
+ * 不改 status：这一场还是「打完了」。不用退回场上再打一遍 ——
+ * 退回去改是另一条路，那条留给「整场都记错了」的情况。
+ */
+export function applyDispute(match: Match, by: string): Partial<Match> | null {
+  const d = (match.disputes ?? []).find((x) => x.by === by)
+  if (!d || d.games.length !== match.games.length) return null
+  const games = match.games.map((g, i) => {
+    const claimed = d.games[i]
+    if (g.a === claimed.a && g.b === claimed.b) return g
+    return { ...g, a: claimed.a, b: claimed.b, points: null, serveInit: null }
+  })
+  return {
+    games,
+    ...CLEAR_CONFIRMATIONS,
+    /*
+     * 报这个数的人成了新的「记分人」。
+     *
+     * 这不是记账，是决定接下来该问谁：现在这个比分是他说的，
+     * 那么该由**他那一队之外**的人来认。CLEAR_CONFIRMATIONS 会把
+     * recordedBy 抹成空，空的意思是「不知道谁记的，谁点都算」——
+     * 在这儿那是错的，所以放在它后面盖回去。
+     */
+    recordedBy: by,
+  }
+}
 
 /**
  * 「对手确认过」—— 这一场的比分有对面的人点过头。
@@ -124,6 +186,7 @@ export function shouldAsk(
 export const CLEAR_CONFIRMATIONS = {
   recordedBy: undefined,
   scoreOk: undefined,
+  disputes: undefined,
   disputedBy: undefined,
 } as const
 
@@ -131,11 +194,22 @@ export const CLEAR_CONFIRMATIONS = {
 export const withConfirm = (match: Match, playerId: string): Partial<Match> => ({
   scoreOk: [...new Set([...(match.scoreOk ?? []), playerId])],
   /* 改主意了：把他之前的异议撤掉，不然一个人同时在两份名单上 */
+  disputes: (match.disputes ?? []).filter((d) => d.by !== playerId),
   disputedBy: (match.disputedBy ?? []).filter((id) => id !== playerId),
 })
 
-/** 提一次异议。同样可以改主意 */
-export const withDispute = (match: Match, playerId: string): Partial<Match> => ({
-  disputedBy: [...new Set([...(match.disputedBy ?? []), playerId])],
+/**
+ * 提一次异议，连带说出他认为的正确比分。
+ *
+ * 同一个人再提一次就盖掉上一次 —— 他改主意报了另一个数，
+ * 留着两份只会让拿手机的人不知道该采纳哪一个。
+ */
+export const withDispute = (
+  match: Match,
+  playerId: string,
+  games: { a: number; b: number }[],
+): Partial<Match> => ({
+  disputes: [...(match.disputes ?? []).filter((d) => d.by !== playerId), { by: playerId, games }],
   scoreOk: (match.scoreOk ?? []).filter((id) => id !== playerId),
+  disputedBy: (match.disputedBy ?? []).filter((id) => id !== playerId),
 })
