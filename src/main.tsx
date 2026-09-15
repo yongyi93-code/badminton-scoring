@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { initTheme } from './store/useTheme'
 import { initLang } from './lib/i18n'
+import { initErrorLog } from './lib/errorlog'
 import { clearUpdateMarker, healIfStale } from './lib/update'
 import { readInvite, rememberInvite, stripInvite } from './lib/invite'
 import './index.css'
@@ -11,6 +12,11 @@ import './index.css'
 // 英文用户先看到一帧中文
 initTheme()
 initLang()
+/*
+ * 挂全局报错捕获。放在 render 之前 —— 渲染本身崩掉的那一下
+ * 正是最该被收到的。
+ */
+initErrorLog()
 // 「检查更新」留下的 ?_v=… 到这里就没用了，抹掉再往下走
 clearUpdateMarker()
 

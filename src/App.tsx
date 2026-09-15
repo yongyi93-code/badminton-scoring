@@ -19,6 +19,7 @@ import { Chat } from '@/screens/Chat'
 import { Reports } from '@/screens/Reports'
 import { Feedback } from '@/screens/Feedback'
 import { Legal } from '@/screens/Legal'
+import { setRoute } from '@/lib/errorlog'
 import { TabBar } from '@/components/TabBar'
 import { ProgressProvider } from '@/store/progress'
 import { RecoverySheet } from '@/components/RecoverySheet'
@@ -42,6 +43,15 @@ export default function App() {
 
   /* 点了推送通知，落到该落的那一屏（冷启动和已经开着两条路都管） */
   useOpenFromPush()
+
+  /*
+   * 把「现在在哪一屏」告诉报错那边。
+   *
+   * 喂的是路由名（'score'、'board'），不是网址 —— 重设密码回来时
+   * 地址栏里是 #access_token=...，那是一把能登录的钥匙，
+   * 崩在那一屏时原样存进数据库等于把钥匙抄一份留在日志里。
+   */
+  setRoute(route.name)
 
   // 让手机系统返回键 / 浏览器后退和界面里的返回一致
   useEffect(() => {

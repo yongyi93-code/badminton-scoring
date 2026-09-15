@@ -682,7 +682,7 @@ export function Me() {
               )}
               {social.isAdmin && (
                 <MenuRow
-                  title={t('收到的反馈', 'Feedback')}
+                  title={t('反馈与报错', 'Feedback and crashes')}
                   hint={
                     openFeedback > 0
                       ? t(`${openFeedback} 条没看`, `${openFeedback} unread`)
