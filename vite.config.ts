@@ -27,10 +27,60 @@ export default defineConfig({
      *
      * 分层换装有九十来个小文件，其中掩膜压完只有一两 KB，默认规则会把它们
      * 塞进主 JS 里 —— 首屏要下的那个包白白胖了几十 KB，而且这些图改一次
-     * 整个 JS 的 hash 就变，缓存全作废。出成文件反而更好：Service Worker
-     * 照样会预缓存，离线一样能用，改素材也只失效那几张。
+     * 整个 JS 的 hash 就变，缓存全作废。出成文件反而更好：改素材只失效
+     * 那几张，而且能单独决定它们进不进离线包（见下面的 assetFileNames）。
      */
     assetsInlineLimit: (file) => (/\.(webp|png|jpe?g)$/.test(file) ? false : undefined),
+    rollupOptions: {
+      output: {
+        /*
+         * 把几个不常变的依赖单独拿出来。
+         *
+         * 这一刀省的不是第一次打开，是**每一次更新**。
+         *
+         * 离线包里的 JS 是按文件名（带内容 hash）算新旧的：名字没变
+         * 就不重下。React、react-dom、supabase-js 加起来 112 KB（压缩后），
+         * 而它们几个月才动一次 —— 和天天在改的业务代码打包在一起的话，
+         * 每发一版所有人都要把这 112 KB 再下一遍。
+         *
+         * 分开之后，一次普通更新只下业务那一块（129 KB → 只重下它）。
+         * 第一次打开的总量一点没变，多一个请求而已。
+         *
+         * 只点名这几个，不写「所有 node_modules」—— 试过，那样会把
+         * leaflet 也拽进来，而 leaflet 本来是跟着地图那一屏懒加载的
+         * （151 KB），拽进来就变成人人都要下。
+         */
+        manualChunks(id: string) {
+          if (id.includes('node_modules/react-dom')) return 'vendor-react'
+          if (id.includes('node_modules/react/')) return 'vendor-react'
+          if (id.includes('node_modules/scheduler')) return 'vendor-react'
+          if (id.includes('node_modules/@supabase')) return 'vendor-supabase'
+          return undefined
+        },
+        /*
+         * 换装素材单独出到 assets/dress/，别的资源照旧。
+         *
+         * 分出来只为一件事：让 Service Worker 认得出它们。
+         * 这两百来个文件一共 2.1 MB，占了离线包的三分之二，而其中
+         * 绝大多数是商店里那些还没买的衣服 —— 一个新人第一次打开
+         * App，要先在 4G 上把它们全下完才算装好，而他可能根本
+         * 不碰换装。
+         *
+         * 分完之后：预缓存里不放它们（globIgnores），改成用到哪张
+         * 下哪张、下过就留着（runtimeCaching）。见下面 workbox 那段。
+         *
+         * 靠源文件路径判断，不靠文件名 —— 文件名会撞（两套素材里
+         * 都有 top-01.webp，正是靠文件夹分开的）。
+         */
+        assetFileNames: (info) => {
+          const from = info.originalFileNames?.[0] ?? ''
+          if (/src\/assets\/dressup(-m)?\//.test(from)) {
+            return 'assets/dress/[name]-[hash][extname]'
+          }
+          return 'assets/[name]-[hash][extname]'
+        },
+      },
+    },
   },
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
@@ -94,6 +144,41 @@ export default defineConfig({
         // webp 是角色立绘 —— 漏了它离线时头像会变成空白
         globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
         /*
+         * 换装素材不进预缓存。
+         *
+         * 它是离线包里最大的一块（2.1 MB / 3.4 MB），而且这 2.1 MB
+         * 里绝大部分是商店里还没买的衣服。原来的做法是装 App 的时候
+         * 一次性全下 —— 一个刚被拉进来的球友，在球馆的 4G 下要等
+         * 三四兆下完才算装好，而他多半只想看今晚谁在打球。
+         *
+         * 改成用到哪张下哪张（见下面的 runtimeCaching），下过就留着。
+         * 代价是第一次打开时自己那身行头要现下 —— 十来张小图，
+         * 而那一刻他反正在联网（不联网连球局都拉不到）。
+         * 下过一次之后离线照样穿得上。
+         */
+        globIgnores: ['assets/dress/**'],
+        runtimeCaching: [
+          {
+            /*
+             * 下过就一直用本地那份，不再回头问服务器 ——
+             * 这些文件名里带内容 hash，内容变了就是另一个名字，
+             * 所以「旧的那份是不是过期了」这个问题根本不存在。
+             */
+            urlPattern: ({ url }: { url: URL }) => url.pathname.includes('/assets/dress/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'rally-dress',
+              expiration: {
+                // 两套素材一共 178 个文件，留够一整套还有富余
+                maxEntries: 220,
+                maxAgeSeconds: 180 * 24 * 60 * 60,
+                purgeOnQuotaError: true,
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+        /*
          * 带 ?_v= 的那次导航一律走网络，不许拿预缓存里的 index.html 应付。
          *
          * 「检查更新」的做法是先注销 Service Worker 再重载。但注销要等
@@ -114,7 +199,15 @@ export default defineConfig({
          * 换成手写模式（injectManifest）—— 那样每加一个资源都要自己维护。
          */
         importScripts: ['push-sw.js'],
-        // 十张立绘约 220KB，加上代码离线包到 700KB 上下，默认 2MiB 的上限够用
+        /*
+         * 离线包现在是 35 个文件、压缩后 617 KB（换装那 2.1 MB 已经
+         * 挪去按需下载）。默认 2 MiB 的单文件上限够用。
+         *
+         * 这个数字会长。哪天又觉得装 App 太慢，先跑一遍
+         * `npm run build` 看 precache 那一行，再决定动谁 ——
+         * 别凭印象猜，上一次凭印象猜的结果是盯着 800 KB 的 JS 看了
+         * 半天，而真正胖的是那 2.1 MB 没人看的衣服。
+         */
       },
     }),
   ],

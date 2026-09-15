@@ -1,5 +1,16 @@
 import { pick } from './i18n'
-import { toSvg } from 'html-to-image'
+
+/*
+ * html-to-image 是用到才下的。
+ *
+ * 它有小半兆，而整个 App 里只有一处用得上 —— 赛后那张战绩卡的
+ * 「分享」。摆在主包里的话，每一个打开 App 的人都要为一个他今晚
+ * 可能一次都不会点的按钮付这笔流量。
+ *
+ * 点下去那一刻再下，慢个几百毫秒；而那时候按钮本来就要转一会儿圈
+ * （后面还要渲染、转 canvas、编码 PNG），多的这一下看不出来。
+ */
+const loadToSvg = async () => (await import('html-to-image')).toSvg
 
 export type ShareOutcome = 'shared' | 'downloaded' | 'failed'
 
@@ -16,6 +27,7 @@ async function nodeToPngBlob(node: HTMLElement, scale = 2): Promise<Blob> {
   const height = node.offsetHeight
   if (!width || !height) throw new Error(pick('分享卡片还没渲染出来', 'The share card has not rendered yet'))
 
+  const toSvg = await loadToSvg()
   const svgUrl = await toSvg(node, { width, height, cacheBust: true })
 
   const img = new Image()
