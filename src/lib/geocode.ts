@@ -23,6 +23,8 @@ export type Place = {
   address: string
   lat: number
   lng: number
+  /** 两位国家码（'MY'）。服务端没给就是 undefined */
+  cc?: string
 }
 
 /**
@@ -82,7 +84,13 @@ export function parsePlaces(json: unknown): Place[] {
 
     // 名字和地址都空的条目没有任何用，扔掉
     if (!name && !address) continue
-    out.push({ name, address, lat, lng })
+    /*
+     * 国家码。这是整条链上最靠得住的一个信号 ——
+     * 「这条结果在不在马来西亚」，不用算距离也不用猜。
+     * 服务端不给就是 undefined，那种条目当「不知道」处理，不误杀。
+     */
+    const cc = String(props.countrycode ?? '').trim().toUpperCase() || undefined
+    out.push({ name, address, lat, lng, cc })
   }
   return out
 }
@@ -128,6 +136,37 @@ export function byDistance(places: Place[], near?: { lat: number; lng: number })
  * 后面就用真的位置了（见 lastNear）。
  */
 export const FALLBACK_NEAR = { lat: 3.139, lng: 101.6869 }
+
+/** 这个 App 现在服务的国家 */
+export const HOME_CC = 'MY'
+
+/**
+ * 马来西亚大致的四至：西经 99.6、南纬 0.85、东经 119.35、北纬 7.45。
+ *
+ * 半岛加沙巴砂拉越都框得住，宽出去一点没关系 —— 这是给搜索用的
+ * 偏好框，不是国界，宁可框大也别把玻璃市或者山打根切掉。
+ */
+export const HOME_BBOX = '99.6,0.85,119.35,7.45'
+
+/**
+ * 把本国的挪到前面。
+ *
+ * 这一条是照着一份真实的投诉加的：人在马来西亚，输一个球馆名，
+ * 跳出来的是英国。原来那套只做了两件事 —— 给服务端一个「尽量靠近
+ * 这里」的参考点，以及把回来的结果按距离重排。
+ *
+ * 两件都不够：参考点是「尽量」，服务端可以完全不理；而按距离重排，
+ * 在十条结果全是英国的时候只是把十条英国的排了个序。
+ *
+ * 所以这里改成按国家分两拨。**只重排不删**，理由和距离那条一样：
+ * 万一他真要找国外那个馆，删掉就等于告诉他「没有」，那是撒谎。
+ * 国家码拿不到的条目（服务端没给）算「不知道」，跟在本国的后面、
+ * 排在明确是外国的前面 —— 不知道不该被当成外国。
+ */
+export function homeFirst(places: Place[], cc = HOME_CC): Place[] {
+  const rank = (p: Place) => (p.cc === cc ? 0 : p.cc ? 2 : 1)
+  return [...places].sort((a, b) => rank(a) - rank(b))
+}
 
 const NEAR_KEY = 'rally-last-near'
 
@@ -180,11 +219,30 @@ export async function searchPlaces(
    * 只要 5 条的话，那 5 条可能一条近的都没有 —— 排序也就无从排起。
    */
   const near = opts.near ?? FALLBACK_NEAR
-  const url = new URL('https://photon.komoot.io/api/')
-  url.searchParams.set('q', q)
-  url.searchParams.set('limit', '10')
-  url.searchParams.set('lat', String(near.lat))
-  url.searchParams.set('lon', String(near.lng))
+
+  /**
+   * 拼一次请求。
+   *
+   * box = true 时多带一个马来西亚的四至，让服务端先把范围收住。
+   * 收不住的时候（这个免费实例的版本不一定认 bbox）还有客户端那两层
+   * 兜着：homeFirst 按国家排，byDistance 按远近排。
+   */
+  const build = (box: boolean) => {
+    const url = new URL('https://photon.komoot.io/api/')
+    url.searchParams.set('q', q)
+    url.searchParams.set('limit', '10')
+    url.searchParams.set('lat', String(near.lat))
+    url.searchParams.set('lon', String(near.lng))
+    /*
+     * 把「靠近这个点」这件事加重。
+     *
+     * 默认值很轻（0.2），轻到几乎不起作用 —— 实测打一个通用的名字
+     * 回来的全是欧洲。这个服务的取值是 0~1，往上拉就是更看重距离。
+     */
+    url.searchParams.set('location_bias_scale', '0.9')
+    if (box) url.searchParams.set('bbox', HOME_BBOX)
+    return url
+  }
 
   try {
     /*
@@ -204,17 +262,39 @@ export async function searchPlaces(
     const onOuter = () => ctrl.abort()
     opts.signal?.addEventListener('abort', onOuter)
 
-    let res: Response
+    const ask = async (box: boolean) => {
+      const res = await fetch(build(box), { signal: ctrl.signal })
+      if (!res.ok) throw new Error(String(res.status))
+      return parsePlaces(await res.json())
+    }
+
+    let places: Place[]
     try {
-      res = await fetch(url, { signal: ctrl.signal })
+      /*
+       * 先在马来西亚境内找。找不到再把框去掉重找一次。
+       *
+       * 这个顺序是关键：反过来（先全世界、再筛）就会出现「明明有
+       * 十条结果，筛完一条不剩」；而先收窄、空了才放开，最坏情况
+       * 也只是多一次请求，换来的是绝大多数人第一次就搜对。
+       *
+       * 放开那一次仍然会经过 homeFirst 和 byDistance，所以就算
+       * 真去了国外，本国的那几条还是在最前面。
+       */
+      places = await ask(true)
+      if (places.length === 0) places = await ask(false)
     } finally {
       clearTimeout(cut)
       opts.signal?.removeEventListener('abort', onOuter)
     }
-    if (!res.ok) {
-      return { ok: false, error: pick('地址搜索暂时用不了', 'Address search is unavailable') }
-    }
-    return { ok: true, places: byDistance(parsePlaces(await res.json()), near).slice(0, 6) }
+
+    /*
+     * 两层重排，顺序不能反：**先按远近，再按国家**。
+     *
+     * sort 是稳定的，所以后跑的那一轮说了算 —— 国家是硬条件
+     * （在不在马来西亚），距离是软条件（同在国内时哪个更近）。
+     * 反过来的话，一个在英国但「碰巧」排前面的会盖过吉隆坡的。
+     */
+    return { ok: true, places: homeFirst(byDistance(places, near)).slice(0, 6) }
   } catch (e) {
     // 主动取消（人又打了一个字）不是错误，别把它显示出来
     if (e instanceof DOMException && e.name === 'AbortError') {

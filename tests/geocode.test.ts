@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { byDistance, distanceKm, parsePlaces, type Place } from '@/lib/geocode'
+import { byDistance, distanceKm, homeFirst, parsePlaces, type Place } from '@/lib/geocode'
 
 /* ------------------------------------------------------------------ *
  * 地址搜索回来的东西怎么读
@@ -123,5 +123,104 @@ describe('按离你多远重排', () => {
     expect(km).toBeLessThan(360)
     // 同一个点就是 0
     expect(distanceKm(KL, KL)).toBeCloseTo(0)
+  })
+})
+
+/*
+ * 「人在马来西亚，搜出来的是英国」—— 一条真实的投诉。
+ *
+ * 原来只有两层：给服务端一个参考点（它可以不理），和按距离重排
+ * （十条全是英国时，只是把十条英国的排了个序）。
+ *
+ * 现在多一层按国家排。这几条钉的就是那一层。
+ */
+describe('本国的排前面', () => {
+  const at = (cc: string | undefined, lat: number, lng: number): Place => ({
+    name: cc ?? 'unknown',
+    address: '',
+    lat,
+    lng,
+    cc,
+  })
+
+  it('马来西亚的浮到最上面', () => {
+    const out = homeFirst([at('GB', 51.5, -0.12), at('MY', 3.1, 101.7)])
+    expect(out.map((p) => p.cc)).toEqual(['MY', 'GB'])
+  })
+
+  it('国家码拿不到的算「不知道」，排在本国后面、外国前面', () => {
+    const out = homeFirst([at('GB', 51.5, -0.12), at(undefined, 3.1, 101.7), at('MY', 3.2, 101.6)])
+    expect(out.map((p) => p.cc)).toEqual(['MY', undefined, 'GB'])
+  })
+
+  /*
+   * 不删只排。万一他真要找国外那个馆，删掉就等于告诉他「没有」，
+   * 而那是撒谎 —— 和距离那一层同一条理由。
+   */
+  it('全是外国的时候一条都不少', () => {
+    const out = homeFirst([at('GB', 51.5, -0.12), at('SG', 1.35, 103.8)])
+    expect(out).toHaveLength(2)
+  })
+
+  it('同一个国家里的顺序不动 —— 交给按距离那一层去排', () => {
+    const near = at('MY', 3.1, 101.7)
+    const far = at('MY', 5.9, 116.0)
+    expect(homeFirst([near, far])).toEqual([near, far])
+    expect(homeFirst([far, near])).toEqual([far, near])
+  })
+
+  it('一条都没有时不会炸', () => {
+    expect(homeFirst([])).toEqual([])
+  })
+})
+
+describe('国家码从结果里读得出来', () => {
+  it('photon 那种 GeoJSON 里的 countrycode', () => {
+    const [p] = parsePlaces({
+      features: [
+        {
+          geometry: { coordinates: [101.7, 3.1] },
+          properties: { name: '力天', countrycode: 'my' },
+        },
+      ],
+    })
+    /* 统一成大写：服务端大小写不一定 */
+    expect(p.cc).toBe('MY')
+  })
+
+  it('没给国家码就是 undefined，不是空字符串', () => {
+    const [p] = parsePlaces({
+      features: [{ geometry: { coordinates: [101.7, 3.1] }, properties: { name: '力天' } }],
+    })
+    expect(p.cc).toBeUndefined()
+  })
+})
+
+describe('两层重排的顺序', () => {
+  const at = (cc: string, lat: number, lng: number, name: string): Place => ({
+    name, address: '', lat, lng, cc,
+  })
+  const KL = { lat: 3.139, lng: 101.6869 }
+
+  /*
+   * 这一条钉的是 searchPlaces 里那句「先按远近，再按国家」。
+   *
+   * sort 是稳定的，所以后跑的那一轮说了算。国家是硬条件，
+   * 距离是软条件 —— 反过来跑的话，一条英国的会盖过吉隆坡的。
+   */
+  it('先距离后国家：马来西亚的一定在最前，国内再按远近', () => {
+    const 伦敦 = at('GB', 51.5, -0.12, '伦敦')
+    const 吉隆坡 = at('MY', 3.14, 101.69, '吉隆坡')
+    const 亚庇 = at('MY', 5.98, 116.07, '亚庇')
+    const out = homeFirst(byDistance([伦敦, 亚庇, 吉隆坡], KL))
+    expect(out.map((p) => p.name)).toEqual(['吉隆坡', '亚庇', '伦敦'])
+  })
+
+  it('反过来跑会错 —— 所以那两句不能调换', () => {
+    const 伦敦 = at('GB', 51.5, -0.12, '伦敦')
+    const 亚庇 = at('MY', 5.98, 116.07, '亚庇')
+    /* 先按国家排好了，再按距离一排，国家那层就白做了 */
+    const wrong = byDistance(homeFirst([伦敦, 亚庇]), { lat: 51.5, lng: -0.12 })
+    expect(wrong[0].name).toBe('伦敦')
   })
 })
