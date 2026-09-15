@@ -1,5 +1,26 @@
 import { readFileSync } from 'node:fs'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+/*
+ * 把云端换成一个假的。
+ *
+ * 不换的话这个文件会**真的往生产库里发请求**：.env 是提交进仓库的
+ * （里面那两个值本来就要编进前端包，是公开的），所以 CI 上
+ * supabase 客户端是活的，report() 里那句 insert 会真的出网。
+ *
+ * 这已经出过事：CI 上这两条连着 await 五次真请求，偶尔超过 5 秒
+ * 的超时，于是测试红了、部署被挡下 —— 而代码一个字都没问题。
+ * 本机看不出来，因为这台机器屏蔽了 supabase.co，请求秒失败。
+ *
+ * 限流这件事本来就和云端无关：它要钉的是「同一个错报几次」，
+ * 那个判断在发请求之前就做完了。
+ */
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    from: () => ({ insert: async () => ({ error: null }) }),
+  },
+}))
+
 import {
   fingerprintOf,
   groupErrors,
