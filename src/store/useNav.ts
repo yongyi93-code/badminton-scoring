@@ -39,6 +39,8 @@ export type Route =
   | { name: 'reports' }
   /** 收到的反馈。同样只有管理员点得进来 */
   | { name: 'feedback' }
+  /** 隐私政策 / 服务条款。谁都看得到，不用登录 */
+  | { name: 'legal'; tab?: 'privacy' | 'terms' }
 
 /**
  * 底部导航的四个落脚点（中间的「开球」不是 tab，它推一个流程出来）。

@@ -62,6 +62,7 @@ const ARROW = (
 
 function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT()
+  const push = useNav((s) => s.push)
   const [mode, setMode] = useState<'in' | 'up' | 'forgot'>('in')
   /** 重设邮件发出去之后显示的那句话 */
   const [sent, setSent] = useState<string | null>(null)
@@ -192,6 +193,40 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
                 ? t('登录', 'Sign in')
                 : t('注册并登录', 'Create account')}
         </Button>
+
+        {/*
+          注册那一档才写这一句。登录的人早就同意过了，
+          每次登录再问一遍是走形式。
+
+          做成一行字而不是一个必勾的方框：勾选框会让人机械地点掉，
+          而这一行下面就是两个真的点得开的链接。想看的看得到，
+          不想看的也已经被告知了。
+        */}
+        {mode === 'up' && (
+          <p className="text-ink-500 text-caption">
+            {t('点「注册并登录」就表示你同意 ', 'By creating an account you agree to the ')}
+            <button
+              className="text-brand-600 underline underline-offset-4"
+              onClick={() => {
+                onClose()
+                push({ name: 'legal', tab: 'terms' })
+              }}
+            >
+              {t('服务条款', 'Terms of Service')}
+            </button>
+            {t(' 和 ', ' and ')}
+            <button
+              className="text-brand-600 underline underline-offset-4"
+              onClick={() => {
+                onClose()
+                push({ name: 'legal', tab: 'privacy' })
+              }}
+            >
+              {t('隐私政策', 'Privacy Policy')}
+            </button>
+            {t('。', '.')}
+          </p>
+        )}
 
         {/* 忘记密码的入口只在登录那一档出现 —— 注册时问这个没有意义 */}
         {mode === 'in' && (
@@ -1029,8 +1064,8 @@ export function Me() {
           需要登录：一条没法回复、也认不出是谁的反馈，
           查起来等于一张匿名纸条。
         */}
-        {session && (
-          <div className="border-line rounded-card overflow-hidden border">
+        <div className="border-line rounded-card overflow-hidden border">
+          {session && (
             <MenuRow
               title={t('说点什么', 'Tell us')}
               hint={t(
@@ -1039,8 +1074,17 @@ export function Me() {
               )}
               onClick={() => setFeedbackOpen(true)}
             />
-          </div>
-        )}
+          )}
+          {/*
+            不需要登录也看得到 —— 一个还在犹豫要不要注册的人，
+            想先看看你拿他的数据干什么，这很合理。
+          */}
+          <MenuRow
+            title={t('隐私政策与服务条款', 'Privacy and Terms')}
+            hint={t('收了什么、谁看得到、存多久', 'What is collected, who sees it, how long it is kept')}
+            onClick={() => push({ name: 'legal' })}
+          />
+        </div>
 
         {/*
           装成 PWA 之后旧缓存会一直顶着，界面看不出更没更新。
