@@ -18,6 +18,7 @@ import { Friends } from '@/screens/Friends'
 import { Chat } from '@/screens/Chat'
 import { Reports } from '@/screens/Reports'
 import { Feedback } from '@/screens/Feedback'
+import { Admins } from '@/screens/Admins'
 import { Legal } from '@/screens/Legal'
 import { setRoute } from '@/lib/errorlog'
 import { TabBar } from '@/components/TabBar'
@@ -130,6 +131,8 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <Reports />
     case 'feedback':
       return <Feedback />
+    case 'admins':
+      return <Admins />
     case 'legal':
       return <Legal tab={route.tab} />
   }

@@ -39,6 +39,13 @@ export type Route =
   | { name: 'reports' }
   /** 收到的反馈。同样只有管理员点得进来 */
   | { name: 'feedback' }
+  /**
+   * 管理员名单。只有 owner 点得进来。
+   *
+   * 和举报队列同一条：这条路由挡不住任何人，把门的是数据库策略 ——
+   * 进来了也读不到名单、改不动一行。
+   */
+  | { name: 'admins' }
   /** 隐私政策 / 服务条款。谁都看得到，不用登录 */
   | { name: 'legal'; tab?: 'privacy' | 'terms' }
 

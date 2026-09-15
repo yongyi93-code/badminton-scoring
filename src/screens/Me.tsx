@@ -680,6 +680,17 @@ export function Me() {
                   onClick={() => push({ name: 'reports' })}
                 />
               )}
+              {/*
+                管理员名单。只有 owner 看得见 —— 普通管理员看见一个
+                改不动的入口，只会以为是坏了。
+              */}
+              {social.isOwner && (
+                <MenuRow
+                  title={t('管理员', 'Admins')}
+                  hint={t('谁能看举报和反馈', 'Who can see reports and feedback')}
+                  onClick={() => push({ name: 'admins' })}
+                />
+              )}
               {social.isAdmin && (
                 <MenuRow
                   title={t('反馈与报错', 'Feedback and crashes')}
