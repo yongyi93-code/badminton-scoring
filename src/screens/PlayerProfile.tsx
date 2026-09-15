@@ -10,11 +10,14 @@ import {
   Pill,
   Screen,
   SectionTitle,
+  Toast,
   TopBar,
   cx,
 } from '@/components/ui'
 import { refreshSocial, standingWith, useSocial } from '@/store/useSocial'
 import { acceptFriendRequest, removeFriendship, sendFriendRequest } from '@/lib/social'
+import { openReportAgainst } from '@/lib/report'
+import { ReportSheet } from '@/components/ReportSheet'
 import { Avatar, GenderTag } from '@/components/PlayerBits'
 import {
   bestPartner,
@@ -67,9 +70,12 @@ function HeroStat({ value, label }: { value: string; label: string }) {
 function FriendButton({
   playerId,
   ownerId,
+  name,
 }: {
   playerId: string
   ownerId?: string | null
+  /** 举报那张卡上要显示的名字。这一屏本来就知道他叫什么 */
+  name: string
 }) {
   const t = useT()
   const social = useSocial()
@@ -77,8 +83,11 @@ function FriendButton({
   const meId = useApp((s) => s.meId)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
+  const [reporting, setReporting] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
 
   const standing = useMemo(() => standingWith(social, ownerId), [social, ownerId])
+  const reported = Boolean(openReportAgainst(social.myReports, ownerId ?? ''))
 
   /* 自己的战绩页上不该有「加自己为好友」 */
   if (!ownerId || !social.meUid || ownerId === social.meUid || playerId === meId) return null
@@ -137,7 +146,34 @@ function FriendButton({
           {t('加好友', 'Add friend')}
         </Button>
       )}
+
+      {/*
+        举报是一行小字，不是一个按钮 —— 它在这一屏上是最少用到的
+        那件事，摆成按钮会天天挡在「加好友」旁边。但它必须在这儿：
+        不是好友也举报得了（比分作假就不需要先加好友），
+        而私聊那一屏进不去。
+      */}
+      <button
+        className="text-ink-500 active:text-danger-600 mt-3 text-caption"
+        onClick={() => setReporting(true)}
+      >
+        {reported ? t('已举报 · 等处理', 'Reported — under review') : t('举报这个人', 'Report this person')}
+      </button>
+
+      <ReportSheet
+        open={reporting}
+        onClose={() => setReporting(false)}
+        uid={ownerId}
+        name={name}
+        onDone={(m) => {
+          setNote(null)
+          setDone(m)
+        }}
+        onError={setNote}
+      />
+
       {note && <p className="text-danger-600 mt-2 text-caption">{note}</p>}
+      <Toast message={done} onClose={() => setDone(null)} />
     </div>
   )
 }
@@ -246,7 +282,7 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
             加好友放在这里，不在好友那一屏里搜名字 ——
             加一个人之前总要先看看他是谁，而「他是谁」正是这一屏。
           */}
-          <FriendButton playerId={playerId} ownerId={player.ownerId} />
+          <FriendButton playerId={playerId} ownerId={player.ownerId} name={player.name} />
         </Card>
 
         {/* MMR 走势：段位是个结果，这条线才看得出是在往上还是往下 */}

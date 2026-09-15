@@ -19,8 +19,14 @@ import { useNav } from '@/store/useNav'
  * 是拿一个大改动换一个小便利。要认的地址多起来再说。
  * ------------------------------------------------------------------ */
 
-/** 认得出来的那几个去处。认不出来的一律不动，停在原地 */
-export function routeForHash(hash: string): 'friends' | null {
+/**
+ * 认得出来的那几个去处。认不出来的一律不动，停在原地。
+ *
+ * reports 放在前面单独判，不跟 friends 抢 —— 两个词没有公共子串，
+ * 但顺序写反过一次就是另一回事了，所以各判各的。
+ */
+export function routeForHash(hash: string): 'friends' | 'reports' | null {
+  if (hash.includes('reports')) return 'reports'
   return hash.includes('friends') ? 'friends' : null
 }
 
@@ -47,8 +53,8 @@ export function useOpenFromPush(): void {
   useEffect(() => {
     /* 冷启动：地址里带着就跳一次，然后把它抹掉 */
     const first = routeForHash(window.location.hash)
-    if (first === 'friends') {
-      push({ name: 'friends' })
+    if (first) {
+      push({ name: first })
       scrubHash()
     }
 
@@ -58,7 +64,8 @@ export function useOpenFromPush(): void {
     const onMessage = (e: MessageEvent) => {
       const data = e.data as { type?: string; url?: string } | null
       if (data?.type !== 'rally-navigate') return
-      if (routeForHash(data.url ?? '') === 'friends') push({ name: 'friends' })
+      const to = routeForHash(data.url ?? '')
+      if (to) push({ name: to })
     }
     sw.addEventListener('message', onMessage)
     return () => sw.removeEventListener('message', onMessage)

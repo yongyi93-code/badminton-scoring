@@ -378,8 +378,10 @@ export function Me() {
   const setMeId = useApp((s) => s.setMeId)
   const push = useNav((s) => s.push)
   const { theme, setTheme } = useTheme()
+  const social = useSocial()
   /* 未读私信 + 没处理的好友申请，合起来一个数 */
-  const badge = socialBadge(useSocial())
+  const badge = socialBadge(social)
+  const openReports = social.openReports
 
   const [picking, setPicking] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
@@ -614,6 +616,29 @@ export function Me() {
                 }
                 onClick={() => push({ name: 'friends' })}
               />
+              {/*
+                举报队列。只有管理员看得见这一行 —— 别人看见一个
+                点不进去的入口，只会以为自己被降级了。
+                真正把门的是数据库那边的策略，不是这个判断。
+              */}
+              {social.isAdmin && (
+                <MenuRow
+                  title={t('举报队列', 'Reports')}
+                  hint={
+                    openReports > 0
+                      ? t(`${openReports} 条等你看`, `${openReports} waiting for you`)
+                      : t('都处理完了', 'All clear')
+                  }
+                  right={
+                    openReports > 0 ? (
+                      <span className="bg-danger-600 tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption text-white">
+                        {openReports > 99 ? '99+' : openReports}
+                      </span>
+                    ) : undefined
+                  }
+                  onClick={() => push({ name: 'reports' })}
+                />
+              )}
             </div>
 
             <SectionTitle>{t('我的战绩', 'My record')}</SectionTitle>

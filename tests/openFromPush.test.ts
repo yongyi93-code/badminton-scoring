@@ -16,6 +16,11 @@ describe('点通知之后落在哪一屏', () => {
     expect(routeForHash('./#friends')).toBe('friends')
   })
 
+  it('带着 #reports 就去举报队列', () => {
+    expect(routeForHash('#reports')).toBe('reports')
+    expect(routeForHash('./#reports')).toBe('reports')
+  })
+
   it('什么都没有就不动', () => {
     expect(routeForHash('')).toBeNull()
     expect(routeForHash('#')).toBeNull()

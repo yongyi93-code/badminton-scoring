@@ -1,9 +1,20 @@
 /* ------------------------------------------------------------------ *
- * 好友和私聊的提醒
+ * 好友、私聊、举报的提醒
  *
  * 部署在 Supabase Edge Functions（Deno）。和 notify-session 是两个
  * 函数，因为它们要回答的问题不一样：那个是「所有人，有局了」，
  * 这个是「就你一个人，有人找你」。
+ *
+ * -------------------------------------------------------------------
+ * 举报为什么也塞在这个函数里
+ *
+ * 它比前两件事多干一件：先把那段对话拍成快照存进 reports.evidence，
+ * 再通知管理员。严格说这不只是「通知」，名字有点撑。
+ *
+ * 还是塞进来，是因为另一条路更差：上面那六十行找钥匙的样板要再抄
+ * 一份，而且要在后台多建、多部署一个函数 —— 而「在后台手动部署
+ * 函数」这一步本身就出过错。一个函数少一次手动步骤，比一个名字
+ * 更贴切值钱。
  *
  * -------------------------------------------------------------------
  * 一条规矩：通知里不带私信内容
@@ -169,6 +180,8 @@ async function pushTo(
   title: Line,
   body: Line,
   tag: string,
+  /* 点开落在哪一屏。举报要落在举报队列，不是好友页 */
+  url = './#friends',
 ): Promise<{ sent: number; failed: number }> {
   const { data: subs, error } = await admin
     .from('push_subscribers')
@@ -183,7 +196,7 @@ async function pushTo(
     subs.map(async (s: { endpoint: string; p256dh: string; auth: string; lang?: string | null }) => {
       const en = s.lang === 'en'
       /*
-       * url 带上 #friends：点开通知直接落在好友那一屏。
+       * url 带上 #friends / #reports：点开通知直接落在该去的那一屏。
        * 不带的话人落在首页，还得自己找一遍 —— 那一下的摩擦足够
        * 让一半的人放弃。
        */
@@ -191,7 +204,7 @@ async function pushTo(
         title: en ? title.en : title.zh,
         body: en ? body.en : body.zh,
         tag,
-        url: './#friends',
+        url,
       })
       try {
         await webpush.sendNotification(
@@ -214,6 +227,49 @@ async function pushTo(
 }
 
 /* ------------------------------------------------------------------ *
+ * 举报
+ * ------------------------------------------------------------------ */
+
+/** 快照里留几条。够看清来龙去脉，又不至于把半年的聊天记录搬一份 */
+const EVIDENCE_LIMIT = 30
+
+/**
+ * 把这两个人最近那段对话拍下来，存进这条举报里。
+ *
+ * 为什么非得在服务端拍，012 那段 SQL 开头写了整整一节，一句话说就是：
+ * 不拍的话证据会没（发消息的人删得掉自己说过的话），让客户端拍的话
+ * 证据会假（举报的人自己填的东西不叫证据）。
+ *
+ * 拍一次就冻住 —— 数据库那个触发器管着，这里重复调也改不掉第一次
+ * 拍到的内容。所以这个函数可以安全地被重试。
+ */
+async function snapshot(admin: Admin, reportId: string, a: string, b: string): Promise<number> {
+  const { data, error } = await admin
+    .from('messages')
+    .select('id,sender,body,kind,audio_path,duration_ms,created_at')
+    .or(`and(sender.eq.${a},recipient.eq.${b}),and(sender.eq.${b},recipient.eq.${a})`)
+    .order('created_at', { ascending: false })
+    .limit(EVIDENCE_LIMIT)
+  if (error) throw error
+
+  /* 拉的时候倒着取最近的，存的时候要顺着，不然读起来是倒放的 */
+  const messages = (data ?? []).reverse()
+  const { error: upErr } = await admin
+    .from('reports')
+    .update({ evidence: { taken_at: new Date().toISOString(), messages } })
+    .eq('id', reportId)
+  if (upErr) throw upErr
+  return messages.length
+}
+
+/** 管理员都有谁。名单是服务端读的 —— App 那边查不到别人在不在名单里 */
+async function adminUids(admin: Admin): Promise<string[]> {
+  const { data, error } = await admin.from('app_admins').select('uid')
+  if (error) throw error
+  return (data ?? []).map((r: { uid: string }) => r.uid)
+}
+
+/* ------------------------------------------------------------------ *
  * 主流程
  * ------------------------------------------------------------------ */
 
@@ -232,15 +288,79 @@ Deno.serve(async (req) => {
      * 更可靠（发消息的人网断了也照样推）。两条都留着，配了就走
      * Webhook，没配也不至于一条通知都没有。
      */
-    const kind = body.kind ?? (body.table === 'messages' ? 'message' : body.table === 'friendships' ? 'friend' : '')
+    const kind =
+      body.kind ??
+      (body.table === 'messages'
+        ? 'message'
+        : body.table === 'friendships'
+          ? 'friend'
+          : body.table === 'reports'
+            ? 'report'
+            : '')
     const id = body.id ?? body.record?.id
     console.log('收到:', kind, id)
 
-    if (!id || (kind !== 'message' && kind !== 'friend')) {
+    if (!id || (kind !== 'message' && kind !== 'friend' && kind !== 'report')) {
       return new Response(JSON.stringify({ skipped: 'not mine' }), { status: 200 })
     }
 
     const admin = await getAdmin()
+
+    /*
+     * 举报走一条单独的路，因为它和上面两件事有三处不一样：
+     *   收的人是一群（全部管理员），不是一个
+     *   通知之前还要先把证据拍下来
+     *   点开要落在举报队列，不是好友页
+     *
+     * 通知里不写理由、也不写被举报的人说了什么 —— 锁屏上那一行
+     * 谁都看得到，而这条通知的内容恰恰是「某个人被指控了什么」。
+     * 名字是必要的（不然管理员不知道急不急），细节留到 App 里看。
+     */
+    if (kind === 'report') {
+      const { data, error } = await admin
+        .from('reports')
+        .select('reporter,reported,status')
+        .eq('id', id)
+        .maybeSingle()
+      if (error) throw error
+      if (!data) {
+        console.log('这条举报不存在，跳过')
+        return new Response(JSON.stringify({ skipped: 'no such report' }), { status: 200 })
+      }
+      const rep = data as { reporter: string; reported: string; status: string }
+
+      const shot = await snapshot(admin, id, rep.reporter, rep.reported)
+      console.log('证据拍了', shot, '条')
+
+      const admins = await adminUids(admin)
+      if (admins.length === 0) {
+        /*
+         * 一个管理员都没有。举报还是好好地存着，但没人会知道 ——
+         * 所以这里大声地记一笔，不然这件事只能等到有人翻表才发现。
+         */
+        console.error('一个管理员都没有：举报存下来了，但不会有人看到。跑 012 最后那句 SQL')
+        return new Response(JSON.stringify({ evidence: shot, admins: 0 }), { status: 200 })
+      }
+
+      const who = await nameOf(admin, rep.reported)
+      const title: Line = {
+        zh: who ? `有人举报了 ${who}` : '有一条新举报',
+        en: who ? `${who} was reported` : 'A new report came in',
+      }
+      const text: Line = { zh: '点开看看是什么事', en: 'Tap to review it' }
+
+      const out = await Promise.all(
+        /* 每条举报一个 tag：两条不同的举报不该互相顶掉 */
+        admins.map((uid) => pushTo(admin, uid, title, text, `rally-report-${id}`, './#reports')),
+      )
+      const sent = out.reduce((n, r) => n + r.sent, 0)
+      const failed = out.reduce((n, r) => n + r.failed, 0)
+      console.log('推完:', sent, '成功 /', failed, '失败')
+      return new Response(JSON.stringify({ evidence: shot, sent, failed }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
 
     let to = ''
     let title: Line = { zh: '', en: '' }

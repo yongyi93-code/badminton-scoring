@@ -21,6 +21,8 @@ import {
   useSocial,
 } from '@/store/useSocial'
 import { blockUser, isVoice, markRead, removeFriendship, sendMessage, sendVoice } from '@/lib/social'
+import { openReportAgainst } from '@/lib/report'
+import { ReportSheet } from '@/components/ReportSheet'
 import { VoiceBubble, VoiceRecorder } from '@/components/VoiceBits'
 import type { Recording } from '@/lib/voice'
 import { relativeTime } from '@/lib/format'
@@ -44,12 +46,16 @@ export function Chat({ uid }: { uid: string }) {
   const [note, setNote] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [menu, setMenu] = useState(false)
+  const [reporting, setReporting] = useState(false)
+  /** 举报成功那句话是好消息，用 info 色；出错那条才是红的 */
+  const [done, setDone] = useState<string | null>(null)
   /** 正在录音 —— 那会儿输入框和发送键要让位 */
   const [recording, setRecording] = useState(false)
 
   const other = useMemo(() => players.find((p) => p.ownerId === uid), [players, uid])
   const standing = useMemo(() => standingWith(social, uid), [social, uid])
   const thread = useMemo(() => threadWith(social, uid), [social, uid])
+  const reported = Boolean(openReportAgainst(social.myReports, uid))
 
   const bottom = useRef<HTMLDivElement>(null)
 
@@ -303,10 +309,40 @@ export function Chat({ uid }: { uid: string }) {
               </p>
             </>
           )}
+          {/*
+            举报摆在最后，而且拉黑了也还在 —— 先拉黑再举报是很常见的
+            顺序（先让他别烦我，再让人来管），挡住的话等于逼人二选一。
+          */}
+          <Button
+            block
+            variant="dangerSoft"
+            onClick={() => {
+              setMenu(false)
+              setReporting(true)
+            }}
+          >
+            {reported
+              ? t('已举报 · 等处理', 'Reported — under review')
+              : t('举报他', 'Report them')}
+          </Button>
         </div>
       </Sheet>
 
+      <ReportSheet
+        open={reporting}
+        onClose={() => setReporting(false)}
+        uid={uid}
+        name={other?.name ?? t('这个人', 'this person')}
+        /* 成功了就把上一条错误收掉 —— 两个 Toast 位置一样，会叠在一起 */
+        onDone={(m) => {
+          setNote(null)
+          setDone(m)
+        }}
+        onError={setNote}
+      />
+
       <Toast message={note} tone="error" onClose={() => setNote(null)} />
+      <Toast message={done} onClose={() => setDone(null)} />
     </Screen>
   )
 }
