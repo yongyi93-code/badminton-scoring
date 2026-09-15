@@ -20,7 +20,15 @@ import {
   threadWith,
   useSocial,
 } from '@/store/useSocial'
-import { blockUser, isVoice, markRead, removeFriendship, sendMessage, sendVoice } from '@/lib/social'
+import {
+  blockUser,
+  isVoice,
+  markRead,
+  removeFriendship,
+  sendMessage,
+  sendVoice,
+  unblockUser,
+} from '@/lib/social'
 import { openReportAgainst } from '@/lib/report'
 import { ReportSheet } from '@/components/ReportSheet'
 import { VoiceBubble, VoiceRecorder } from '@/components/VoiceBits'
@@ -285,6 +293,28 @@ export function Chat({ uid }: { uid: string }) {
               }}
             >
               {t('删掉这个好友', 'Remove friend')}
+            </Button>
+          )}
+          {/*
+            拉黑了就给一条回头路。
+            以前这里只写了一句「去好友页可以解除」—— 而人是在这一屏
+            想起来要解除的，让他自己走过去等于多一道没必要的门槛，
+            尤其举报的时候是默认顺手拉黑的，很多人根本不是有意要拉。
+          */}
+          {standing.kind === 'blocked' && (
+            <Button
+              block
+              onClick={async () => {
+                setMenu(false)
+                const r = await unblockUser(uid)
+                if (!r.ok) setNote(r.error)
+                else {
+                  await refreshSocial()
+                  setDone(t('解除了，现在又能聊了。', 'Unblocked — you can chat again.'))
+                }
+              }}
+            >
+              {t('解除拉黑', 'Unblock')}
             </Button>
           )}
           {standing.kind !== 'blocked' && (

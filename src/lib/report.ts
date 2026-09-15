@@ -192,27 +192,32 @@ export async function sendReport(
     .select('id')
     .single()
   if (error) return fail(error)
-  await snapshotAndNotify((data as { id: string }).id)
+  await notifyAdmins((data as { id: string }).id)
   return { ok: true }
 }
 
 /**
- * 叫服务端去拍证据、再通知管理员。
+ * 叫服务端通知管理员。
  *
- * 只递「哪一条」，不递内容 —— 和 notify-social 那边同一条规矩，
- * 而且这里更要紧：这个请求是客户端发的，证据要是从这儿来，
- * 那张表记的就不是证据，是作文。
+ * 只递「哪一条」，不递内容 —— 和 notify-social 那边同一条规矩。
  *
- * 失败了不算举报失败。那一行已经落库了，管理员进 App 照样看得到；
- * 为了一次没拍成的快照告诉人「举报失败」，只会让他再点一遍 ——
- * 而第二遍会撞上「你已经举报过了」。
+ * 注意这里**不**负责拍证据了。上线第一天就是栽在这上面：
+ * 那时候证据是这一句调用去拍的，而第一次调用撞上函数冷启动，
+ * 客户端没等到就放弃了 —— 一条举报的 18 句对话就这么没了，
+ * 而且没有任何东西会重来。
+ *
+ * 现在证据由数据库在举报落库的同一刻自己拍（013 那段 SQL）。
+ * 举报插成功了，证据就一定在，和这一句通知成不成没有关系。
+ *
+ * 所以这一句失败也不算举报失败：没送到的只是一条提醒，
+ * 管理员打开 App 照样看得到那条举报和那段对话。
  */
-async function snapshotAndNotify(id: string): Promise<void> {
+async function notifyAdmins(id: string): Promise<void> {
   if (!supabase) return
   try {
     await supabase.functions.invoke('notify-social', { body: { kind: 'report', id } })
   } catch (e) {
-    console.warn('证据没拍成、管理员也没收到提醒:', e)
+    console.warn('管理员没收到提醒（举报本身和证据都已经落库了）:', e)
   }
 }
 

@@ -234,11 +234,15 @@ async function pushTo(
 const EVIDENCE_LIMIT = 30
 
 /**
- * 把这两个人最近那段对话拍下来，存进这条举报里。
+ * 兜底：万一这条举报还没有证据，补拍一次。
  *
- * 为什么非得在服务端拍，012 那段 SQL 开头写了整整一节，一句话说就是：
- * 不拍的话证据会没（发消息的人删得掉自己说过的话），让客户端拍的话
- * 证据会假（举报的人自己填的东西不叫证据）。
+ * 正常情况下轮不到它 —— 013 之后，证据由数据库在举报落库的同一刻
+ * 自己拍好了。留着这段是为了「013 还没跑」的那段窗口。
+ *
+ * 为什么快照非得挪去数据库：这段代码原本是主力，结果上线第一天
+ * 就丢了一条 —— 第一次调用撞上冷启动，客户端等不到就放弃，
+ * 那 18 句对话再也拍不回来。证据有时效（消息会被删），
+ * 一条会偶尔丢证据的路，不配当主力。
  *
  * 拍一次就冻住 —— 数据库那个触发器管着，这里重复调也改不掉第一次
  * 拍到的内容。所以这个函数可以安全地被重试。
@@ -319,7 +323,7 @@ Deno.serve(async (req) => {
     if (kind === 'report') {
       const { data, error } = await admin
         .from('reports')
-        .select('reporter,reported,status')
+        .select('reporter,reported,status,evidence')
         .eq('id', id)
         .maybeSingle()
       if (error) throw error
@@ -327,10 +331,21 @@ Deno.serve(async (req) => {
         console.log('这条举报不存在，跳过')
         return new Response(JSON.stringify({ skipped: 'no such report' }), { status: 200 })
       }
-      const rep = data as { reporter: string; reported: string; status: string }
+      const rep = data as {
+        reporter: string
+        reported: string
+        status: string
+        evidence: unknown
+      }
 
-      const shot = await snapshot(admin, id, rep.reporter, rep.reported)
-      console.log('证据拍了', shot, '条')
+      /*
+       * 数据库那边已经拍好了就别再跑一趟 —— 013 之后正常都是这一支。
+       * 还空着才补拍（013 还没跑的那段窗口）。
+       */
+      const shot = rep.evidence
+        ? -1
+        : await snapshot(admin, id, rep.reporter, rep.reported)
+      console.log(shot < 0 ? '证据数据库那边已经拍好了' : `补拍了 ${shot} 条证据`)
 
       const admins = await adminUids(admin)
       if (admins.length === 0) {
