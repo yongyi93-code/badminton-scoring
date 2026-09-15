@@ -89,11 +89,19 @@ begin;
 alter table public.leaderboard
   add column if not exists scope text not null default '';
 
--- 先丢再建：临时表是跟着连接走的，后台的 SQL Editor 会复用同一个连接，
--- 不丢的话第二次跑看到的是第一次的数字
-drop table if exists _cleared_leaderboard;
-create temporary table _cleared_leaderboard as
-select count(*)::text as n from public.leaderboard where scope = '';
+/*
+ * 记下「清掉了几行」，为了最后自检那一行能告诉你。
+ *
+ * 用会话变量，不用临时表。临时表也能干这件事，但后台 SQL Editor 的
+ * 检查器不分临时表和正式表，会弹一句「这张表没开 RLS，anon 可能读得到」
+ * —— 那是误报（临时表只活在这条连接里），可是一个每次跑都要人判断
+ * 「这个警告能不能忽略」的迁移文件，迟早有一次被忽略错。
+ *
+ * 干脆不给它机会。
+ */
+select set_config('rally.cleared',
+                  (select count(*)::text from public.leaderboard where scope = ''),
+                  false);
 
 delete from public.leaderboard where scope = '';
 
@@ -198,7 +206,7 @@ select '三个索引齐了吗（mmr / state+mmr / uid）',
        ) = 3 then '齐了' else '少了' end
 union all
 select '清掉了几行没有球群的旧数据（这些人要重按一次「上榜」）',
-       (select n from _cleared_leaderboard)
+       coalesce(current_setting('rally.cleared', true), '没数到')
 union all
 -- 第一次跑完这里是 0（旧行刚清掉）。以后重跑这个文件不该再清任何东西，
 -- 上一行会是 0，这一行会是榜上真实的行数
