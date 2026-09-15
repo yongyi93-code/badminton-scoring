@@ -15,6 +15,7 @@ import {
   SectionTitle,
   Segmented,
   Sheet,
+  Toast,
   inputClass,
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
@@ -42,6 +43,7 @@ import {
 import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
 import { InstallSheet } from '@/components/InstallCard'
 import { ClubSheet } from '@/components/Club'
+import { FeedbackSheet } from '@/components/FeedbackSheet'
 import { useInstallHow } from '@/lib/install'
 
 const ARROW = (
@@ -382,6 +384,10 @@ export function Me() {
   /* 未读私信 + 没处理的好友申请，合起来一个数 */
   const badge = socialBadge(social)
   const openReports = social.openReports
+  const openFeedback = social.openFeedback
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackDone, setFeedbackDone] = useState<string | null>(null)
+  const [feedbackErr, setFeedbackErr] = useState<string | null>(null)
 
   const [picking, setPicking] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
@@ -637,6 +643,24 @@ export function Me() {
                     ) : undefined
                   }
                   onClick={() => push({ name: 'reports' })}
+                />
+              )}
+              {social.isAdmin && (
+                <MenuRow
+                  title={t('收到的反馈', 'Feedback')}
+                  hint={
+                    openFeedback > 0
+                      ? t(`${openFeedback} 条没看`, `${openFeedback} unread`)
+                      : t('都看完了', 'All caught up')
+                  }
+                  right={
+                    openFeedback > 0 ? (
+                      <span className="bg-brand-solid text-on-brand tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption">
+                        {openFeedback > 99 ? '99+' : openFeedback}
+                      </span>
+                    ) : undefined
+                  }
+                  onClick={() => push({ name: 'feedback' })}
                 />
               )}
             </div>
@@ -998,6 +1022,27 @@ export function Me() {
         </div>
 
         {/*
+          反馈入口。摆在最下面，但是在版本号上面 ——
+          撞上问题的人本来就会一路划到底找「这东西该跟谁说」，
+          而在这一行之前，他找到底也找不到，只能默默卸载。
+
+          需要登录：一条没法回复、也认不出是谁的反馈，
+          查起来等于一张匿名纸条。
+        */}
+        {session && (
+          <div className="border-line rounded-card overflow-hidden border">
+            <MenuRow
+              title={t('说点什么', 'Tell us')}
+              hint={t(
+                '出问题了、想要个功能，都可以说',
+                'Something broken, or something you wish it did',
+              )}
+              onClick={() => setFeedbackOpen(true)}
+            />
+          </div>
+        )}
+
+        {/*
           装成 PWA 之后旧缓存会一直顶着，界面看不出更没更新。
           把版本印出来，再给个一键清缓存的按钮，省得靠反复划掉 App 碰运气。
         */}
@@ -1017,6 +1062,18 @@ export function Me() {
           </button>
         </div>
       </Body>
+
+      <FeedbackSheet
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        onDone={(m) => {
+          setFeedbackErr(null)
+          setFeedbackDone(m)
+        }}
+        onError={setFeedbackErr}
+      />
+      <Toast message={feedbackDone} onClose={() => setFeedbackDone(null)} />
+      <Toast message={feedbackErr} tone="error" onClose={() => setFeedbackErr(null)} />
 
       {/*
         没有「从名单里挑一个」这回事了 —— 谁建的就是谁的。

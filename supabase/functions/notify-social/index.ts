@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ *
- * 好友、私聊、举报的提醒
+ * 好友、私聊、举报、反馈的提醒
  *
  * 部署在 Supabase Edge Functions（Deno）。和 notify-session 是两个
  * 函数，因为它们要回答的问题不一样：那个是「所有人，有局了」，
@@ -300,15 +300,73 @@ Deno.serve(async (req) => {
           ? 'friend'
           : body.table === 'reports'
             ? 'report'
-            : '')
+            : body.table === 'feedback'
+              ? 'feedback'
+              : '')
     const id = body.id ?? body.record?.id
     console.log('收到:', kind, id)
 
-    if (!id || (kind !== 'message' && kind !== 'friend' && kind !== 'report')) {
+    if (!id || (kind !== 'message' && kind !== 'friend' && kind !== 'report' && kind !== 'feedback')) {
       return new Response(JSON.stringify({ skipped: 'not mine' }), { status: 200 })
     }
 
     const admin = await getAdmin()
+
+    /*
+     * 反馈：通知每个管理员。
+     *
+     * 和举报的区别是这条**带内容**。反馈说的是软件，不是某个人 ——
+     * 锁屏上露出「结束球局点不动」不伤害任何人，而它省掉球主
+     * 点开 App 才知道是不是急事的那一步。
+     *
+     * 但仍然不信请求体：回数据库把那一行读出来，只是这次读的是
+     * 正文。伪造一个 id 最多让球主多收一条他本来就该看到的反馈。
+     */
+    if (kind === 'feedback') {
+      const { data, error } = await admin
+        .from('feedback')
+        .select('kind,body,author')
+        .eq('id', id)
+        .maybeSingle()
+      if (error) throw error
+      if (!data) {
+        console.log('这条反馈不存在，跳过')
+        return new Response(JSON.stringify({ skipped: 'no such feedback' }), { status: 200 })
+      }
+      const fb = data as { kind: string; body: string; author: string }
+
+      const admins = await adminUids(admin)
+      if (admins.length === 0) {
+        console.error('一个管理员都没有：反馈存下来了，但不会有人看到。跑 012 最后那句 SQL')
+        return new Response(JSON.stringify({ admins: 0 }), { status: 200 })
+      }
+
+      const who = await nameOf(admin, fb.author)
+      const label: Record<string, Line> = {
+        bug: { zh: '报了个问题', en: 'reported a problem' },
+        idea: { zh: '想要个功能', en: 'wants a feature' },
+        other: { zh: '说了点什么', en: 'sent feedback' },
+      }
+      const what = label[fb.kind] ?? label.other
+      const title: Line = {
+        zh: who ? `${who} ${what.zh}` : `有人${what.zh}`,
+        en: who ? `${who} ${what.en}` : `Someone ${what.en}`,
+      }
+      /* 正文截一下：锁屏上本来也只显示两行，整段两千字传过去是白费 */
+      const excerpt = fb.body.length > 120 ? `${fb.body.slice(0, 120)}…` : fb.body
+      const text: Line = { zh: excerpt, en: excerpt }
+
+      const out = await Promise.all(
+        admins.map((uid) => pushTo(admin, uid, title, text, `rally-feedback-${id}`, './#feedback')),
+      )
+      const sent = out.reduce((n, r) => n + r.sent, 0)
+      const failed = out.reduce((n, r) => n + r.failed, 0)
+      console.log('推完:', sent, '成功 /', failed, '失败')
+      return new Response(JSON.stringify({ sent, failed }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
 
     /*
      * 举报走一条单独的路，因为它和上面两件事有三处不一样：

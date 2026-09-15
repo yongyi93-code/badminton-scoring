@@ -25,8 +25,9 @@ import { useNav } from '@/store/useNav'
  * reports 放在前面单独判，不跟 friends 抢 —— 两个词没有公共子串，
  * 但顺序写反过一次就是另一回事了，所以各判各的。
  */
-export function routeForHash(hash: string): 'friends' | 'reports' | null {
+export function routeForHash(hash: string): 'friends' | 'reports' | 'feedback' | null {
   if (hash.includes('reports')) return 'reports'
+  if (hash.includes('feedback')) return 'feedback'
   return hash.includes('friends') ? 'friends' : null
 }
 

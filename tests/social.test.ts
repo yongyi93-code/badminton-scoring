@@ -38,6 +38,7 @@ const state = (patch: Partial<SocialState> = {}): SocialState => ({
   myReports: [],
   isAdmin: false,
   openReports: 0,
+  openFeedback: 0,
   meUid: ME,
   ...patch,
 })

@@ -17,6 +17,7 @@ import { Avatar } from '@/screens/Avatar'
 import { Friends } from '@/screens/Friends'
 import { Chat } from '@/screens/Chat'
 import { Reports } from '@/screens/Reports'
+import { Feedback } from '@/screens/Feedback'
 import { TabBar } from '@/components/TabBar'
 import { ProgressProvider } from '@/store/progress'
 import { RecoverySheet } from '@/components/RecoverySheet'
@@ -116,5 +117,7 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <Chat uid={route.uid} />
     case 'reports':
       return <Reports />
+    case 'feedback':
+      return <Feedback />
   }
 }

@@ -21,6 +21,11 @@ describe('点通知之后落在哪一屏', () => {
     expect(routeForHash('./#reports')).toBe('reports')
   })
 
+  it('带着 #feedback 就去反馈那一屏', () => {
+    expect(routeForHash('#feedback')).toBe('feedback')
+    expect(routeForHash('./#feedback')).toBe('feedback')
+  })
+
   it('什么都没有就不动', () => {
     expect(routeForHash('')).toBeNull()
     expect(routeForHash('#')).toBeNull()

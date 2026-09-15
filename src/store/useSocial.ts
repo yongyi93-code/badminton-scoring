@@ -14,6 +14,7 @@ import {
   fetchOpenReportCount,
   type Report,
 } from '@/lib/report'
+import { fetchOpenFeedbackCount } from '@/lib/feedback'
 import { supabase } from '@/lib/supabase'
 
 /* ------------------------------------------------------------------ *
@@ -54,6 +55,8 @@ export type SocialState = {
   isAdmin: boolean
   /** 队列里还有几条没处理。不是管理员时永远是 0 */
   openReports: number
+  /** 还有几条反馈没看。不是管理员时永远是 0 */
+  openFeedback: number
   /** 我自己的 auth uid。没登录就是 null */
   meUid: string | null
 }
@@ -66,6 +69,7 @@ const EMPTY: SocialState = {
   myReports: [],
   isAdmin: false,
   openReports: 0,
+  openFeedback: 0,
   meUid: null,
 }
 
@@ -118,7 +122,9 @@ export async function refreshSocial(): Promise<void> {
      * 发出去还没人处理的那几条」，摆在「举报队列」旁边是错的
      * （见 lib/report.ts）。所以它单独多跑一趟，而且只对管理员跑。
      */
-    const openReports = isAdmin ? await fetchOpenReportCount() : 0
+    const [openReports, openFeedback] = isAdmin
+      ? await Promise.all([fetchOpenReportCount(), fetchOpenFeedbackCount()])
+      : [0, 0]
     set({
       ready: true,
       friendships,
@@ -127,6 +133,7 @@ export async function refreshSocial(): Promise<void> {
       myReports,
       isAdmin,
       openReports,
+      openFeedback,
       meUid,
     })
   } finally {
