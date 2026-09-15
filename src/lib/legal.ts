@@ -132,6 +132,24 @@ export const PRIVACY: Doc = {
       ],
     },
     {
+      zhTitle: '全国榜：唯一一处跨球群公开的东西',
+      enTitle: 'The national board: the one thing visible outside your club',
+      zh: [
+        '**默认不在榜上。** 要不要上，你自己在「排名 → 全国」那一屏点一下决定。不点就永远不在上面。',
+        '**上了之后别人看得到什么**：你的名字（就是你在球群里那个名字）、MMR、胜负场数、有多少场被对手确认过、以及你常去那个球馆在哪个州。',
+        '**看不到什么**：你的比赛记录、球局、对手是谁、私聊、邮箱、账号 id。这些一行都不出你的球群 —— 全国榜是另一张表，上面只有上面那几个数。',
+        '**随时可以下榜**，同一屏上那个「下榜」按钮，按下去你那一行就被删掉了，不是隐藏。',
+        '**别人改不了你那一行**，你也改不了别人的 —— 数据库那边只让每个账号写自己那一行。',
+      ],
+      en: [
+        '**You are not on it by default.** You decide, on Rankings → Malaysia. If you never tap it, you are never listed.',
+        '**What others see if you join**: your name (the one in your club), MMR, wins and losses, how many matches an opponent confirmed, and the state of the venue you play at most.',
+        '**What they do not see**: your matches, sessions, who you played, private messages, email or account id. None of that leaves your club — the board is a separate table holding only the fields above.',
+        '**You can leave any time.** The Leave button on that screen deletes your row; it does not merely hide it.',
+        '**Nobody can edit your row and you cannot edit theirs** — the database only lets each account write its own.',
+      ],
+    },
+    {
       zhTitle: '谁看得到你的东西',
       enTitle: 'Who can see what',
       zh: [

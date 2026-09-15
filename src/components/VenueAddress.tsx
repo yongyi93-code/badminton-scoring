@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { useApp } from '@/store/useApp'
 import { hasLocation, mapsUrl, parseLatLng, venueByKey, venueKey, venueLabel } from '@/lib/venues'
-import { Button, Field, Sheet, inputClass } from '@/components/ui'
+import { Button, Field, Sheet, cx, inputClass } from '@/components/ui'
+import { STATES, stateOf } from '@/lib/region'
 import { lastNear, MIN_QUERY, rememberNear, searchPlaces, type Place } from '@/lib/geocode'
 
 /* ------------------------------------------------------------------ *
@@ -39,6 +40,12 @@ function AddressSheet({
   const saveVenue = useApp((s) => s.saveVenue)
   const meId = useApp((s) => s.meId)
   const [address, setAddress] = useState(saved?.address ?? '')
+  /*
+   * 地址里认不认得出州。每敲一个字重算一次 ——
+   * 人一打出「…, Selangor」，下面那排州的按钮就自己收起来了。
+   */
+  const guessed = stateOf(address)
+  const [state, setState] = useState<string | null>(saved?.state ?? null)
   const [note, setNote] = useState(saved?.note ?? '')
 
   /** 坐标：null = 还没有 */
@@ -343,6 +350,46 @@ function AddressSheet({
           {locError && <p className="text-danger-600 mt-2 text-caption">{locError}</p>}
         </div>
 
+        {/* ------------------------------------------------------------ *
+          州。只在**地址里认不出来**的时候才问。
+
+          多数地址里就写着州名或者一个落点确定的市（「Petaling Jaya」），
+          那种情况一个字都不用人填 —— 见 src/lib/region.ts。
+          多问一次没必要的，人就会开始跳过整张表。
+
+          问它只为一件事：地区排行榜。「我在雪兰莪排第几」比
+          「全国第 147」有劲得多，而有劲正是让人想再打一场的东西。
+        * ------------------------------------------------------------ */}
+        {guessed === null && (
+          <div>
+            <p className="text-ink-900 text-label font-medium">
+              {t('在哪个州？', 'Which state?')}
+            </p>
+            <p className="text-ink-500 mt-0.5 text-caption">
+              {t(
+                '地址里没写，所以这里问一句 —— 只用来排地区榜。不填也行。',
+                'The address does not say, so we ask. Only used for regional rankings — skip it if you like.',
+              )}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {STATES.map((st) => (
+                <button
+                  key={st.id}
+                  onClick={() => setState((cur) => (cur === st.id ? null : st.id))}
+                  className={cx(
+                    'rounded-full border px-3 py-1.5 text-caption',
+                    state === st.id
+                      ? 'border-brand-600 bg-brand-100 text-brand-600'
+                      : 'border-line text-ink-700',
+                  )}
+                >
+                  {t(st.zh, st.en)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <p className="text-ink-500 text-caption">
           {t(
             '填了全群都看得到，谁都能改 —— 填错了让球友顺手改掉就行。',
@@ -356,7 +403,14 @@ function AddressSheet({
           onClick={() => {
             saveVenue(
               key,
-              { address, note, lat: xy?.lat ?? null, lng: xy?.lng ?? null },
+              {
+                address,
+                note,
+                /* 地址里认得出来就不传，让 saveVenue 自己认 */
+                state: guessed === null ? state : undefined,
+                lat: xy?.lat ?? null,
+                lng: xy?.lng ?? null,
+              },
               meId,
             )
             onClose()

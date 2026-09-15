@@ -1,8 +1,9 @@
 import { useT } from '@/lib/i18n'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
-import { Body, Card, EmptyState, Screen, TopBar, cx } from '@/components/ui'
+import { Body, Card, EmptyState, Screen, Segmented, TopBar, cx } from '@/components/ui'
+import { NationalBoard } from '@/components/NationalBoard'
 import { Avatar } from '@/components/PlayerBits'
 import { RankMedal } from '@/components/RankMedal'
 import { Podium } from '@/components/Podium'
@@ -28,6 +29,14 @@ import { homeVenues } from '@/lib/venues'
 export function GlobalRanking() {
   const t = useT()
   const { players, sessions, matches, avatars, meId } = useApp()
+  /*
+   * 两栏，而且它们的数据来路完全不同：
+   *   本群  从本机的比赛记录当场算出来的，准，但只有这个群的人
+   *   全国  别人各自报上来的，跨群，但信得过的只有「✓」那个数
+   * 摆在一起是因为人问的是同一个问题（我排第几），
+   * 但界面上得让人看得出这是两个口径 —— 所以副标题跟着换。
+   */
+  const [tab, setTab] = useState<'club' | 'national'>('club')
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
 
@@ -73,14 +82,30 @@ export function GlobalRanking() {
   return (
     <Screen>
       <TopBar
-        title={t('全体排名', 'Everyone')}
-        subtitle={t(
-          `${ranked.length} 人 · 按 MMR 排，算上所有球馆`,
-          `${ranked.length} players · by MMR, across every venue`,
-        )}
+        title={t('排名', 'Rankings')}
+        subtitle={
+          tab === 'club'
+            ? t(
+                `本群 ${ranked.length} 人 · 按 MMR 排，算上所有球馆`,
+                `${ranked.length} in your club · by MMR, across every venue`,
+              )
+            : t('全马来西亚 · 自愿上榜', 'All of Malaysia · opt-in')
+        }
         onBack={back}
       />
 
+      <div className="px-4 pt-3">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'club', label: t('本群', 'My club') },
+            { value: 'national', label: t('全国', 'Malaysia') },
+          ]}
+        />
+      </div>
+
+      {tab === 'national' ? <NationalBoard /> : (
       <Body>
         {/* 前三名单独站出来。台子长什么样见 components/Podium */}
         {top3.length === 3 && (
@@ -234,6 +259,7 @@ export function GlobalRanking() {
           </p>
         </Card>
       </Body>
+      )}
     </Screen>
   )
 }

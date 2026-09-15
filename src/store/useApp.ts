@@ -13,6 +13,7 @@ import {
   type AvatarSlot,
   type Progress,
 } from '@/lib/avatar'
+import { stateOf } from '@/lib/region'
 import {
   DEFAULT_RULES,
   type EndCondition,
@@ -331,6 +332,8 @@ type AppState = {
     patch: {
       address?: string
       note?: string
+      /** 在哪个州。不传就从地址里认，认不出来保持原样 */
+      state?: string | null
       lat?: number | null
       lng?: number | null
     },
@@ -828,10 +831,24 @@ export const useApp = create<AppState>()(
           const lat = keepXY ? old?.lat : (patch.lat ?? undefined)
           const lng = keepXY ? old?.lng : (patch.lng ?? undefined)
 
+          const address = (patch.address ?? old?.address ?? '').trim()
+          /*
+           * 州：人选了就用人选的，没选就从地址里认。
+           *
+           * 认不出来的时候保留旧值，不清空 —— 有人之前手动选过一次，
+           * 后来另一个人把地址改成了「Court 3, Jalan 5」，
+           * 不能因为这次认不出来就把他选的那个抹掉。
+           */
+          const state =
+            patch.state !== undefined
+              ? (patch.state ?? undefined)
+              : (stateOf(address) ?? old?.state)
+
           const next: Venue = {
             ...old,
             key,
-            address: (patch.address ?? old?.address ?? '').trim(),
+            address,
+            state,
             note: (patch.note ?? old?.note ?? '').trim() || undefined,
             lat: lat != null && lng != null ? lat : undefined,
             lng: lat != null && lng != null ? lng : undefined,
