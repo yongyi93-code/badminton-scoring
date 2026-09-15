@@ -131,17 +131,50 @@ export function useInstallHow(): InstallHow {
 }
 
 /* ------------------------------------------------------------------ *
- * 收起来之后别再烦人
+ * 收起来之后别再烦人 —— 但也别就此消失
  *
  * 装不装是他的自由。划掉一次就记住，别每次打开又顶在最上面 ——
- * 那种 App 只会被更快地删掉。入口留在「我的」里，想装随时找得到。
+ * 那种 App 只会被更快地删掉。
+ *
+ * -------------------------------------------------------------------
+ * 「以后再说」以前是**永久**的，那是个错
+ *
+ * 因为上面那个 beforeinstallprompt 把 Chrome 自己那条安装横幅拦掉了。
+ * 于是划掉一次之后，两条路一起断：浏览器不再问，我们的卡也不再出现，
+ * 只剩「我的」里那个入口 —— 比我们插手之前更难找到。
+ *
+ * 这是真事，不是假想：有人跟我说「以前点进网站都会问要不要安装，
+ * 现在没有了」，查出来就是这个。
+ *
+ * 改成 30 天。够久到不烦人，又保证它会自己回来。
  * ------------------------------------------------------------------ */
 
 const HIDDEN_KEY = 'rally-install-hidden'
 
+/** 划掉之后安静多久 */
+export const HIDE_DAYS = 30
+const HIDE_MS = HIDE_DAYS * 24 * 60 * 60 * 1000
+
+/**
+ * 存的那个值还算不算数。单独拿出来是为了能测 ——
+ * localStorage 在测试环境里没有，而这里的判断全在这一个函数里。
+ *
+ * raw 有三种：
+ *   null    没划过，显示
+ *   '1'     老版本存的，没有时间戳。当成过期 —— 那批人正是被
+ *           「永久」坑住的那批，该让卡回到他们眼前一次
+ *   时间戳  划掉那一刻。30 天之内安静
+ */
+export function stillHidden(raw: string | null, now: number): boolean {
+  if (raw === null) return false
+  const at = Number(raw)
+  if (!Number.isFinite(at) || at <= 0) return false
+  return now - at < HIDE_MS
+}
+
 export function installHidden(): boolean {
   try {
-    return localStorage.getItem(HIDDEN_KEY) === '1'
+    return stillHidden(localStorage.getItem(HIDDEN_KEY), Date.now())
   } catch {
     return false
   }
@@ -149,7 +182,7 @@ export function installHidden(): boolean {
 
 export function hideInstall(): void {
   try {
-    localStorage.setItem(HIDDEN_KEY, '1')
+    localStorage.setItem(HIDDEN_KEY, String(Date.now()))
   } catch {
     /* 无痕模式下存不了。存不了就每次都显示，总好过报错 */
   }
