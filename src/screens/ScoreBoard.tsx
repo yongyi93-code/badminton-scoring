@@ -445,7 +445,15 @@ export function ScoreBoard({ matchId }: { matchId: string }) {
   }
 
   const finishMatch = () => {
-    updateMatch(match.id, { status: 'done', endedAt: Date.now() })
+    /*
+     * 记下按「打完」的是谁。不是为了追责 —— 是为了知道该问谁：
+     * 确认要由记分人之外的人来点，队友的确认证明不了比分。见 lib/confirm.ts。
+     */
+    updateMatch(match.id, {
+      status: 'done',
+      endedAt: Date.now(),
+      recordedBy: meId ?? undefined,
+    })
     autoArrangeNext()
     /*
      * 打完先看一眼这一场值多少分，再回看板。

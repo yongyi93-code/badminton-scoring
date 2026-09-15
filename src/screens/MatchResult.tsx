@@ -31,7 +31,13 @@ import {
 import { gamesWon } from '@/lib/scoring'
 import { matchWinnerBySets } from '@/lib/ranking'
 import { signed } from '@/lib/format'
-import { DEFAULT_RULES, type TeamSide } from '@/types'
+import {
+  confirmPending,
+  confirmers,
+  disputed,
+  opponentConfirmed,
+} from '@/lib/confirm'
+import { DEFAULT_RULES, type Match, type Player, type TeamSide } from '@/types'
 
 /* ------------------------------------------------------------------ *
  * 赛后结算（规格 §F）
@@ -43,6 +49,60 @@ import { DEFAULT_RULES, type TeamSide } from '@/types'
  * 这一屏只读：所有数字都是从比赛记录重放出来的（outcomeOf），
  * 不落库、也不改任何东西。退回去改比分，这里的数字跟着就变。
  * ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ *
+ * 比分确认到哪一步了
+ *
+ * 按完「打完」落到这一屏的，多半就是记分的那个人 —— 所以这里不给
+ * 他确认按钮（他确认自己记的分没有意义），只告诉他现在是什么状态。
+ * 要表态的人在看板最上面那一条里点，见 SessionBoard 的 ConfirmBar。
+ *
+ * 一个人都不用问的时候（对手都没装 App）整块不出现：
+ * 一行「还等 0 个人」什么也没说，只是占着地方。
+ * ------------------------------------------------------------------ */
+function ConfirmLine({
+  match,
+  players,
+  nameOf,
+}: {
+  match: Match
+  players: Player[]
+  nameOf: (id: string) => string
+}) {
+  const t = useT()
+  if (confirmers(match, players).length === 0) return null
+
+  if (disputed(match)) {
+    const who = (match.disputedBy ?? []).map(nameOf).join(t('、', ', '))
+    return (
+      <p className="text-danger-600 px-1 text-caption">
+        {t(
+          `${who} 说这个比分不对。回看板把这一场退回来改。`,
+          `${who} says this score is wrong — send it back from the board to fix it.`,
+        )}
+      </p>
+    )
+  }
+
+  if (opponentConfirmed(match)) {
+    return (
+      <p className="text-ink-500 px-1 text-caption">
+        {t('✓ 对手确认过这个比分', '✓ The opponent confirmed this score')}
+      </p>
+    )
+  }
+
+  const pending = confirmPending(match, players)
+  if (pending.length === 0) return null
+  return (
+    <p className="text-ink-500 px-1 text-caption">
+      {t(
+        `等 ${pending.map(nameOf).join('、')} 看一眼比分。没人说不对就算数 —— 不用等。`,
+        `Waiting for ${pending.map(nameOf).join(', ')} to look. Silence counts as agreement — nothing is on hold.`,
+      )}
+    </p>
+  )
+}
 
 /** 数字滚上去。跑一次就停，不循环 —— 这是个结果，不是个进度条 */
 function useCountUp(target: number, enabled: boolean) {
@@ -439,6 +499,7 @@ export function MatchResult({ matchId }: { matchId: string }) {
                 'MMR and coins are computed from the match records. Send this match back from the board and these numbers follow.',
               )}
             </p>
+            <ConfirmLine match={match} players={players} nameOf={nameOf} />
           </>
         )}
       </Body>

@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { isFull, rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { matchWinnerBySets } from '@/lib/ranking'
+import { CLEAR_CONFIRMATIONS, disputed, opponentConfirmed } from '@/lib/confirm'
+import { ConfirmScore } from '@/components/ConfirmScore'
 import {
   Body,
   BottomBar,
@@ -249,12 +251,37 @@ function FinishedRow({
         </span>
         {side(match.teamB, 'B')}
       </div>
+      {/*
+        有人说这个数不对。摆在「退回去改」正上方 —— 这一行要做的事
+        就是那个按钮，两者隔开的话，看到的人还得自己想下一步是什么。
+
+        提异议的人写名字，不写「有人」：一场四个人，不说是谁的话，
+        拿着手机的那个只能挨个问过去。
+      */}
+      {disputed(match) && (
+        <p className="text-danger-600 mt-1.5 text-xs">
+          {pick(
+            `${(match.disputedBy ?? []).map((id) => names.get(id)?.name ?? '?').join('、')} 说这个比分不对`,
+            `${(match.disputedBy ?? []).map((id) => names.get(id)?.name ?? '?').join(', ')} says this score is wrong`,
+          )}
+        </p>
+      )}
       <button
         className="mt-1.5 text-xs text-brand-600"
         onClick={onReopen}
       >
         {pick('记错了，退回去改 ›', 'Wrong score? Send it back ›')}
       </button>
+      {/*
+        对手确认过。只在没人提异议时显示 —— 两个标记同时挂着
+        （「有人说不对」+「对手确认过」）是真实可能的，但一起摆出来
+        只会让人不知道该信哪个。异议更要紧，让它盖住这个。
+      */}
+      {!disputed(match) && opponentConfirmed(match) && (
+        <p className="text-ink-500 mt-1 text-xs">
+          {pick('✓ 对手确认过比分', '✓ Opponent confirmed the score')}
+        </p>
+      )}
     </div>
   )
 }
@@ -879,6 +906,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
       status: 'playing',
       endedAt: undefined,
       courtIndex: free,
+      /*
+       * 之前的确认和异议一起作废。它们是对**那一个**比分说的 ——
+       * 留着的话，「对手确认过」会跟着一个根本没人看过的新比分走。
+       */
+      ...CLEAR_CONFIRMATIONS,
     })
     push({ name: 'score', matchId: match.id })
   }
@@ -1027,6 +1059,11 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         */}
         <JoinBar session={session} />
         <StakeBar session={session} />
+        {/*
+          比分对不对。摆在加注下面 —— 加注那条是「球开不了」，
+          这条是「已经打完了」，前者更急。
+        */}
+        <ConfirmScore session={session} />
         {/* 怎么去 —— 只在有人填过地址时出现，没填就当它不存在 */}
         <VenueAddressLine venue={session.venue} />
         {/*
@@ -2030,3 +2067,4 @@ function StakeBar({ session }: { session: Session }) {
     </>
   )
 }
+

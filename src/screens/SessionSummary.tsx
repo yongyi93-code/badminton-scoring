@@ -17,6 +17,7 @@ import {
   inputClass,
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
+import { ConfirmScore } from '@/components/ConfirmScore'
 import { RankTable } from '@/components/RankTable'
 import {
   computeStats,
@@ -408,6 +409,12 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
         onBack={session.status === 'ended' ? back : () => resetTo({ name: 'home' })}
       />
       <Body>
+        {/*
+          「这一场比分对吗」。摆在最上面，而且必须摆在这一屏 ——
+          球局一结束，列表里点进来就是这儿，看板回不去了；
+          而人恰恰是回到家才翻手机的。
+        */}
+        <ConfirmScore session={session} />
         {done.length === 0 ? (
           <EmptyState
             icon="🤷"
