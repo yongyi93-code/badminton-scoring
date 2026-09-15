@@ -1,9 +1,10 @@
 import { useT } from '@/lib/i18n'
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
-import { Body, Card, Screen, SectionTitle } from '@/components/ui'
-import { venueByKey, venueSummaries } from '@/lib/venues'
+import { Body, Card, Screen, SectionTitle, cx } from '@/components/ui'
+import { hasLocation, venueByKey, venueSummaries } from '@/lib/venues'
+import { AddressSheet } from '@/components/VenueAddress'
 import { formatDate } from '@/lib/format'
 import type { MapPin } from '@/components/VenueMap'
 
@@ -43,6 +44,9 @@ const VenueMap = lazy(() =>
 export function Discover() {
   const t = useT()
   const { sessions, matches } = useApp()
+  const allVenues = useApp((s) => s.venues)
+  /** 正在给哪个球馆填地址。null = 没开着 */
+  const [pinning, setPinning] = useState<string | null>(null)
   const push = useNav((s) => s.push)
 
   const venues = useMemo(() => venueSummaries(sessions, matches), [sessions, matches])
@@ -147,37 +151,90 @@ export function Discover() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {venues.map((v) => (
-              /*
-                点进去是那个馆的排名，不是球馆详情页。
-                这一屏叫排名，列表里的每一条就该通向一份排名 ——
-                地址和怎么去走地图上的点，以及球局看板里那行「怎么去」。
-                传的是 key 不是 label：排行榜按归一化后的 key 归组，
-                传 label 会让「城中羽球馆」和「城中 羽球馆」算成两个馆。
-              */
-              <Card key={v.key} onClick={() => push({ name: 'leaderboard', venue: v.key })}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-title">{v.label}</p>
-                    <p className="text-ink-500 mt-0.5 text-label">
-                      {t(
-                        `${v.sessionCount} 次球局 · ${v.matchCount} 场 · ${v.playerCount} 人`,
-                        `${v.sessionCount} sessions · ${v.matchCount} matches · ${v.playerCount} players`,
-                      )}
-                    </p>
-                    <p className="text-ink-500 mt-0.5 text-caption">
-                      {t('最近：', 'Last played ')}
-                      {formatDate(new Date(v.lastPlayedAt).toISOString().slice(0, 10))}
-                    </p>
-                  </div>
-                  <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="m9 6 6 6-6 6" />
-                  </svg>
-                </div>
-              </Card>
-            ))}
+            {venues.map((v) => {
+              const saved = venueByKey(allVenues, v.key)
+              const located = hasLocation(saved)
+              return (
+                /*
+                  不再整张卡一个点击目标：这一条上现在有两件事可做 ——
+                  看那个馆的排名，和给它定位。一张卡包一个 <button> 的话，
+                  「定个位」那个按钮就得嵌在按钮里，HTML 上不合法，
+                  实际表现是点哪儿都跳排名。所以拆成两个明确的目标。
+                */
+                <Card key={v.key} className="!p-0">
+                  {/*
+                    主体：点进去是那个馆的排名，不是球馆详情页。
+                    传的是 key 不是 label：排行榜按归一化后的 key 归组，
+                    传 label 会让「城中羽球馆」和「城中 羽球馆」算成两个馆。
+                  */}
+                  <button
+                    onClick={() => push({ name: 'leaderboard', venue: v.key })}
+                    className="active:bg-fill flex w-full items-center justify-between gap-3 p-4 text-left"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-title">{v.label}</p>
+                      <p className="text-ink-500 mt-0.5 text-label">
+                        {t(
+                          `${v.sessionCount} 次球局 · ${v.matchCount} 场 · ${v.playerCount} 人`,
+                          `${v.sessionCount} sessions · ${v.matchCount} matches · ${v.playerCount} players`,
+                        )}
+                      </p>
+                      <p className="text-ink-500 mt-0.5 text-caption">
+                        {t('最近：', 'Last played ')}
+                        {formatDate(new Date(v.lastPlayedAt).toISOString().slice(0, 10))}
+                      </p>
+                    </div>
+                    <svg viewBox="0 0 24 24" className="text-ink-300 size-5 shrink-0" fill="none"
+                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m9 6 6 6-6 6" />
+                    </svg>
+                  </button>
+
+                  {/* ------------------------------------------------------ *
+                    定位那一行。
+
+                    这一行补的是一个很具体的空缺：填地址的入口一直只在
+                    「球局看板」和「球馆页」上 —— 也就是只有你**正在**打球、
+                    或者特意点进某个馆的时候才看得见。于是它成了一件
+                    「到了球馆才想起来、而到了球馆又忙着打球」的事。
+
+                    摆在这儿就不一样了：这一屏是所有去过的球馆排成一列，
+                    一眼看得出还差哪几个，坐在沙发上两分钟能填完。
+                    而地址搜索只要打几个字就能连坐标一起带回来，
+                    根本不用人在现场。
+
+                    没地址的球馆卡在两个功能前面：地区排行榜（靠地址认州）
+                    和以后的「附近球局」（靠坐标）。
+                  * ------------------------------------------------------ */}
+                  <button
+                    onClick={() => setPinning(v.label)}
+                    className={cx(
+                      'border-line active:bg-fill flex w-full items-center gap-2 border-t px-4 py-2.5 text-left',
+                      located ? 'text-ink-500' : 'text-brand-600',
+                    )}
+                  >
+                    <span className="min-w-0 flex-1 truncate text-caption">
+                      {located
+                        ? saved?.address || t('已标位置', 'Pinned on the map')
+                        : t('还没有地址 —— 地区排名和附近球局都要用它', 'No address yet — regional rankings need it')}
+                    </span>
+                    <span className="shrink-0 text-caption font-semibold">
+                      {located ? t('改', 'Edit') : t('顺手填一下', 'Add it')}
+                    </span>
+                  </button>
+                </Card>
+              )
+            })}
           </div>
+        )}
+
+        {/*
+          填地址那一屏，就地弹出来 —— 不跳走。
+          填完回到列表，刚填的那个馆当场从「还没有地址」变成地址本身，
+          能一眼看出还剩几个。跳出去再跳回来的话，这个反馈就断了。
+        */}
+        {pinning && (
+          <AddressSheet venue={pinning} open onClose={() => setPinning(null)} />
         )}
       </Body>
     </Screen>

@@ -25,7 +25,13 @@ const PIN = (
 )
 
 /** 填 / 改地址的弹层 */
-function AddressSheet({
+/**
+ * 填地址那一屏。
+ *
+ * 导出是为了「发现」那一屏能直接在列表里就地打开它 —— 那儿能一眼
+ * 看完「还差哪几个球馆没定位」，在那儿顺手填完最省事。
+ */
+export function AddressSheet({
   venue,
   open,
   onClose,
