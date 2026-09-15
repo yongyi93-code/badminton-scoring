@@ -74,6 +74,31 @@ export function parseLatLng(text: string): { lat: number; lng: number } | null {
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6
 
+/**
+ * 严一档的版本：只认「整串就是坐标」或者「一条带坐标的地图链接」。
+ *
+ * 给地址框用。上面那个 parseLatLng 是给「粘坐标」那个框用的 ——
+ * 人往那儿粘，意图已经明摆着，宽松一点没关系。
+ *
+ * 地址框不行，那里躺着的是真地址，而马来西亚的地址长这样：
+ *
+ *     Lot 5, 12 Jalan SS2/24
+ *
+ * 宽松的那个会从里面抠出「5, 12」，当成南纬 5 度东经 12 度 ——
+ * 在大西洋中间，而且数值完全合法，任何范围检查都拦不住。
+ * 于是人一边打地址，一边被问「这串是坐标吗」。
+ *
+ * 所以这里要求整串干净：要么全是那一对数字，要么是个网址。
+ */
+export function parsePastedLocation(text: string): { lat: number; lng: number } | null {
+  const s = (text ?? '').trim()
+  if (!s) return null
+  const isUrl = /^https?:\/\//i.test(s) || /(^|\W)(maps\.|google\.[a-z.]+\/maps)/i.test(s)
+  const isBarePair = /^-?\d{1,3}(\.\d+)?\s*[,，]\s*-?\d{1,3}(\.\d+)?$/.test(s)
+  if (!isUrl && !isBarePair) return null
+  return parseLatLng(s)
+}
+
 /** 这个馆有没有填过位置 —— 地址或坐标，有一样就算 */
 export const hasLocation = (venue: Venue | undefined) =>
   Boolean(venue && (normalizeVenue(venue.address) || (venue.lat != null && venue.lng != null)))

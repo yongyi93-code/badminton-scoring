@@ -14,6 +14,7 @@ import {
   venueByKey,
   parseLatLng,
   hasLocation,
+  parsePastedLocation,
 } from '@/lib/venues'
 import { computeStats, rankPlayers } from '@/lib/ranking'
 import { DEFAULT_RULES, type Match, type Session, type Venue } from '@/types'
@@ -439,5 +440,59 @@ describe('认坐标', () => {
     // 开局的人在场上按一下定位就走完了，地址可以谁都不填
     const url = mapsUrl('城中羽球馆', venue({ key: 'x', lat: 3.1, lng: 101.6 }))
     expect(decodeURIComponent(url!)).toContain('3.1,101.6')
+  })
+})
+
+/*
+ * 地址框里粘进来的东西认不认成坐标。
+ *
+ * 这一组钉的是一个我自己差点写出来的 bug：马来西亚的地址长成
+ * 「Lot 5, 12 Jalan SS2/24」，宽松那个解析会从里面抠出「5, 12」，
+ * 当成南纬 5 度东经 12 度 —— 在大西洋中间，而且数值完全合法，
+ * 范围检查一点忙都帮不上。于是人一边打地址，一边被问「这串是坐标吗」。
+ */
+describe('地址框里粘的是不是坐标', () => {
+  it('整串就是一对数字：是', () => {
+    expect(parsePastedLocation('3.0738, 101.5183')).toEqual({ lat: 3.0738, lng: 101.5183 })
+  })
+
+  it('中文逗号也认', () => {
+    expect(parsePastedLocation('3.0738，101.5183')).toEqual({ lat: 3.0738, lng: 101.5183 })
+  })
+
+  it('Google 地图网址：是', () => {
+    expect(parsePastedLocation('https://www.google.com/maps/@3.0738,101.5183,17z')).toEqual({
+      lat: 3.0738,
+      lng: 101.5183,
+    })
+  })
+
+  it('分享出来的那种长链接：是', () => {
+    const url = 'https://www.google.com/maps/place/X/data=!3m1!4b1!3d3.0738!4d101.5183'
+    expect(parsePastedLocation(url)).toEqual({ lat: 3.0738, lng: 101.5183 })
+  })
+
+  /* 这几条是这一组存在的理由 */
+  it('真地址里碰巧有两个数字：不是', () => {
+    expect(parsePastedLocation('Lot 5, 12 Jalan SS2/24')).toBeNull()
+    expect(parsePastedLocation('No 5, 12 Jalan Besar, Kajang')).toBeNull()
+  })
+
+  it('门牌 + 邮编：不是', () => {
+    expect(parsePastedLocation('Lot 1716, 43000 Kajang, Selangor')).toBeNull()
+  })
+
+  it('普通地址：不是', () => {
+    expect(parsePastedLocation('Jalan Sungai Long, Bandar Sungai Long')).toBeNull()
+    expect(parsePastedLocation('')).toBeNull()
+  })
+
+  /*
+   * 宽松那个（给「粘坐标」专用框用的）照旧宽松 —— 人往那儿粘，
+   * 意图已经明摆着。两个函数的差别本身就该被钉住。
+   */
+  it('宽松那个仍然从地址里抠得出数字 —— 两者的差别是有意的', () => {
+    expect(parseLatLng('Lot 5, 12 Jalan SS2/24')).toEqual({ lat: 5, lng: 12 })
+    expect(parsePastedLocation('Lot 5, 12 Jalan SS2/24')).toBeNull()
   })
 })

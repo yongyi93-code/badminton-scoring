@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { useApp } from '@/store/useApp'
-import { hasLocation, mapsUrl, parseLatLng, venueByKey, venueKey, venueLabel } from '@/lib/venues'
+import {
+  hasLocation,
+  mapsUrl,
+  parseLatLng,
+  parsePastedLocation,
+  venueByKey,
+  venueKey,
+  venueLabel,
+} from '@/lib/venues'
 import { Button, Field, Sheet, cx, inputClass } from '@/components/ui'
 import { STATES, stateOf } from '@/lib/region'
 import { lastNear, MIN_QUERY, rememberNear, searchPlaces, type Place } from '@/lib/geocode'
@@ -192,6 +200,19 @@ export function AddressSheet({
     setHits([])
   }
 
+  /**
+   * 往地址框里粘的东西，如果本身就是坐标（或者一条带坐标的地图链接），
+   * 直接当坐标收下。
+   *
+   * 为什么要管这一下：这个免费的地图服务搜不到马来西亚大多数小球馆 ——
+   * 实测搜「Long river sport」回来的是砂拉越的六条河，而那个球馆在
+   * Google 地图上有一百多条评价。搜不到的时候，人手里现成的东西就是
+   * 从地图 App 复制出来的那串坐标。
+   *
+   * 而「该粘到哪个框」是个不该让人去想的问题。粘哪儿都认。
+   */
+  const pastedInAddress = parsePastedLocation(address)
+
   return (
     <Sheet open={open} onClose={onClose} title={venueLabel(venue)}>
       <div className="space-y-4">
@@ -242,6 +263,58 @@ export function AddressSheet({
               {searchErr}
               {t(' —— 手打也行，不影响。', ' — typing it by hand works just as well.')}
             </p>
+          )}
+
+          {/* ---------------------------------------------------------- *
+            「都不对怎么办」。
+
+            这一段是照着一次真实的失败加的：搜「Long river sport」，
+            回来的是砂拉越的六条河 —— 而那个球馆在 Google 地图上
+            有一百多条评价。这个免费服务背后的 OpenStreetMap 就是
+            没收录马来西亚大多数小球馆，排序再好也变不出没有的东西。
+
+            所以搜不到才是常态，不是意外。那这一屏就欠一句话：
+            **接下来该干什么**。没有它，人就卡在一列错的建议前面。
+
+            只在他确实打了字之后才出现 —— 一进来就摆着，是在为一件
+            还没发生的失败道歉。
+          * ---------------------------------------------------------- */}
+          {address.trim().length >= MIN_QUERY && !pastedInAddress && (
+            <p className="text-ink-500 mt-2 text-caption">
+              {t(
+                '都不对？地址自己打就行。想要准确位置：在 Google 地图上长按那个点 → 复制坐标 → 粘到这儿或下面那个框。',
+                'None of these? Just type the address. For the exact spot: long-press the place in Google Maps → copy coordinates → paste it here or in the box below.',
+              )}
+            </p>
+          )}
+
+          {/*
+            粘到地址框里来的坐标。认下来，并且说清楚发生了什么 ——
+            默默把它挪走，人会以为自己粘丢了。
+          */}
+          {pastedInAddress && (
+            <div className="border-brand-500/40 bg-brand-50 mt-2 rounded-xl border p-3">
+              <p className="text-ink-900 text-caption">
+                {t(
+                  `这串是坐标（${pastedInAddress.lat}, ${pastedInAddress.lng}）。要把它当成这个球馆的准确位置吗？`,
+                  `That looks like coordinates (${pastedInAddress.lat}, ${pastedInAddress.lng}). Use it as this venue's exact spot?`,
+                )}
+              </p>
+              <Button
+                size="sm"
+                variant="primary"
+                className="mt-2"
+                onClick={() => {
+                  skipSearch.current = true
+                  setXy(pastedInAddress)
+                  setAccuracy(null)
+                  setAddress('')
+                  setHits([])
+                }}
+              >
+                {t('就当位置用', 'Use as the spot')}
+              </Button>
+            </div>
           )}
         </Field>
 
