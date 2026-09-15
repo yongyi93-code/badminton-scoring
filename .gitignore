@@ -7,3 +7,8 @@ dist-ssr
 *.tsbuildinfo
 __pycache__/
 *.pyc
+
+# 数据库备份：里面是所有人的私聊，永远不该进仓库
+backups/
+*.dump
+*.sql.gz
