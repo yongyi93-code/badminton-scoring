@@ -5,12 +5,16 @@ import { Body, Button, Card, EmptyState, Pill, Segmented, Toast, cx } from '@/co
 import { emptyProgress, progressByPlayer } from '@/lib/avatar'
 import { homeVenues } from '@/lib/venues'
 import { stateName } from '@/lib/region'
+import { useAuth } from '@/store/useAuth'
 import {
   fetchLeaderboard,
-  fetchMyRow,
+  fetchMyRows,
   leaveLeaderboard,
+  mergePeople,
   myTally,
   publishMe,
+  scopeKey,
+  type LeaderPerson,
   type LeaderRow,
 } from '@/lib/leaderboard'
 
@@ -34,19 +38,60 @@ import {
  * 所以它和 MMR 并排显示，而不是藏起来。一个 MMR 很高、确认数是 0 的人，
  * 和一个 MMR 一般、确认了四十场的人，看榜的人自己会做判断。
  * 假装这个榜是权威的，比把它的底细摊开更糟。
+ *
+ * -------------------------------------------------------------------
+ * 串场的人：一个球群报一次，榜上合成一个人
+ *
+ * 手机只装得下当前那个球群的数据，所以它报得出来的永远只是
+ * 「我在这个群的成绩」。周末去别人的群打了一场，那一份要在那个群里
+ * 报一次 —— 两份在榜上合并成一个人（mergePeople）。
+ *
+ * 所以这一屏会出现一种以前没有的状态：**人在榜上，但当前这个群
+ * 还没报过**。那一刻最要紧的是把它说出来，而不是显示一个看起来
+ * 正常、其实少了一半的合计。
  * ------------------------------------------------------------------ */
 
 export function NationalBoard() {
   const t = useT()
   const zh = lang() === 'zh'
-  const { players, sessions, matches, venues, meId } = useApp()
+  const { players, sessions, matches, venues, meId, clubId, clubs } = useApp()
+  const { session } = useAuth()
+  const uid = session?.user.id ?? null
 
   const [scope, setScope] = useState<'all' | 'mine'>('all')
-  const [rows, setRows] = useState<LeaderRow[] | null>(null)
-  const [me, setMe] = useState<LeaderRow | null>(null)
+  const [rows, setRows] = useState<LeaderPerson[] | null>(null)
+  const [myRows, setMyRows] = useState<LeaderRow[]>([])
+  const [hereKey, setHereKey] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+
+  /*
+   * 「我在这个群」那一行的钥匙。算它要走一次 SubtleCrypto，是异步的，
+   * 所以先算出来放着 —— 渲染里不能等。
+   */
+  useEffect(() => {
+    let alive = true
+    if (!uid || !clubId) {
+      setHereKey(null)
+      return
+    }
+    void scopeKey(uid, clubId).then((k) => {
+      if (alive) setHereKey(k)
+    })
+    return () => {
+      alive = false
+    }
+  }, [uid, clubId])
+
+  /** 我在榜上的合计。一行都没有就是没上榜 */
+  const me = useMemo(() => mergePeople(myRows)[0] ?? null, [myRows])
+  /** 当前这个球群那一行。没有 = 这个群的成绩还没报上去 */
+  const here = useMemo(
+    () => (hereKey ? (myRows.find((r) => r.scope === hereKey) ?? null) : null),
+    [myRows, hereKey],
+  )
+  const clubName = clubs.find((c) => c.id === clubId)?.name ?? ''
 
   /* 我该报上去的那几个数。和「我的」那页显示的是同一份计算 */
   const mine = useMemo(() => {
@@ -74,12 +119,12 @@ export function NationalBoard() {
   const myState = me?.state ?? mine?.state ?? null
 
   const load = async () => {
-    const [list, row] = await Promise.all([
+    const [list, my] = await Promise.all([
       fetchLeaderboard(scope === 'mine' ? myState : null),
-      fetchMyRow(),
+      fetchMyRows(),
     ])
     setRows(list)
-    setMe(row)
+    setMyRows(my)
   }
 
   useEffect(() => {
@@ -88,12 +133,12 @@ export function NationalBoard() {
   }, [scope, myState])
 
   const join = async () => {
-    if (!mine) return
+    if (!mine || !clubId) return
     setBusy(true)
-    const r = await publishMe(mine)
+    const r = await publishMe(mine, clubId)
     setBusy(false)
     if (!r.ok) return setErr(r.error)
-    setNote(t('上榜了', 'You are on the board'))
+    setNote(t('报上去了', 'Published'))
     await load()
   }
 
@@ -106,11 +151,16 @@ export function NationalBoard() {
     await load()
   }
 
-  /** 报上去的数和现在算出来的对不对得上。对不上说明打完新的了 */
+  /*
+   * 报上去的数和现在算出来的对不对得上。
+   *
+   * 比的是**当前这个群那一行**，不是合计 —— 合计里还有别的群的成绩，
+   * 拿它跟本机这个群算出来的数比，永远对不上，那个提示就会一直挂着。
+   */
   const stale =
-    me != null &&
+    here != null &&
     mine != null &&
-    (me.mmr !== mine.mmr || me.wins !== mine.wins || me.losses !== mine.losses)
+    (here.mmr !== mine.mmr || here.wins !== mine.wins || here.losses !== mine.losses)
 
   return (
     <Body>
@@ -142,11 +192,17 @@ export function NationalBoard() {
               'Everyone using the app in Malaysia will see your name, MMR, win-loss and state. They cannot see your matches, sessions or who you played. You can leave any time.',
             )}
           </p>
+          <p className="text-ink-500 mt-1 text-caption">
+            {t(
+              '在几个球群打球的话，每个群里各报一次，榜上合成一个人 —— 看榜的人看不出你在哪几个群。',
+              'If you play in more than one club, publish once inside each — the board adds them into one person, and nobody can tell which clubs they are.',
+            )}
+          </p>
           <Button
             className="mt-3"
             variant="primary"
             block
-            disabled={busy || !mine}
+            disabled={busy || !mine || !clubId}
             onClick={() => void join()}
           >
             {mine ? t('上榜', 'Join') : t('先在球群里认领自己', 'Claim yourself in a club first')}
@@ -162,27 +218,83 @@ export function NationalBoard() {
               MMR {me.mmr}
             </Pill>
           </div>
-          {stale && (
+
+          {/*
+            合计是几个群加起来的 —— 这一句只在真的不止一个群时出现。
+            不说的话，一个刚串完场的人会盯着一个比本群高出一截的 MMR
+            发愣，以为算错了。
+          */}
+          {me.clubs > 1 && (
             <p className="text-ink-500 mt-1 text-caption">
               {t(
-                `榜上是 MMR ${me.mmr}，你现在是 ${mine!.mmr} —— 重报一次就更新了。`,
-                `The board says ${me.mmr}, you are now ${mine!.mmr} — publish again to update.`,
+                `合计的是你在 ${me.clubs} 个球群报过的成绩。`,
+                `That total adds up what you published in ${me.clubs} clubs.`,
               )}
             </p>
           )}
+
+          {/* ---------------------------------------------------------- *
+            人在榜上，当前这个群还没报过 —— 串场之后最常见的一种。
+
+            这一条要摆在「更新」前面：他此刻看到的合计是对的，
+            只是**不包含他今晚打的这些**，而按「更新」才是解法。
+          * ---------------------------------------------------------- */}
+          {here === null ? (
+            <p className="text-warning-600 mt-1 text-caption">
+              {t(
+                `${clubName ? `「${clubName}」` : '这个球群'}的成绩还没报上去 —— 榜上那个数里没有它。`,
+                `What you did in ${clubName ? `“${clubName}”` : 'this club'} is not in that total yet.`,
+              )}
+            </p>
+          ) : (
+            stale &&
+            /*
+              对不上的可能是 MMR，也可能只是场次（赢一场输一场，MMR 回到原处）。
+              原来这句话写死了只提 MMR，于是后一种情况显示成
+              「报上去的是 20，你现在是 20 —— 重报一次就更新了」，看起来像坏了。
+            */
+            (here.mmr !== mine!.mmr ? (
+              <p className="text-ink-500 mt-1 text-caption">
+                {t(
+                  `这个球群报上去的是 MMR ${here.mmr}，你现在是 ${mine!.mmr} —— 重报一次就更新了。`,
+                  `This club’s row says MMR ${here.mmr}, you are now ${mine!.mmr} — publish again to update.`,
+                )}
+              </p>
+            ) : (
+              <p className="text-ink-500 mt-1 text-caption">
+                {t(
+                  `这个球群报上去之后又打了几场，榜上还是旧的场次 —— 重报一次就更新了。`,
+                  `You have played more in this club since — publish again to update.`,
+                )}
+              </p>
+            ))
+          )}
+
           <div className="mt-3 flex gap-2">
             <Button
               size="sm"
-              variant={stale ? 'primary' : 'soft'}
-              disabled={busy}
+              variant={stale || here === null ? 'primary' : 'soft'}
+              disabled={busy || !mine || !clubId}
               onClick={() => void join()}
             >
-              {t('更新我的成绩', 'Update my score')}
+              {here === null
+                ? t('把这个群的也报上去', 'Add this club')
+                : t('更新我的成绩', 'Update my score')}
             </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void leave()}>
               {t('下榜', 'Leave')}
             </Button>
           </div>
+
+          {/* 下榜是一个决定，不是一个群一个开关 —— 按之前得知道它删的是全部 */}
+          {me.clubs > 1 && (
+            <p className="text-ink-500 mt-2 text-caption">
+              {t(
+                `「下榜」会把你在这 ${me.clubs} 个球群报过的都撤下来，不是只撤当前这个。`,
+                `“Leave” takes down all ${me.clubs} of your published clubs, not just this one.`,
+              )}
+            </p>
+          )}
         </Card>
       )}
 
@@ -216,6 +328,12 @@ export function NationalBoard() {
                   {[
                     stateName(r.state, zh),
                     t(`${r.wins}胜${r.losses}负`, `${r.wins}W ${r.losses}L`),
+                    /*
+                      不止一个群才显示。这个数说明的是「他这个合计是几份
+                      加起来的」，不是「他在哪几个群」—— 后者这张表里
+                      根本没有（见 018-cross-club.sql）。
+                    */
+                    r.clubs > 1 ? t(`${r.clubs} 个球群`, `${r.clubs} clubs`) : '',
                   ]
                     .filter(Boolean)
                     .join(' · ')}
