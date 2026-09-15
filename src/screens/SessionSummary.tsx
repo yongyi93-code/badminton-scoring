@@ -374,7 +374,12 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
           ? t('已打开分享面板', 'Share sheet opened')
           : outcome === 'downloaded'
             ? t('图片已下载，可以手动发到群里', 'Image saved — send it to the group')
-            : t('生成图片失败', 'Could not make the image'),
+            : outcome === 'maybe-blocked'
+              ? t(
+                  '可能没存上 —— 从 WhatsApp、FB 里打开的页面，下载常常被吞掉。用手机自己的浏览器打开这一页再试一次。',
+                  'It may not have saved — pages opened inside WhatsApp or Facebook often swallow downloads. Open this page in your phone’s own browser and try again.',
+                )
+              : t('生成图片失败', 'Could not make the image'),
       )
     } catch (err) {
       setShareState(
