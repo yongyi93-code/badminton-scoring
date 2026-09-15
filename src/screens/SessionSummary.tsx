@@ -17,6 +17,7 @@ import {
   inputClass,
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
+import { QrCode } from '@/components/QrCode'
 import { ConfirmScore } from '@/components/ConfirmScore'
 import { RankTable } from '@/components/RankTable'
 import {
@@ -190,6 +191,36 @@ function ShareCard({
             `Ranked by win rate, then point diff · ${RANK_MIN_GAMES} games to qualify`,
           )}
         </p>
+
+        {/* ------------------------------------------------------------ *
+          这张图传出去之后，怎么传得回来。
+
+          在这一行之前，这张卡是个死胡同：群里的人看到一张漂亮的战绩图，
+          不知道它是哪儿来的，也没法问 —— 而「发到群里」本来是这个 App
+          最便宜的一条拉新路。图传出去了，传不回来。
+
+          二维码是编译期生成的内联 SVG（见 design/make-qr.py）：
+          不加运行时依赖，也不用在转图片的时候去抓一个外部文件 ——
+          那一步要是悄悄失败，图还是出得来，只是二维码那块是空白，
+          而没人会发现。
+
+          80px 不是随手定的：导出时整张卡按 2 倍画，所以它在图里是 160px。
+          实测 160px 的二维码被再缩一半（微信、WhatsApp 都会压图）还扫得出来，
+          128px 的就不行了。
+        * ------------------------------------------------------------ */}
+        <div className="mt-5 flex items-center gap-3 border-t border-line pt-4">
+          <QrCode size={80} className="shrink-0 rounded" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold tracking-tight">RALLY</p>
+            <p className="text-xs text-ink-700">rallybadminton.com</p>
+            <p className="mt-0.5 text-[10px] text-ink-500">
+              {t(
+                '扫码开局 · 自动排场记分算排名',
+                'Scan to start a session — rotation, scoring and rankings',
+              )}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )
