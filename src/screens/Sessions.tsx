@@ -36,6 +36,18 @@ export function Sessions() {
   /** 我现在在哪一场里。在的话就开不了新的（见 store 的 createSession） */
   const inSession = useMemo(() => activeSessionOf(sessions, meId), [sessions, meId])
   const [filter, setFilter] = useState<Filter>('byDate')
+  /*
+   * 历史看谁的。
+   *
+   * 默认只看我打过的 —— 这一条是为了几个月之后：球局是公开的，
+   * 群里十几个人各开各的，一个月就能攒出几十场，而其中和我有关的
+   * 可能只有六七场。全部摊开的话，翻自己上个月那一场要划过一堆
+   * 从没参加过的局。
+   *
+   * 「按日期」那一档不这么筛：那一档是用来找球局的（周五有没有人打），
+   * 别人的局正是要看的东西，而且一天就那么几场，本来也不会乱。
+   */
+  const [mineOnly, setMineOnly] = useState(true)
   /** 日历那一条选中的是哪一天 */
   const [day, setDay] = useState(todayISO())
 
@@ -51,7 +63,15 @@ export function Sessions() {
   const recent = <T extends { createdAt: number; endedAt?: number }>(a: T, b: T) =>
     (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt)
 
-  const past = sessions.filter((s) => s.status === 'ended').sort(recent)
+  const ended = sessions.filter((s) => s.status === 'ended').sort(recent)
+  /*
+   * 「我打过的」按名单算，不按有没有真上场。
+   *
+   * 在名单上但一场没打（去了但只是坐着聊天、或者中途走了）也该算 ——
+   * 那天他在场，那一晚是他的记忆的一部分。按「有没有比赛记录」筛的话，
+   * 这种人翻历史会发现自己那晚整个消失了。
+   */
+  const past = mineOnly && meId ? ended.filter((s) => s.playerIds.includes(meId)) : ended
 
   /*
    * 哪几天有球局 —— 日历上那些小圆点。
@@ -111,6 +131,16 @@ export function Sessions() {
             <div className="flex items-center gap-2">
               <p className="truncate text-title">{venueLabel(s.venue)}</p>
               {active && <Pill tone="brand">{t('进行中', 'Live')}</Pill>}
+              {/*
+                「我在」。只在看「全部」的时候标 —— 筛成「我打过的」时
+                每一行都有我，标了等于没标，只是多一块颜色。
+
+                有它之后「全部」才翻得动：几十场里一眼挑出和自己有关的
+                那几场，不用逐行去想「那天我去了吗」。
+              */}
+              {!mineOnly && meId && s.playerIds.includes(meId) && (
+                <Pill tone="neutral">{t('我在', 'You played')}</Pill>
+              )}
             </div>
             <p className="text-ink-500 mt-1 text-label">
               {formatDate(s.date)}
@@ -303,24 +333,69 @@ export function Sessions() {
               </>
             )}
           </>
-        ) : past.length === 0 ? (
-          <EmptyState
-            title={t('还没有打完的球局', 'No finished sessions yet')}
-            hint={t(
-              '打完一局并结束，它就会留在这里',
-              'Finish a session and it will show up here',
-            )}
-          />
         ) : (
-          byMonth.map(([month, list]) => (
-            <div key={month} className="space-y-2">
-              <h2 className="text-ink-500 px-1 text-label">
-                {formatMonth(month)} ·{' '}
-                {t(`${list.length} 场球局`, `${list.length} sessions`)}
-              </h2>
-              <div className="space-y-3">{list.map(row)}</div>
-            </div>
-          ))
+          <>
+            {/*
+              我的 / 全部。只在历史这一档出现。
+
+              默认「我打过的」：球局是公开的，群里十几个人各开各的，
+              一个月能攒出几十场，而和我有关的可能只有六七场。
+              全部摊开的话，找自己上个月那一场要划过一堆没参加过的局。
+
+              没登录、或者还没认领自己的人不给这个开关 —— 对他们来说
+              「我的」是空的，摆一个永远筛不出东西的按钮只会让人困惑。
+            */}
+            {meId && (
+              <Segmented
+                value={mineOnly ? 'mine' : 'all'}
+                onChange={(v) => setMineOnly(v === 'mine')}
+                options={[
+                  { value: 'mine', label: t('我打过的', 'Mine') },
+                  { value: 'all', label: t('全部', 'Everyone') },
+                ]}
+              />
+            )}
+
+            {past.length === 0 ? (
+              /*
+                空的时候分两种说法。「我打过的是空的，但群里有」是最容易
+                让人以为数据丢了的一种 —— 所以那句话要把「还有 N 场在
+                『全部』里」说出来，并且给一个直接切过去的按钮。
+              */
+              mineOnly && ended.length > 0 ? (
+                <EmptyState
+                  title={t('你还没打完过球局', 'You have not finished a session yet')}
+                  hint={t(
+                    `球群里另外有 ${ended.length} 场，在「全部」里`,
+                    `The club has ${ended.length} others — see Everyone`,
+                  )}
+                  action={
+                    <Button variant="soft" onClick={() => setMineOnly(false)}>
+                      {t('看全部', 'Show everyone')}
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  title={t('还没有打完的球局', 'No finished sessions yet')}
+                  hint={t(
+                    '打完一局并结束，它就会留在这里',
+                    'Finish a session and it will show up here',
+                  )}
+                />
+              )
+            ) : (
+              byMonth.map(([month, list]) => (
+                <div key={month} className="space-y-2">
+                  <h2 className="text-ink-500 px-1 text-label">
+                    {formatMonth(month)} ·{' '}
+                    {t(`${list.length} 场球局`, `${list.length} sessions`)}
+                  </h2>
+                  <div className="space-y-3">{list.map(row)}</div>
+                </div>
+              ))
+            )}
+          </>
         )}
       </Body>
     </Screen>

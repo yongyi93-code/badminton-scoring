@@ -216,16 +216,25 @@ export function EmptyState({
   icon = '🏸',
   title,
   hint,
+  action,
 }: {
   icon?: string
   title: string
   hint?: string
+  /**
+   * 一个出口。只在「空得有原因、而那个原因有解」的时候给 ——
+   * 比如「你自己一场都没有，但群里有 12 场」。
+   *
+   * 大多数空状态不该有：真的什么都没有的时候，摆个按钮也无处可去。
+   */
+  action?: ReactNode
 }) {
   return (
     <div className="rounded-card border border-dashed border-line px-6 py-10 text-center">
       <div className="text-3xl">{icon}</div>
       <p className="mt-3 font-medium text-ink-900">{title}</p>
       {hint && <p className="mt-1 text-sm text-ink-500">{hint}</p>}
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   )
 }
