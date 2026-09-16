@@ -44,6 +44,7 @@ import { pullAll, pushAll, useSyncStatus } from '@/lib/sync'
 import { InstallSheet } from '@/components/InstallCard'
 import { ClubSheet } from '@/components/Club'
 import { FeedbackSheet } from '@/components/FeedbackSheet'
+import { DeleteAccountSheet } from '@/components/DeleteAccount'
 import { useInstallHow } from '@/lib/install'
 
 const ARROW = (
@@ -436,6 +437,7 @@ export function Me() {
   const setAvatarSex = useApp((s) => s.setAvatarSex)
   const [authOpen, setAuthOpen] = useState(false)
   const [cloudOpen, setCloudOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [clubOpen, setClubOpen] = useState(false)
   const clubs = useApp((s) => s.clubs)
   const clubId = useApp((s) => s.clubId)
@@ -930,6 +932,22 @@ export function Me() {
                   onClick={() => setCloudOpen(true)}
                 />
               )}
+              {/*
+                注销账号。
+
+                摆在「登录」这一组里，而不是设置里 —— 它是账号的事，
+                人要找它的时候会先想到「我是在哪儿登录的」。
+
+                做成普通的一行、不做成红色按钮：它不该在这一屏上抢眼，
+                真要按的人找得到就够了。所有吓人的话都在点开之后那一屏。
+              */}
+              {session && (
+                <MenuRow
+                  title={t('注销账号', 'Delete account')}
+                  hint={t('永久删除，没法撤销', 'Permanent, cannot be undone')}
+                  onClick={() => setDeleteOpen(true)}
+                />
+              )}
             </div>
             {signOutNote && (
               <p className="text-danger-600 px-1 text-caption">{signOutNote}</p>
@@ -1239,6 +1257,7 @@ export function Me() {
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
 
       <CloudSheet open={cloudOpen} onClose={() => setCloudOpen(false)} />
+      <DeleteAccountSheet open={deleteOpen} onClose={() => setDeleteOpen(false)} />
 
       <ClubSheet open={clubOpen} onClose={() => setClubOpen(false)} />
 

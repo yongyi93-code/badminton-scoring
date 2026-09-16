@@ -28,7 +28,7 @@
  *
  * 界面上会显示它 —— 一份不写日期的政策没法判断「我同意的是哪一版」。
  */
-export const LEGAL_UPDATED = '2026-09-15'
+export const LEGAL_UPDATED = '2026-09-16'
 
 /**
  * 隐私方面的联系方式。
@@ -190,15 +190,17 @@ export const PRIVACY: Doc = {
       enTitle: 'How long it is kept',
       zh: [
         '账号还在，东西就还在 —— 这是一个记录成长的工具，去年的战绩正是它的意义。',
-        '删号之后：你的账号、私聊、语音、好友关系、反馈都会删掉。',
-        '**比分不会删**，但会和你脱钩（显示成「已注销的球员」）。原因是一场球有四个人，删掉你那一半，别人的战绩和排名也跟着错了。',
-        '举报记录会保留，因为它同时是另一个人的记录。',
+        '删号之后：你的账号、球群成员资格、私聊和语音（双方都看不到了）、好友关系、拉黑名单、反馈、推送订阅、全国榜上你那一行，都会删掉。',
+        '举报也会一起删 —— 你发出的，和别人对你发出的。举报里冻着那段对话作为证据，留着它就等于留着你的私聊。',
+        '**比分不会删**，但会和你脱钩：那一行球员不再属于任何账号。原因是一场球有四个人，删掉你那一半，别人的战绩和排名也跟着错了 —— 那是别人的数据。',
+        '**名字由你决定**。注销那一屏上可以选保留原名，或者抹成「已注销」。保留的话别人看得出那几场是跟你打的；抹掉的话战绩一场不少，但看的人认不出是谁。',
       ],
       en: [
         'While your account exists, so does your data — this is a tool for tracking growth, and last year’s record is the point of it.',
-        'After you delete your account: your account, private messages, voice files, friendships and feedback are deleted.',
-        '**Match scores are not deleted**, but are detached from you (shown as “a removed player”). A match has four people in it; deleting your half would corrupt everyone else’s record and ranking.',
-        'Reports are retained, because a report is also a record about someone else.',
+        'After you delete your account, all of this goes: your account, your club memberships, private messages and voice files (for both sides), friendships, blocks, feedback, push subscriptions, and your row on the national board.',
+        'Reports go too — both the ones you sent and the ones about you. A report freezes the conversation as evidence, so keeping it would mean keeping your private messages.',
+        '**Match scores are not deleted**, but are detached from you: the player row stops belonging to any account. A match has four people in it; deleting your half would corrupt everyone else’s record and ranking — and that is their data, not yours.',
+        '**The name is your choice.** On the deletion screen you can keep it or replace it with “Deleted”. Keeping it lets people see which matches were against you; replacing it keeps every match but makes them unattributable.',
       ],
     },
     {
@@ -207,13 +209,13 @@ export const PRIVACY: Doc = {
       zh: [
         '**看**：你的数据基本都在 App 里看得到。想要一份完整导出，写信给下面那个邮箱。',
         '**改**：名字、性别、角色随时能改。比分记错了找球局里的人改。',
-        '**删**：想删号写信给下面那个邮箱。（App 里的一键删号还没做，这是实话。）',
+        '**删**：「我的 → 注销账号」，自己点，立刻生效，不用等谁批准。点开那一屏会先把「什么会没、什么会留」逐条摊开再让你按。',
         '**撤回同意**：关掉通知开关就不再推送；不加好友就不会有私聊；不定位球馆就不存坐标。',
       ],
       en: [
         '**See**: most of your data is visible in the app. For a full export, email the address below.',
         '**Correct**: name, gender and character can be changed any time. A wrong score is fixed by whoever ran that session.',
-        '**Delete**: email the address below to delete your account. (There is no one-tap delete in the app yet — that is the honest state of it.)',
+        '**Delete**: Me → Delete account. You do it yourself, it takes effect immediately, and nobody has to approve it. That screen lists exactly what goes and what stays before you can confirm.',
         '**Withdraw consent**: turning off notifications stops push; not adding friends means no chat; not pinning a venue means no coordinates.',
       ],
     },
