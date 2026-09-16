@@ -208,7 +208,45 @@ async function deleteVoiceFiles(admin: Admin, uid: string) {
   return paths.length
 }
 
+/* ------------------------------------------------------------------ *
+ * CORS
+ *
+ * 这一段是实测撞出来的，不是抄模板抄来的。
+ *
+ * 浏览器发这种带 Authorization 和 JSON body 的请求之前，会先发一个
+ * OPTIONS 预检。预检没人回，请求根本发不出去 —— 客户端拿到的是
+ * 「Failed to send a request to the Edge Function」，看起来像网络问题，
+ * 其实函数一次都没被调到（Invocations 里一条记录都没有，那是这个
+ * 毛病最好认的特征）。
+ *
+ * 为什么 notify-session 和 notify-social 没有这一段却能用：它们的
+ * 「Verify JWT with legacy secret」是开着的，网关替它们回了预检。
+ * 这个函数自己验身份、那个开关关着，于是预检落到函数头上 ——
+ * 而函数当时不认识 OPTIONS。
+ *
+ * Allow-Origin 用 `*`：这个函数不靠来源判断权限，它认的是调用者
+ * 自己的登录令牌（下面那一段）。放开来源不会多给任何人权限，
+ * 而写死域名反而会在本地开发和换域名时悄悄失效。
+ * ------------------------------------------------------------------ */
+const CORS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+const json = (body: unknown, status: number) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS, 'content-type': 'application/json' },
+  })
+
 Deno.serve(async (req) => {
+  /*
+   * 预检要在所有事情之前回，而且不能验身份 —— 预检请求本来就不带
+   * Authorization 头，拿它当「没带令牌」挡回去的话，正式请求永远发不出来。
+   */
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+
   try {
     /* ----------------------------------------------------------- *
       验明正身。
@@ -218,14 +256,14 @@ Deno.serve(async (req) => {
      * ----------------------------------------------------------- */
     const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
     if (!token) {
-      return new Response(JSON.stringify({ error: '没带登录令牌' }), { status: 401 })
+      return json({ error: '没带登录令牌' }, 401)
     }
 
     const admin = await getAdmin()
     const { data: who, error: whoErr } = await admin.auth.getUser(token)
     const uid = who?.user?.id
     if (whoErr || !uid) {
-      return new Response(JSON.stringify({ error: '令牌认不出是谁' }), { status: 401 })
+      return json({ error: '令牌认不出是谁' }, 401)
     }
 
     const body = await req.json().catch(() => ({}))
@@ -241,12 +279,9 @@ Deno.serve(async (req) => {
     if (delErr) throw new Error(`删账号失败：${delErr.message}`)
 
     console.log('注销完成:', uid, `球员 ${players} 个，语音 ${voices} 条`)
-    return new Response(JSON.stringify({ ok: true, players, voices }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    })
+    return json({ ok: true, players, voices }, 200)
   } catch (e) {
     console.error('注销炸了:', describe(e))
-    return new Response(JSON.stringify({ error: describe(e) }), { status: 500 })
+    return json({ error: describe(e) }, 500)
   }
 })
