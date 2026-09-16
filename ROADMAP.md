@@ -22,10 +22,30 @@
 
 改了功能就回来改这两份。`legal.ts` 开头写了这条规矩。
 
-### ~~一键删号~~（2026-09-16 做了）
+### ~~一键删号~~（2026-09-16 做了，并且真删了一个账号验过）
 
 「我的 → 注销账号」。上架应用商店的硬性要求（Apple 5.1.1(v)、
 Google Play），也是政策里承诺过的事 —— 原来写的是「写信到那个邮箱」。
+
+**线上真删过一次**（测试账号 Elviss）：账号、球群成员资格、全国榜那一行
+都回到了删之前的基线；而那一行球员**还在**、名字还是 Elviss、`ownerId`
+是 null、`deleted` 是 false。四条同时成立，「比分要留、人要脱钩」才算验过。
+
+**那次真删抓到两个只有上线才撞得到的东西**：
+
+- **`service_role` 在 `records` 上只有 `select`。** 001 里那一句是为了让推送
+  函数读得到名字，没人想到以后会有函数要写。删号炸在
+  `permission denied for table records`，020 补了 `grant update`。
+- **函数自己要回 CORS 预检。** `notify-*` 没写 CORS 也能用，是因为它们的
+  「Verify JWT with legacy secret」开着、网关替它们回了；`delete-me` 自己
+  验身份、那个开关按 Supabase 的建议关掉了，于是预检和错误响应都落到
+  函数头上。不带 CORS 头的话，界面只会显示一句
+  「Failed to send a request」，真正的错误读都读不到。
+
+顺带钉住的一条：`unlinkPlayers` 那个 UPDATE 会数受影响行数，0 行就抛。
+本机跑真 Postgres 撞出来的 —— `service_role` 少了 BYPASSRLS 的话那句
+**不报错、只动 0 行**（实测 0 vs 1），函数会一路返回成功，而账号删了、
+`ownerId` 还连着，没人会发现。
 
 做法：绝大部分连带删除交给**外键**（`supabase/020-delete-account.sql`
 把 `club_members` 和 `push_subscribers` 那两处漏掉的补上了），
