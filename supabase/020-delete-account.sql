@@ -85,6 +85,30 @@ alter table public.push_subscribers
   alter column user_id set not null;
 
 -- ===================================================================
+-- 三、给 service_role 补一条 update
+--
+-- 真机上第一次点注销，函数跑起来了然后炸在：
+--
+--   permission denied for table records at unlinkPlayers
+--
+-- 数一遍所有给 service_role 的授权就明白了：001 里只有
+-- `grant select on public.records to service_role`。当初开那一行是为了
+-- 让推送函数读得到开局的人叫什么 —— 只读就够了，没人想到以后会有
+-- 函数要往 records 里写。
+--
+-- 而 delete-me 要做的恰恰是写：把球员行的 ownerId 改成 null。
+--
+-- **只补 update，不补 insert / delete。** 这个函数不需要它们，而
+-- service_role 是绕过 RLS 的身份 —— 多给一分权限，就多一条以后被
+-- 绕开的路。
+--
+-- （messages 那边不用补：deleteVoiceFiles 只 select 出 audio_path，
+-- 而 009 已经给了 service_role 的 select。)
+-- ===================================================================
+
+grant update on public.records to service_role;
+
+-- ===================================================================
 -- 自检
 --
 -- 第一段数的是「还有没有指向 auth.users 但不会级联的外键」——
@@ -114,6 +138,18 @@ select 'push_subscribers 的外键补上了吗',
          where conname = 'push_subscribers_user_fk'
            and conrelid = 'public.push_subscribers'::regclass
        ) then '补上了' else '没有 —— 上面那步没成功' end
+union all
+/*
+ * delete-me 要往 records 里写。缺了这一条，注销会在「剪断球员」
+ * 那一步炸，而报错是一句 permission denied —— 和「表不存在」
+ * 「RLS 挡住了」长得差不多，很难一眼看出是少了个 grant。
+ */
+select 'service_role 能 update records 吗（delete-me 要用）',
+       case when exists (
+         select 1 from information_schema.role_table_grants
+         where grantee = 'service_role' and table_schema = 'public'
+           and table_name = 'records' and privilege_type = 'UPDATE'
+       ) then '能' else '不能 —— 上面那步没成功' end
 union all
 /*
  * 指向已删账号的 ownerId。

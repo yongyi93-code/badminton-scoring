@@ -160,12 +160,30 @@ async function unlinkPlayers(admin: Admin, uid: string, scrubName: boolean) {
      * 但有人就是想让名字消失,那也是他的权利。
      */
     if (scrubName) next.name = '已注销'
-    const { error: e2 } = await admin
+    const { data: hit, error: e2 } = await admin
       .from('records')
       .update({ data: next })
       .eq('kind', 'player')
       .eq('id', row.id)
+      .select('id')
     if (e2) throw new Error(`剪断球员 ${row.id} 失败：${e2.message}`)
+    /*
+     * 数一下真的改到了没有，别只看 error 是不是 null。
+     *
+     * 被 RLS 挡下来的 UPDATE **不报错**，只是动了 0 行 —— 本机跑真
+     * Postgres 撞出来的：service_role 少了 BYPASSRLS 的话，这一句
+     * 悄悄吃掉，函数一路返回成功，而那个人的账号删了、ownerId 却还
+     * 连着。真实的 Supabase 给 service_role 带了 BYPASSRLS，所以正常
+     * 情况下是 1 —— 但「正常情况下」不是能默默指望的东西。
+     *
+     * 这里宁可炸：炸了账号还在，人重试一次就好；悄悄成功的话，
+     * 那根线就永远留在那儿，而且没人会发现。
+     */
+    if ((hit ?? []).length === 0) {
+      throw new Error(
+        `剪断球员 ${row.id} 动了 0 行 —— 多半是 service_role 在 records 上少了权限或被 RLS 挡了，见 supabase/020-delete-account.sql`,
+      )
+    }
   }
   return rows.length
 }
