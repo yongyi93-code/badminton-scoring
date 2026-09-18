@@ -6,6 +6,8 @@ import { useSocial, friendUids } from '@/store/useSocial'
 import { Body, Button, Card, EmptyState, Screen, TopBar, cx } from '@/components/ui'
 import { PhotoAvatar, PhotoViewer } from '@/components/Photo'
 import { PostSheet } from '@/components/PostSheet'
+import { BanNotice, useMyBan } from '@/components/BanNotice'
+import { setPostHidden } from '@/lib/ban'
 import { fetchCards, nameOf, type Card as NameCard } from '@/lib/profile'
 import {
   deletePost,
@@ -49,6 +51,13 @@ export function Moments({ uid }: { uid?: string }) {
   const [big, setBig] = useState<{ url: string; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
+  /*
+   * 我被封了没有。
+   *
+   * 拿它只为一件事：**别让人白写一段字**。真正挡住发不出去的是
+   * 数据库那边的触发器（025），这一道只是事前说清楚。
+   */
+  const { ban: myBan } = useMyBan()
 
   const meUid = social.meUid
   const friends = useMemo(() => friendUids(social), [social])
@@ -111,6 +120,21 @@ export function Moments({ uid }: { uid?: string }) {
     }
   }
 
+  const hide = async (item: FeedItem, hidden: boolean) => {
+    setBusy(true)
+    const r = await setPostHidden(item.id, hidden)
+    setBusy(false)
+    if (!r.ok) {
+      setNote(r.error)
+      return
+    }
+    setItems((old) =>
+      (old ?? []).map((x) =>
+        x.id === item.id ? { ...x, hidden_at: hidden ? new Date().toISOString() : null } : x,
+      ),
+    )
+  }
+
   const remove = async (item: FeedItem) => {
     setBusy(true)
     const r = await deletePost(item)
@@ -152,11 +176,15 @@ export function Moments({ uid }: { uid?: string }) {
       <TopBar title={title} onBack={back} />
       <Body>
         {/* 只在整个朋友圈那一屏上给「发」—— 别人的动态页上发东西没道理 */}
-        {!uid && (
-          <Button block variant="primary" onClick={() => setComposing(true)}>
-            {t('发一条', 'New post')}
-          </Button>
-        )}
+        {!uid &&
+          (myBan ? (
+            /* 被封着就别给那个按钮：写完一段再被拒，比一开始就说清楚糟 */
+            <BanNotice ban={myBan} compact />
+          ) : (
+            <Button block variant="primary" onClick={() => setComposing(true)}>
+              {t('发一条', 'New post')}
+            </Button>
+          ))}
 
         {items === null ? (
           <p className="text-ink-500 text-caption">{t('正在拿…', 'Loading…')}</p>
@@ -204,6 +232,22 @@ export function Moments({ uid }: { uid?: string }) {
                     </button>
                   </div>
 
+                  {/*
+                    被下架了。只有作者自己和管理员看得到这条动态，
+                    所以这一行只对他们出现 —— 而作者**必须**看到它：
+                    一条悄悄消失的动态，他只会以为 App 坏了，然后再发一遍。
+                  */}
+                  {item.hidden_at && (
+                    <p className="border-danger-600/30 bg-danger-50 text-danger-600 mt-2.5 rounded-lg border px-3 py-2 text-caption">
+                      {item.author === meUid
+                        ? t(
+                            '这条被管理员下架了，别人看不到。',
+                            'An admin took this down — nobody else can see it.',
+                          )
+                        : t('已下架', 'Taken down')}
+                    </p>
+                  )}
+
                   {item.body && (
                     <p className="mt-2.5 whitespace-pre-wrap break-words text-label">{item.body}</p>
                   )}
@@ -234,11 +278,24 @@ export function Moments({ uid }: { uid?: string }) {
                   )}
 
                   <div className="border-line mt-3 flex items-center gap-4 border-t pt-2.5">
+                    {/*
+                      被禁言的人点不动这个心。
+                      
+                      点赞也在挡住的名单里（025），所以不关掉的话：他一点，
+                      心先亮了（乐观更新），半秒后弹一句错、心又灭回去 ——
+                      看着像 App 抽风。上面那张卡已经说过不能点赞了，
+                      这里跟着关掉才对得上。
+                    */}
                     <button
                       onClick={() => void like(item)}
+                      disabled={Boolean(myBan)}
                       className={cx(
                         'flex items-center gap-1.5 text-caption',
-                        item.liked ? 'text-brand-600 font-medium' : 'text-ink-500',
+                        myBan
+                          ? 'text-ink-300'
+                          : item.liked
+                            ? 'text-brand-600 font-medium'
+                            : 'text-ink-500',
                       )}
                       aria-label={item.liked ? t('收回赞', 'Unlike') : t('点赞', 'Like')}
                     >
@@ -254,11 +311,28 @@ export function Moments({ uid }: { uid?: string }) {
                       </svg>
                       {item.likes > 0 ? item.likes : t('赞', 'Like')}
                     </button>
+                    {/*
+                      管理员下架。摆在最右边，和作者的「删掉」同一个位置 ——
+                      同一行里最多只会出现其中一个（管理员看自己的动态时
+                      两个都有，那是对的：他既是作者也是管理员）。
+                    */}
+                    {social.isAdmin && (
+                      <button
+                        disabled={busy}
+                        onClick={() => void hide(item, !item.hidden_at)}
+                        className="text-ink-500 active:text-danger-600 ml-auto text-caption"
+                      >
+                        {item.hidden_at ? t('恢复', 'Restore') : t('下架', 'Take down')}
+                      </button>
+                    )}
                     {item.author === meUid && (
                       <button
                         disabled={busy}
                         onClick={() => void remove(item)}
-                        className="text-ink-500 active:text-danger-600 ml-auto text-caption"
+                        className={cx(
+                          'text-ink-500 active:text-danger-600 text-caption',
+                          social.isAdmin ? '' : 'ml-auto',
+                        )}
                       >
                         {t('删掉', 'Delete')}
                       </button>

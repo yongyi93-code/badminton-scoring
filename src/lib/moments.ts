@@ -1,6 +1,7 @@
 import { pick } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
 import { photoPath, shrinkImage } from '@/lib/photo'
+import { silencedText } from '@/lib/ban'
 
 /* ------------------------------------------------------------------ *
  * 朋友圈
@@ -43,6 +44,8 @@ export type Post = {
   body: string | null
   photos: string[]
   created_at: string
+  /** 被管理员下架了。**作者自己还看得到**，别人看不到（025） */
+  hidden_at?: string | null
 }
 
 /** 界面上那一条：动态本身，加上签好的图和赞 */
@@ -54,7 +57,7 @@ export type FeedItem = Post & {
   liked: boolean
 }
 
-const COLS = 'id, author, body, photos, created_at'
+const COLS = 'id, author, body, photos, created_at, hidden_at'
 
 /**
  * 这条动态能不能发。发不了就给一句人话。
@@ -174,7 +177,8 @@ export async function createPost(draft: {
     .select('id')
   if (error) {
     await cleanUp(paths)
-    return { ok: false, error: error.message }
+    /* 被禁言的人撞的是触发器，抛回来的是暗号，不是人话 */
+    return { ok: false, error: silencedText(error.message) ?? error.message }
   }
   const id = ((data ?? [])[0] as { id: string } | undefined)?.id
   if (!id) {
@@ -318,7 +322,7 @@ export async function toggleLike(
    * 结果和想要的一模一样，所以咽掉。
    */
   if (error && !/duplicate|23505/i.test(error.message)) {
-    return { ok: false, error: error.message }
+    return { ok: false, error: silencedText(error.message) ?? error.message }
   }
   return { ok: true }
 }

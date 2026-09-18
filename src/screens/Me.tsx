@@ -46,6 +46,7 @@ import { ClubSheet } from '@/components/Club'
 import { FeedbackSheet } from '@/components/FeedbackSheet'
 import { DeleteAccountSheet } from '@/components/DeleteAccount'
 import { PhotoSheet } from '@/components/Photo'
+import { BanNotice, useMyBan } from '@/components/BanNotice'
 import { useInstallHow } from '@/lib/install'
 
 const ARROW = (
@@ -420,6 +421,8 @@ export function Me() {
   const social = useSocial()
   /* 未读私信 + 没处理的好友申请，合起来一个数 */
   const badge = socialBadge(social)
+  /* 我自己被封了没有。没被封是 null，那时这一块整个不出现 */
+  const { ban: myBan } = useMyBan()
   const openReports = social.openReports
   const openFeedback = social.openFeedback
   const [feedbackOpen, setFeedbackOpen] = useState(false)
@@ -556,6 +559,13 @@ export function Me() {
       </header>
 
       <Body>
+        {/*
+          被封了的话，这是这一屏上最该先看到的东西 —— 摆在最上面。
+          不摆的话人只会发现「怎么发不出消息」，然后以为 App 坏了，
+          一遍遍重试。原因、期限、申诉都在这张卡上。
+        */}
+        {myBan && <BanNotice ban={myBan} />}
+
         {me && progress && stats ? (
           <>
             <Card>
@@ -675,6 +685,16 @@ export function Me() {
                 点不进去的入口，只会以为自己被降级了。
                 真正把门的是数据库那边的策略，不是这个判断。
               */}
+              {social.isAdmin && (
+                <MenuRow
+                  title={t('申诉', 'Appeals')}
+                  hint={t(
+                    '被封的人写的话。没人看的申诉比没有申诉更伤人',
+                    'What suspended people wrote. An unread appeal hurts more than none',
+                  )}
+                  onClick={() => push({ name: 'appeals' })}
+                />
+              )}
               {social.isAdmin && (
                 <MenuRow
                   title={t('举报队列', 'Reports')}

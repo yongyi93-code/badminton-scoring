@@ -23,6 +23,7 @@ import {
   type Report,
 } from '@/lib/report'
 import { VoiceBubble } from '@/components/VoiceBits'
+import { BanSheet } from '@/components/BanSheet'
 import { relativeTime } from '@/lib/format'
 
 /* ------------------------------------------------------------------ *
@@ -43,13 +44,15 @@ import { relativeTime } from '@/lib/format'
  * 一行都读不到 —— 这是故意的，界面从来挡不住会按 F12 的人。
  *
  * -------------------------------------------------------------------
- * 两个结论，没有第三个
+ * 三条路
  *
- *   处理了   看过，而且做了点什么（私下说了、或者真去管了）
  *   不处理   看过，觉得没事
+ *   处理了   看过，而且做了点什么（私下说了、或者真去管了）
+ *   处理这个人   禁言或者封号（025）
  *
- * 没有「封号」——这个 App 现在没有封号这回事，做一个按钮假装有，
- * 比没有更糟。真要封的时候，那是另一件事，得先想清楚怎么申诉。
+ * 第三条以前没有，这个文件里原来写着「做一个按钮假装有比没有更糟，
+ * 真要封的时候得先想清楚怎么申诉」—— 025 就是把申诉先想清楚了，
+ * 所以那个按钮现在是真的。
  * ------------------------------------------------------------------ */
 
 export function Reports() {
@@ -63,6 +66,8 @@ export function Reports() {
   const [note, setNote] = useState<string | null>(null)
   /** 展开了哪几条的证据。默认都收着 —— 别人的私聊不该一进来就摊一屏 */
   const [openIds, setOpenIds] = useState<string[]>([])
+  /** 正在处理哪个人。null = 没开着 */
+  const [acting, setActing] = useState<Report | null>(null)
 
   const byUid = useMemo(() => {
     const map = new Map<string, string>()
@@ -230,24 +235,38 @@ export function Reports() {
                   )}
 
                   {r.status === 'open' ? (
-                    <div className="mt-3 flex gap-2">
-                      <Button
-                        size="sm"
-                        className="flex-1"
-                        disabled={busy}
-                        onClick={() => void decide(r.id, 'dismissed')}
+                    <div className="mt-3 space-y-2">
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1"
+                          disabled={busy}
+                          onClick={() => void decide(r.id, 'dismissed')}
+                        >
+                          {t('看过了，没事', 'Nothing here')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          className="flex-1"
+                          disabled={busy}
+                          onClick={() => void decide(r.id, 'handled')}
+                        >
+                          {t('处理了', 'Handled it')}
+                        </Button>
+                      </div>
+                      {/*
+                        封人单独一行，不和上面两个挤在一起：那两个是
+                        「结案」，这个是「对一个人做一件事」，量级不一样。
+                        点开还有一层（选多重、多久、写给他的话），
+                        所以这里按下去不会立刻发生什么。
+                      */}
+                      <button
+                        className="text-danger-600 text-caption"
+                        onClick={() => setActing(r)}
                       >
-                        {t('看过了，没事', 'Nothing here')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        className="flex-1"
-                        disabled={busy}
-                        onClick={() => void decide(r.id, 'handled')}
-                      >
-                        {t('处理了', 'Handled it')}
-                      </Button>
+                        {t('禁言 / 封号…', 'Mute or suspend…')}
+                      </button>
                     </div>
                   ) : (
                     <p className="text-ink-500 mt-2 text-caption">
@@ -273,6 +292,16 @@ export function Reports() {
       </Body>
 
       <Toast message={note} tone="error" onClose={() => setNote(null)} />
+      {acting && (
+        <BanSheet
+          open
+          uid={acting.reported}
+          name={nameOf(acting.reported)}
+          defaultReason={acting.reason}
+          onClose={() => setActing(null)}
+          onDone={() => void load()}
+        />
+      )}
     </Screen>
   )
 }

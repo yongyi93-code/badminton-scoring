@@ -20,6 +20,7 @@ import { Friends } from '@/screens/Friends'
 import { Chat } from '@/screens/Chat'
 import { Reports } from '@/screens/Reports'
 import { Feedback } from '@/screens/Feedback'
+import { Appeals } from '@/screens/Appeals'
 import { Admins } from '@/screens/Admins'
 import { Legal } from '@/screens/Legal'
 import { setRoute } from '@/lib/errorlog'
@@ -157,6 +158,8 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <Reports />
     case 'feedback':
       return <Feedback />
+    case 'appeals':
+      return <Appeals />
     case 'admins':
       return <Admins />
     case 'legal':

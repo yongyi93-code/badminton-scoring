@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { silencedText } from '@/lib/ban'
 import { pick } from '@/lib/i18n'
 import { removeVoice, uploadVoice, type Recording } from '@/lib/voice'
 
@@ -85,6 +86,17 @@ function readable(message: string): string {
       '好友功能还没开通 —— 数据库里还没有这几张表，要先跑 009 那段 SQL。',
       'Friends is not switched on yet — the tables do not exist. Run migration 009 first.',
     )
+  }
+  /*
+   * 封号那条要排在 RLS 那条前面。
+   *
+   * 被禁言的人发消息撞的是触发器不是策略，但两条错混在一起的时候，
+   * 「你们现在不是好友」是一句**错的**解释 —— 而且是最会让人去
+   * 骚扰对方问「你把我删了？」的那种错。
+   */
+  {
+    const silenced = silencedText(message)
+    if (silenced) return silenced
   }
   if (m.includes('row-level security') || m.includes('violates row-level')) {
     /*
