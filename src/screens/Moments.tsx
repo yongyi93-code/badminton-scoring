@@ -7,6 +7,8 @@ import { Body, Button, Card, EmptyState, Screen, TopBar, cx } from '@/components
 import { PhotoAvatar, PhotoViewer } from '@/components/Photo'
 import { PostSheet } from '@/components/PostSheet'
 import { BanNotice, useMyBan } from '@/components/BanNotice'
+import { Comments } from '@/components/Comments'
+import { fetchComments, type Comment } from '@/lib/comments'
 import { setPostHidden } from '@/lib/ban'
 import { fetchCards, nameOf, type Card as NameCard } from '@/lib/profile'
 import {
@@ -47,6 +49,7 @@ export function Moments({ uid }: { uid?: string }) {
 
   const [items, setItems] = useState<FeedItem[] | null>(null)
   const [cards, setCards] = useState<Map<string, NameCard>>(new Map())
+  const [comments, setComments] = useState<Map<string, Comment[]>>(new Map())
   const [composing, setComposing] = useState(false)
   const [big, setBig] = useState<{ url: string; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -83,6 +86,12 @@ export function Moments({ uid }: { uid?: string }) {
     ])
     setItems(rows)
     setCards(cs)
+    /*
+     * 评论要等动态回来才知道问哪几条，所以是第二趟，不能塞进上面那个
+     * Promise.all。一次问一屏（不是一条一次）—— 二十条动态各查一次
+     * 就是二十个请求。
+     */
+    setComments(await fetchComments(rows.map((r) => r.id)))
   }, [uid, meUid, friends])
 
   useEffect(() => {
@@ -310,6 +319,10 @@ export function Moments({ uid }: { uid?: string }) {
                     </div>
                   )}
 
+                  {/*
+                    评论摆在点赞那一行**下面**，不是上面：那一行是这条
+                    动态的操作条，而评论是内容 —— 内容该挨着内容。
+                  */}
                   <div className="border-line mt-3 flex items-center gap-4 border-t pt-2.5">
                     {/*
                       被禁言的人点不动这个心。
@@ -371,6 +384,18 @@ export function Moments({ uid }: { uid?: string }) {
                       </button>
                     )}
                   </div>
+
+                  <Comments
+                    postId={item.id}
+                    rows={comments.get(item.id) ?? []}
+                    meUid={meUid}
+                    postAuthor={item.author}
+                    isAdmin={social.isAdmin}
+                    silenced={Boolean(myBan)}
+                    nameOf={(u) => who(u).name}
+                    onChanged={() => void load()}
+                    onError={setNote}
+                  />
                 </Card>
               )
             })}
