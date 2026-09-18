@@ -27,6 +27,7 @@ import { RecoverySheet } from '@/components/RecoverySheet'
 import { ClubGate, useClubGate } from '@/components/Club'
 import { InviteHandler } from '@/components/InviteHandler'
 import { useOpenFromPush } from '@/lib/openFromPush'
+import { useBroadcastPlaying } from '@/lib/nowPlaying'
 
 export default function App() {
   const route = useRoute()
@@ -44,6 +45,15 @@ export default function App() {
 
   /* 点了推送通知，落到该落的那一屏（冷启动和已经开着两条路都管） */
   useOpenFromPush()
+
+  /*
+   * 我在不在打球，报给好友看。
+   *
+   * 挂在这里而不是在「开局」「结束」那两个按钮里各调一次：球局是
+   * 同步下来的 —— 别人把我拉进一场局、别人结束了这场局，我这台手机
+   * 上都不会经过那两个按钮。盯着算出来的结果，这些情况自动都对。
+   */
+  useBroadcastPlaying()
 
   /*
    * 把「现在在哪一屏」告诉报错那边。

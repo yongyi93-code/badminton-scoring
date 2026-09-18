@@ -1,5 +1,5 @@
 import { useT } from '@/lib/i18n'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
@@ -33,6 +33,8 @@ import {
   unblockUser,
 } from '@/lib/social'
 import { relativeTime } from '@/lib/format'
+import { fetchPlaying, playingLine, type Playing } from '@/lib/nowPlaying'
+import { lang } from '@/lib/i18n'
 
 /* ------------------------------------------------------------------ *
  * 好友
@@ -78,6 +80,27 @@ export function Friends() {
   const outgoing = useMemo(() => outgoingRequests(social), [social])
   const friends = useMemo(() => friendUids(social), [social])
   const chats = useMemo(() => threads(social), [social])
+
+  /*
+   * 谁在打球。
+   *
+   * 单独拉一次，不进 useSocial —— 那个 store 是 realtime 订阅着的，
+   * 而「正在打」变化得慢（一晚上一两次），为它多挂一个订阅不值。
+   * 进这一屏拉一次就够：人来看好友列表，看到的就是那一刻的样子。
+   *
+   * 拉不到（没跑过 021、离线）就是一行都不显示 —— 这一块是锦上添花，
+   * 不该因为它挂了就让整屏出错。
+   */
+  const [playing, setPlaying] = useState<Map<string, Playing>>(new Map())
+  useEffect(() => {
+    let alive = true
+    void fetchPlaying().then((rows) => {
+      if (alive) setPlaying(new Map(rows.map((r) => [r.uid, r])))
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   /** 一行人：头像 + 名字。查不到球员时给一句实话，不留空白 */
   const person = (uid: string) => {
@@ -272,6 +295,20 @@ export function Friends() {
                       {t('私聊', 'Chat')}
                     </Button>
                   </div>
+                  {/*
+                    正在打球。
+                    
+                    这一行是这一屏上唯一「此刻」的东西，所以给它品牌色 ——
+                    别的都是静态的名字和按钮，它是活的。
+                    
+                    它对**不在你球群里**的好友照样显示，那正是它的意义：
+                    球局读不到（RLS 拦着），但「他在哪打球」读得到。
+                  */}
+                  {playing.has(uid) && (
+                    <p className="text-brand-600 mt-2 text-caption font-medium">
+                      {playingLine(playing.get(uid)!, lang() === 'zh')}
+                    </p>
+                  )}
                   {f && (
                     <button
                       className="text-ink-500 active:text-danger-600 mt-2 text-caption"
