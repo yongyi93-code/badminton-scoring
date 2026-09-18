@@ -1,23 +1,18 @@
 import { useT } from '@/lib/i18n'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { avatarOf, playerMap, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import {
   Body,
-  Button,
   Card,
   EmptyState,
   Pill,
   Screen,
   SectionTitle,
-  Toast,
   TopBar,
   cx,
 } from '@/components/ui'
-import { refreshSocial, standingWith, useSocial } from '@/store/useSocial'
-import { acceptFriendRequest, removeFriendship, sendFriendRequest } from '@/lib/social'
-import { openReportAgainst } from '@/lib/report'
-import { ReportSheet } from '@/components/ReportSheet'
+import { FriendActions } from '@/components/FriendActions'
 import { Avatar, GenderTag } from '@/components/PlayerBits'
 import {
   bestPartner,
@@ -57,130 +52,9 @@ function HeroStat({ value, label }: { value: string; label: string }) {
   )
 }
 
-/**
- * 战绩页上那一排「加好友 / 私聊」。
- *
- * 四种状态各说各的，靠的是 standingWith 那一个函数 ——
- * 分散到各处去判 status 和方向，迟早有一处把「他等我」
- * 显示成「我等他」。
- *
- * 没有 ownerId 的球员这一块整个不出现：那是别人代建的、
- * 没装 App 的球友，他没有账号，加了也没人收得到。
- */
-function FriendButton({
-  playerId,
-  ownerId,
-  name,
-}: {
-  playerId: string
-  ownerId?: string | null
-  /** 举报那张卡上要显示的名字。这一屏本来就知道他叫什么 */
-  name: string
-}) {
-  const t = useT()
-  const social = useSocial()
-  const push = useNav((s) => s.push)
-  const meId = useApp((s) => s.meId)
-  const [busy, setBusy] = useState(false)
-  const [note, setNote] = useState<string | null>(null)
-  const [reporting, setReporting] = useState(false)
-  const [done, setDone] = useState<string | null>(null)
-
-  const standing = useMemo(() => standingWith(social, ownerId), [social, ownerId])
-  const reported = Boolean(openReportAgainst(social.myReports, ownerId ?? ''))
-
-  /* 自己的战绩页上不该有「加自己为好友」 */
-  if (!ownerId || !social.meUid || ownerId === social.meUid || playerId === meId) return null
-
-  const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
-    setBusy(true)
-    const r = await fn()
-    setBusy(false)
-    if (!r.ok) setNote(r.error ?? null)
-    else await refreshSocial()
-  }
-
-  return (
-    <div className="border-brand-500/20 mt-3 border-t pt-3">
-      {standing.kind === 'friends' ? (
-        <Button block variant="primary" onClick={() => push({ name: 'chat', uid: ownerId })}>
-          {t('私聊', 'Message')}
-        </Button>
-      ) : standing.kind === 'received' ? (
-        <div className="flex gap-2">
-          <Button
-            className="flex-1"
-            disabled={busy}
-            onClick={() => void run(() => removeFriendship(standing.id))}
-          >
-            {t('不了', 'No')}
-          </Button>
-          <Button
-            className="flex-1"
-            variant="primary"
-            disabled={busy}
-            onClick={() => void run(() => acceptFriendRequest(standing.id))}
-          >
-            {t('他加你了 · 同意', 'Accept request')}
-          </Button>
-        </div>
-      ) : standing.kind === 'sent' ? (
-        <Button
-          block
-          disabled={busy}
-          onClick={() => void run(() => removeFriendship(standing.id))}
-        >
-          {t('等他同意 · 撤回', 'Waiting — cancel')}
-        </Button>
-      ) : standing.kind === 'blocked' ? (
-        <p className="text-ink-500 text-caption">
-          {t('你拉黑了他。去好友页可以解除。', 'You blocked them — undo it on the Friends screen.')}
-        </p>
-      ) : (
-        <Button
-          block
-          variant="ghost"
-          disabled={busy}
-          onClick={() => void run(() => sendFriendRequest(ownerId))}
-        >
-          {t('加好友', 'Add friend')}
-        </Button>
-      )}
-
-      {/*
-        举报是一行小字，不是一个按钮 —— 它在这一屏上是最少用到的
-        那件事，摆成按钮会天天挡在「加好友」旁边。但它必须在这儿：
-        不是好友也举报得了（比分作假就不需要先加好友），
-        而私聊那一屏进不去。
-      */}
-      <button
-        className="text-ink-500 active:text-danger-600 mt-3 text-caption"
-        onClick={() => setReporting(true)}
-      >
-        {reported ? t('已举报 · 等处理', 'Reported — under review') : t('举报这个人', 'Report this person')}
-      </button>
-
-      <ReportSheet
-        open={reporting}
-        onClose={() => setReporting(false)}
-        uid={ownerId}
-        name={name}
-        onDone={(m) => {
-          setNote(null)
-          setDone(m)
-        }}
-        onError={setNote}
-      />
-
-      {note && <p className="text-danger-600 mt-2 text-caption">{note}</p>}
-      <Toast message={done} onClose={() => setDone(null)} />
-    </div>
-  )
-}
-
 export function PlayerProfile({ playerId }: { playerId: string }) {
   const t = useT()
-  const { players, sessions, matches, avatars } = useApp()
+  const { players, sessions, matches, avatars, meId } = useApp()
   const back = useNav((s) => s.back)
   const push = useNav((s) => s.push)
 
@@ -281,9 +155,42 @@ export function PlayerProfile({ playerId }: { playerId: string }) {
           {/*
             加好友放在这里，不在好友那一屏里搜名字 ——
             加一个人之前总要先看看他是谁，而「他是谁」正是这一屏。
+
+            自己那一页上不出现（组件自己判 uid），所以这里只多判一道
+            playerId：万一 ownerId 没认领上，也不该出现「加自己为好友」。
           */}
-          <FriendButton playerId={playerId} ownerId={player.ownerId} name={player.name} />
+          {playerId !== meId && (
+            <FriendActions
+              uid={player.ownerId}
+              name={player.name}
+              className="border-brand-500/20 mt-3 border-t pt-3"
+            />
+          )}
         </Card>
+
+        {/*
+          往上一层：这一屏是**这个球群里的战绩**，个人主页是**这个人**。
+          分两屏是因为可见范围不一样 —— 战绩属于球群（records 那条 RLS），
+          而照片、名字、以后的动态属于账号，跨群的好友也看得到。
+
+          没有 ownerId 的不给入口：那是别人代建的球员，压根没有账号，
+          点进去是一个只有名字的空壳。
+        */}
+        {player.ownerId && (
+          <Card onClick={() => push({ name: 'person', uid: player.ownerId!, hint: player.name })}>
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 flex-1">
+                <span className="block text-label font-medium">
+                  {t('个人主页', 'Profile')}
+                </span>
+                <span className="text-ink-500 block text-caption">
+                  {t('照片、名字、正在哪打球', 'Photo, name, where they are playing')}
+                </span>
+              </span>
+              <span className="text-ink-500 shrink-0">›</span>
+            </div>
+          </Card>
+        )}
 
         {/* MMR 走势：段位是个结果，这条线才看得出是在往上还是往下 */}
         <Card>

@@ -17,7 +17,7 @@ import {
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { PhotoAvatar, PhotoViewer } from '@/components/Photo'
-import { fetchPhotos } from '@/lib/photo'
+import { fetchCards, nameOf, type Card as NameCard } from '@/lib/profile'
 import {
   incomingRequests,
   otherSide,
@@ -94,15 +94,16 @@ export function Friends() {
    * 不该因为它挂了就让整屏出错。
    */
   /*
-   * 谁有照片。和「正在打」一样进这一屏拉一次 —— 照片换得比球局还少，
-   * 为它挂个订阅不值。拿不到（没跑过 022、离线）就全退回角色/字母。
+   * 名片（照片 + 对外的名字）。和「正在打」一样进这一屏拉一次 ——
+   * 这两样换得比球局还少，为它们挂个订阅不值。拿不到（没跑过
+   * 022/023、离线）就退回球群里那个名字和换装角色。
    */
-  const [photos, setPhotos] = useState<Map<string, string>>(new Map())
+  const [cards, setCards] = useState<Map<string, NameCard>>(new Map())
   const [big, setBig] = useState<{ url: string; name: string } | null>(null)
   useEffect(() => {
     let alive = true
-    void fetchPhotos().then((m) => {
-      if (alive) setPhotos(m)
+    void fetchCards().then((m) => {
+      if (alive) setCards(m)
     })
     return () => {
       alive = false
@@ -120,38 +121,67 @@ export function Friends() {
     }
   }, [])
 
-  /** 一行人：头像 + 名字。查不到球员时给一句实话，不留空白 */
-  const person = (uid: string) => {
+  /**
+   * 一行人：头像 + 名字。
+   *
+   * 名字有三个来源，顺序在 lib/profile.ts 里（球群里的 → 他自己填的 →
+   * 没有）。三个都没有才说「不认识的人」—— 而在有了名片之后，
+   * 那只剩下一种情形：他还没填，你们也不同群。
+   *
+   * `inButton`：这一行**外面套着一个整块可点的卡片**（聊天那一段）。
+   * 那种情况下里面一个按钮都不能有 —— 按钮套按钮 HTML 不合法，
+   * 浏览器会把外层拆掉，两个点击一起乱。排名那一屏踩过同一个坑。
+   */
+  const person = (uid: string, inButton = false) => {
     const p = byUid.get(uid)
+    const card = cards.get(uid)
+    const name = nameOf({ club: p?.name, card: card?.name })
+    const shown = name ?? t('不认识的人', 'Unknown')
+    const open = () => push({ name: 'person', uid, hint: name ?? undefined })
+    const label = (
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate font-medium">{shown}</span>
+        {/*
+          「不在你的球群里」只在人名单上说，聊天那一段不说：
+          那一行要放的是最后一句话，挤进来会把名字压成一条缝
+          （真在浏览器里看出来的 —— 这句话不 truncate，是它在撑宽度）。
+        */}
+        {!p && !inButton && (
+          <span className="text-ink-500 block truncate text-caption">
+            {t('不在你的球群里 · 看主页', 'Not in your club · see profile')}
+          </span>
+        )}
+      </span>
+    )
     return {
-      name: p?.name ?? t('不在你的球群里', 'Not in your club'),
+      name: shown,
       node: (
         <>
           {/*
             社交这几屏用照片，球场那一侧（看板、排队、排行榜）照旧用角色 ——
             那里问的是「这个人球打得怎么样」，一张自拍回答不了。
             没设照片的人自动退回 Avatar，所以这里不用判断。
+
+            点头像看照片，点名字进主页 —— 两件不同的事，所以是两个
+            点击区，不是一个。
           */}
           <PhotoAvatar
-            url={photos.get(uid)}
-            name={p?.name ?? '?'}
+            url={card?.photo}
+            name={shown}
             avatar={p ? avatarsById.get(p.id) : undefined}
             onOpen={
-              photos.has(uid)
-                ? () => setBig({ url: photos.get(uid)!, name: p?.name ?? '' })
+              !inButton && card?.photo
+                ? () => setBig({ url: card.photo!, name: shown })
                 : undefined
             }
           />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium">
-              {p?.name ?? t('不认识的人', 'Unknown')}
-            </span>
-            {!p && (
-              <span className="text-ink-500 block text-caption">
-                {t('他不在你的球群里，看不到战绩', 'Not in your club — no record to show')}
-              </span>
-            )}
-          </span>
+          {inButton ? (
+            label
+          ) : (
+            <button onClick={open} className="flex min-w-0 flex-1">
+              {label}
+            </button>
+          )}
         </>
       ),
       player: p,
@@ -251,7 +281,8 @@ export function Friends() {
             <SectionTitle>{t('聊天', 'Chats')}</SectionTitle>
             <div className="space-y-2">
               {chats.map((th) => {
-                const who = person(th.uid)
+                /* 整张卡是一个按钮 —— 里面不能再有按钮，所以传 true */
+                const who = person(th.uid, true)
                 const mine = th.last.sender === social.meUid
                 return (
                   <Card key={th.uid} onClick={() => push({ name: 'chat', uid: th.uid })}>
@@ -308,16 +339,13 @@ export function Friends() {
               return (
                 <Card key={uid}>
                   <div className="flex items-center gap-3">
+                    {/*
+                      原来这里还有一个「战绩」按钮，去掉了：它只对同一个
+                      球群的好友有意义，而点名字进去的那张主页上，段位、
+                      MMR、胜率就摆在第一屏，再点一下才是完整战绩。
+                      少一个按钮，而且对串场的好友也说得通。
+                    */}
                     {who.node}
-                    {who.player && (
-                      <Button
-                        size="sm"
-                        className="shrink-0"
-                        onClick={() => push({ name: 'profile', playerId: who.player!.id })}
-                      >
-                        {t('战绩', 'Record')}
-                      </Button>
-                    )}
                     <Button
                       size="sm"
                       variant="primary"

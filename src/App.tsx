@@ -13,6 +13,7 @@ import { GlobalRanking } from '@/screens/GlobalRanking'
 import { Leaderboard } from '@/screens/Leaderboard'
 import { SessionSummary } from '@/screens/SessionSummary'
 import { PlayerProfile } from '@/screens/PlayerProfile'
+import { Person } from '@/screens/Person'
 import { Avatar } from '@/screens/Avatar'
 import { Friends } from '@/screens/Friends'
 import { Chat } from '@/screens/Chat'
@@ -28,6 +29,7 @@ import { ClubGate, useClubGate } from '@/components/Club'
 import { InviteHandler } from '@/components/InviteHandler'
 import { useOpenFromPush } from '@/lib/openFromPush'
 import { useBroadcastPlaying } from '@/lib/nowPlaying'
+import { useSeedMyName } from '@/lib/profile'
 
 export default function App() {
   const route = useRoute()
@@ -54,6 +56,15 @@ export default function App() {
    * 上都不会经过那两个按钮。盯着算出来的结果，这些情况自动都对。
    */
   useBroadcastPlaying()
+
+  /*
+   * 名字还空着的话，拿球群里那个补一次。
+   *
+   * 不补的话这个功能对所有老用户都是关着的：谁都不会主动跑去设置里
+   * 填一个自己看不到效果的字段 —— 效果长在**别人**那块屏幕上
+   * （不同群的好友那边，你一直显示「不认识的人」）。
+   */
+  useSeedMyName()
 
   /*
    * 把「现在在哪一屏」告诉报错那边。
@@ -131,6 +142,8 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <SessionSummary sessionId={route.sessionId} />
     case 'profile':
       return <PlayerProfile playerId={route.playerId} />
+    case 'person':
+      return <Person uid={route.uid} hint={route.hint} />
     case 'avatar':
       return <Avatar playerId={route.playerId} />
     case 'friends':

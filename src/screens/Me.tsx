@@ -945,10 +945,10 @@ export function Me() {
               */}
               {session && (
                 <MenuRow
-                  title={t('我的照片', 'My photo')}
+                  title={t('我的名片', 'My card')}
                   hint={t(
-                    '好友列表和动态上那个小圆。换装角色不受影响',
-                    'The circle next to your name. Your character is untouched',
+                    '照片，和别的球群的好友看到的名字',
+                    'Your photo, and the name friends in other clubs see',
                   )}
                   onClick={() => setPhotoOpen(true)}
                 />

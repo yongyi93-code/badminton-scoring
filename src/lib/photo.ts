@@ -233,28 +233,8 @@ export async function myPhotoPath(): Promise<string | null> {
   return ((data ?? [])[0] as { photo_path: string | null } | undefined)?.photo_path ?? null
 }
 
-/**
- * 一批人的照片。谁看得到谁由数据库那边挡（自己 / 好友 / 同群）。
- *
- * 一次拿回来做成 uid → 地址 的表，而不是每个头像各查一次 ——
- * 好友列表上十几个圆圈，那就是十几个请求。
+/*
+ * 「一批人的照片」在 lib/profile.ts 那边（fetchCards）——
+ * 名字和照片是同一张表上的同一件事（「你对外是谁」），分两次查
+ * 等于同一张表查两遍。这个文件只管**一张图怎么变成桶里那个文件**。
  */
-export async function fetchPhotos(): Promise<Map<string, string>> {
-  const out = new Map<string, string>()
-  if (!supabase) return out
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('uid, photo_path')
-    .not('photo_path', 'is', null)
-    .limit(500)
-  if (error) {
-    /* 没跑过 022 和「谁都没设照片」在这里是同一个结果：全退回角色/字母 */
-    console.warn('头像没拿到:', error.message)
-    return out
-  }
-  for (const row of (data ?? []) as { uid: string; photo_path: string }[]) {
-    const url = photoUrl(row.photo_path)
-    if (url) out.set(row.uid, url)
-  }
-  return out
-}

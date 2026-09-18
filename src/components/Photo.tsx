@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { Avatar } from '@/components/PlayerBits'
-import { Button, Sheet, cx } from '@/components/ui'
+import { Button, Sheet, cx, inputClass } from '@/components/ui'
 import {
   checkFile,
   clearMyPhoto,
@@ -9,6 +9,7 @@ import {
   photoUrl,
   setMyPhoto,
 } from '@/lib/photo'
+import { NAME_MAX, myCard, setMyName } from '@/lib/profile'
 import type { AvatarProfile } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *
@@ -119,7 +120,14 @@ export function PhotoViewer({
 }
 
 /* ------------------------------------------------------------------ *
- * 设置自己的照片
+ * 我的名片 —— 照片和对外的名字
+ *
+ * 两样放在一起，因为它们是同一件事：**别人点进你的主页看到的你**。
+ * 而且它们在数据库里本来就是同一张表上的两列（profiles）。
+ *
+ * 名字这一样不明显，但它补的窟窿比照片还老：好友是跨球群的，而名字
+ * 一直只长在球群里那条球员记录上 —— 于是一个别的球群的好友，在你的
+ * 列表上一直显示「不认识的人」。理由全写在 supabase/023-display-name.sql。
  * ------------------------------------------------------------------ */
 
 export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -128,6 +136,10 @@ export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const [path, setPath] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  /* 打开时是什么样。没变就不写一次数据库 */
+  const [savedName, setSavedName] = useState('')
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -135,10 +147,29 @@ export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => vo
     void myPhotoPath().then((p) => {
       if (alive) setPath(p)
     })
+    void myCard().then((c) => {
+      if (!alive) return
+      setName(c?.name ?? '')
+      setSavedName(c?.name ?? '')
+    })
     return () => {
       alive = false
     }
   }, [open])
+
+  const saveName = async () => {
+    if (name.trim() === savedName.trim()) return
+    setBusy(true)
+    setError(null)
+    const r = await setMyName(name)
+    setBusy(false)
+    if (!r.ok) {
+      setError(r.error)
+      return
+    }
+    setSavedName(name.trim())
+    setSaved(true)
+  }
 
   const pick = async (f: File) => {
     /*
@@ -176,7 +207,7 @@ export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const url = photoUrl(path)
 
   return (
-    <Sheet open={open} onClose={busy ? () => {} : onClose} title={t('我的照片', 'My photo')}>
+    <Sheet open={open} onClose={busy ? () => {} : onClose} title={t('我的名片', 'My card')}>
       <div className="space-y-5">
         <div className="flex flex-col items-center gap-3">
           {url ? (
@@ -247,6 +278,41 @@ export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => vo
             'Your photo is shrunk on your phone before upload — which also strips the location data your camera embeds in it.',
           )}
         </p>
+
+        {/* ---------------------------------------------------------- *
+          对外的名字。
+
+          只有**别的球群的好友**会看到它 —— 同一个群的人看到的永远是
+          你在群里那个名字（那是和比赛记录对得上的那个）。这一句要说
+          清楚，不然人会以为改了这里群里也跟着改。
+        * ---------------------------------------------------------- */}
+        <div className="border-line border-t pt-4">
+          <label className="text-label font-medium" htmlFor="rally-display-name">
+            {t('别的球群的好友看到的名字', 'Name friends in other clubs see')}
+          </label>
+          <input
+            id="rally-display-name"
+            className={cx(inputClass, 'mt-2')}
+            value={name}
+            maxLength={NAME_MAX}
+            disabled={busy}
+            onChange={(e) => {
+              setName(e.target.value)
+              setSaved(false)
+            }}
+            onBlur={() => void saveName()}
+            placeholder={t('比如 阿伟', 'e.g. Wei')}
+          />
+          <p className="text-ink-500 mt-2 text-caption">
+            {t(
+              '同一个球群的人看到的还是你在群里那个名字 —— 那个和比赛记录对得上，不该由这里改。这一个是给不同群的好友看的：不填的话，他们的列表上你是「不认识的人」。',
+              'People in your own club still see your club name — that one matches the match records. This one is for friends in other clubs: leave it blank and you show up as “Unknown” on their list.',
+            )}
+          </p>
+          {saved && (
+            <p className="text-brand-600 mt-2 text-caption">{t('名字存好了', 'Name saved')}</p>
+          )}
+        </div>
       </div>
     </Sheet>
   )

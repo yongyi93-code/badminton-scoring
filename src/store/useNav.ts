@@ -22,6 +22,18 @@ export type Route =
   | { name: 'ranking' }
   | { name: 'summary'; sessionId: string }
   | { name: 'profile'; playerId: string }
+  /**
+   * 个人主页 —— 账号那一层的「这个人是谁」。
+   *
+   * 按 uid 走，不按球员 id，和私聊同一条理由，而且这里更硬：
+   * 这一屏**存在的意义**就是那些不在我球群里的人（串场认识的、
+   * 全国榜上看到的）—— 他们在我这台手机上根本没有球员记录。
+   *
+   * hint 是调用方手上已经有的名字（全国榜那一行、战绩页上那个）。
+   * 陌生人读不到他的名片，没有这个就只能显示「不认识的人」——
+   * 而我明明刚在榜上看到他叫什么。
+   */
+  | { name: 'person'; uid: string; hint?: string }
   | { name: 'avatar'; playerId: string }
   /** 好友：已经是好友的、发来的申请、聊过的那几段对话 */
   | { name: 'friends' }

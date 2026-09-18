@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useT, lang } from '@/lib/i18n'
 import { useApp } from '@/store/useApp'
+import { useNav } from '@/store/useNav'
 import { Body, Button, Card, EmptyState, Pill, Segmented, Toast, cx } from '@/components/ui'
 import { emptyProgress, progressByPlayer } from '@/lib/avatar'
 import { homeVenues } from '@/lib/venues'
@@ -57,6 +58,7 @@ export function NationalBoard() {
   const { players, sessions, matches, venues, meId, clubId, clubs } = useApp()
   const { session } = useAuth()
   const uid = session?.user.id ?? null
+  const push = useNav((s) => s.push)
 
   const [scope, setScope] = useState<'all' | 'mine'>('all')
   const [rows, setRows] = useState<LeaderPerson[] | null>(null)
@@ -322,7 +324,20 @@ export function NationalBoard() {
               <span className="text-ink-500 tnum w-6 shrink-0 text-center font-bold">
                 {i + 1}
               </span>
-              <div className="min-w-0 flex-1">
+              {/*
+                点得动 —— 这是**全国榜唯一的出口**。
+                在这儿看到一个人，下一个动作必然是「他是谁、能不能加」，
+                而在有个人主页之前，这一屏是一张看得见摸不着的名单：
+                串场认识的人在别的球群，好友那一屏按名字根本搜不到他。
+
+                名字带过去（hint）：他的名片我多半读不到（不是好友、
+                不同群），没有这个，主页上会显示「不认识的人」——
+                而我明明刚在榜上看到他叫什么。
+              */}
+              <button
+                onClick={() => push({ name: 'person', uid: r.uid, hint: r.name })}
+                className="min-w-0 flex-1 text-left"
+              >
                 <p className="text-ink-900 truncate text-label font-medium">{r.name}</p>
                 <p className="text-ink-500 tnum text-caption">
                   {[
@@ -338,7 +353,7 @@ export function NationalBoard() {
                     .filter(Boolean)
                     .join(' · ')}
                 </p>
-              </div>
+              </button>
               {/*
                 「✓ N」= 有多少场被对手确认过。摆在 MMR 旁边而不是藏起来 ——
                 MMR 是自己报的，这个数才是能看出深浅的那个。
