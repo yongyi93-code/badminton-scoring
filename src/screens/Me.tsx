@@ -45,6 +45,7 @@ import { InstallSheet } from '@/components/InstallCard'
 import { ClubSheet } from '@/components/Club'
 import { FeedbackSheet } from '@/components/FeedbackSheet'
 import { DeleteAccountSheet } from '@/components/DeleteAccount'
+import { PhotoSheet } from '@/components/Photo'
 import { useInstallHow } from '@/lib/install'
 
 const ARROW = (
@@ -438,6 +439,7 @@ export function Me() {
   const [authOpen, setAuthOpen] = useState(false)
   const [cloudOpen, setCloudOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [photoOpen, setPhotoOpen] = useState(false)
   const [clubOpen, setClubOpen] = useState(false)
   const clubs = useApp((s) => s.clubs)
   const clubId = useApp((s) => s.clubId)
@@ -943,6 +945,16 @@ export function Me() {
               */}
               {session && (
                 <MenuRow
+                  title={t('我的照片', 'My photo')}
+                  hint={t(
+                    '好友列表和动态上那个小圆。换装角色不受影响',
+                    'The circle next to your name. Your character is untouched',
+                  )}
+                  onClick={() => setPhotoOpen(true)}
+                />
+              )}
+              {session && (
+                <MenuRow
                   title={t('注销账号', 'Delete account')}
                   hint={t('永久删除，没法撤销', 'Permanent, cannot be undone')}
                   onClick={() => setDeleteOpen(true)}
@@ -1258,6 +1270,7 @@ export function Me() {
 
       <CloudSheet open={cloudOpen} onClose={() => setCloudOpen(false)} />
       <DeleteAccountSheet open={deleteOpen} onClose={() => setDeleteOpen(false)} />
+      <PhotoSheet open={photoOpen} onClose={() => setPhotoOpen(false)} />
 
       <ClubSheet open={clubOpen} onClose={() => setClubOpen(false)} />
 

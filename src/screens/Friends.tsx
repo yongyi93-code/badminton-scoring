@@ -16,6 +16,8 @@ import {
   inputClass,
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
+import { PhotoAvatar, PhotoViewer } from '@/components/Photo'
+import { fetchPhotos } from '@/lib/photo'
 import {
   incomingRequests,
   otherSide,
@@ -91,6 +93,22 @@ export function Friends() {
    * 拉不到（没跑过 021、离线）就是一行都不显示 —— 这一块是锦上添花，
    * 不该因为它挂了就让整屏出错。
    */
+  /*
+   * 谁有照片。和「正在打」一样进这一屏拉一次 —— 照片换得比球局还少，
+   * 为它挂个订阅不值。拿不到（没跑过 022、离线）就全退回角色/字母。
+   */
+  const [photos, setPhotos] = useState<Map<string, string>>(new Map())
+  const [big, setBig] = useState<{ url: string; name: string } | null>(null)
+  useEffect(() => {
+    let alive = true
+    void fetchPhotos().then((m) => {
+      if (alive) setPhotos(m)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const [playing, setPlaying] = useState<Map<string, Playing>>(new Map())
   useEffect(() => {
     let alive = true
@@ -109,7 +127,21 @@ export function Friends() {
       name: p?.name ?? t('不在你的球群里', 'Not in your club'),
       node: (
         <>
-          <Avatar name={p?.name ?? '?'} avatar={p ? avatarsById.get(p.id) : undefined} />
+          {/*
+            社交这几屏用照片，球场那一侧（看板、排队、排行榜）照旧用角色 ——
+            那里问的是「这个人球打得怎么样」，一张自拍回答不了。
+            没设照片的人自动退回 Avatar，所以这里不用判断。
+          */}
+          <PhotoAvatar
+            url={photos.get(uid)}
+            name={p?.name ?? '?'}
+            avatar={p ? avatarsById.get(p.id) : undefined}
+            onOpen={
+              photos.has(uid)
+                ? () => setBig({ url: photos.get(uid)!, name: p?.name ?? '' })
+                : undefined
+            }
+          />
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium">
               {p?.name ?? t('不认识的人', 'Unknown')}
@@ -438,6 +470,8 @@ export function Friends() {
       </Body>
 
       <Toast message={note} tone="error" onClose={() => setNote(null)} />
+      {/* 点头像看大图。挂在最外层，不然会被卡片裁掉 */}
+      <PhotoViewer url={big?.url ?? null} name={big?.name ?? ''} onClose={() => setBig(null)} />
     </Screen>
   )
 }
