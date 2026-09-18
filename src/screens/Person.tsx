@@ -96,7 +96,7 @@ export function Person({ uid, hint }: { uid: string; hint?: string }) {
 
   const name = nameOf({ club: player?.name, card: card?.name, hint })
   const isMe = social.meUid === uid
-  const standing = standingWith(social, uid).kind
+  const friend = standingWith(social, uid).kind === 'friends'
 
   const avatar = useMemo(
     () => (player ? (avatars.find((a) => a.playerId === player.id) ?? undefined) : undefined),
@@ -182,25 +182,29 @@ export function Person({ uid, hint }: { uid: string; hint?: string }) {
           摆在战绩上面：这一屏是账号那一层的「他是谁」，而动态是这一层
           的内容，战绩是另一层（球群）借过来的。
 
-          不是好友就不给入口 —— 点进去必定是空的，而一个必定是空的
-          入口只会让人以为坏了。自己的那一页照样给：人要看得到
-          「我发过什么」。
+          026 之后不是好友也给入口：他看得到这个人**公开**的那几条。
+          副标题跟着换 —— 不换的话，一个陌生人点进去只看到两条，
+          会以为这个人一共就发过两条。
         */}
-        {(isMe || standing === 'friends') && (
-          <Card onClick={() => push({ name: 'moments', uid })}>
-            <div className="flex items-center gap-3">
-              <span className="min-w-0 flex-1">
-                <span className="block text-label font-medium">
-                  {isMe ? t('我的动态', 'My posts') : t('他的动态', 'Their posts')}
-                </span>
-                <span className="text-ink-500 block text-caption">
-                  {t('只有好友看得到', 'Friends only')}
-                </span>
+        <Card onClick={() => push({ name: 'moments', uid })}>
+          <div className="flex items-center gap-3">
+            <span className="min-w-0 flex-1">
+              <span className="block text-label font-medium">
+                {isMe
+                  ? t('我的动态', 'My posts')
+                  : friend
+                    ? t('他的动态', 'Their posts')
+                    : t('他公开的动态', 'Their public posts')}
               </span>
-              <span className="text-ink-500 shrink-0">›</span>
-            </div>
-          </Card>
-        )}
+              <span className="text-ink-500 block text-caption">
+                {isMe || friend
+                  ? t('只有好友看得到', 'Friends only')
+                  : t('加了好友才看得到其余的', 'Add them as a friend to see the rest')}
+              </span>
+            </span>
+            <span className="text-ink-500 shrink-0">›</span>
+          </div>
+        </Card>
 
         {/* ---------------------------------------------------------- *
           下半截：球群里的那一半。

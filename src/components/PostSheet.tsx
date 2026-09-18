@@ -2,15 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { Button, Sheet, cx, inputClass } from '@/components/ui'
 import { checkFile } from '@/lib/photo'
-import { BODY_MAX, MAX_PHOTOS, checkDraft, createPost, gridCols } from '@/lib/moments'
+import {
+  BODY_MAX,
+  MAX_PHOTOS,
+  checkDraft,
+  createPost,
+  defaultVisibility,
+  gridCols,
+  type Visibility,
+} from '@/lib/moments'
 
 /* ------------------------------------------------------------------ *
  * 发一条动态
  *
- * 一段字、几张图，就这两样。没有定位、没有话题、没有「谁可以看」——
- * 最后一样不是漏了：这一版只有好友看得到，而一个只有一个选项的
- * 下拉框，比没有下拉框更让人以为自己漏看了什么。
- * （公开那一档要等封号做完，见 supabase/024-moments.sql 开头。）
+ * 一段字、几张图、谁看得到。没有定位、没有话题。
+ *
+ * 「谁看得到」这一档在 026 才开（024 里故意留着不做，等封号）。
+ * 默认永远是「只有好友」—— 公开是一个要**特意去点**的选择，
+ * 不是一个忘了改就生效的默认值。
  * ------------------------------------------------------------------ */
 
 type Picked = { file: File; url: string }
@@ -29,6 +38,7 @@ export function PostSheet({
   const input = useRef<HTMLInputElement>(null)
   const [body, setBody] = useState('')
   const [pics, setPics] = useState<Picked[]>([])
+  const [visibility, setVisibility] = useState<Visibility>(defaultVisibility)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -50,6 +60,8 @@ export function PostSheet({
       for (const p of old) URL.revokeObjectURL(p.url)
       return []
     })
+    /* 每次都退回「只有好友」—— 上一条选了公开不该把下一条也带成公开 */
+    setVisibility(defaultVisibility)
     setError(null)
   }, [open])
 
@@ -87,7 +99,7 @@ export function PostSheet({
     }
     setBusy(true)
     setError(null)
-    const r = await createPost({ body, files: pics.map((p) => p.file) })
+    const r = await createPost({ body, files: pics.map((p) => p.file), visibility })
     setBusy(false)
     if (!r.ok) {
       setError(r.error)
@@ -175,6 +187,75 @@ export function PostSheet({
           </div>
         )}
 
+        {/* ---------------------------------------------------------- *
+          谁看得到。
+
+          两个按钮，不是一个开关 —— 开关要人先读懂「开」是哪一边，
+          而这件事读错的代价是把一条私事发给了全世界。
+        * ---------------------------------------------------------- */}
+        <div>
+          <p className="text-label font-medium">{t('谁看得到', 'Who can see this')}</p>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            {(
+              [
+                {
+                  v: 'friends' as Visibility,
+                  title: t('只有好友', 'Friends only'),
+                  hint: t('和以前一样', 'Same as before'),
+                },
+                {
+                  v: 'public' as Visibility,
+                  title: t('公开', 'Public'),
+                  hint: t('陌生人点进你主页也看得到', 'Anyone who opens your profile'),
+                },
+              ]
+            ).map((o) => (
+              <button
+                key={o.v}
+                onClick={() => setVisibility(o.v)}
+                disabled={busy}
+                className={cx(
+                  'rounded-lg border px-3 py-2 text-left',
+                  visibility === o.v ? 'border-brand-500 bg-brand-100' : 'border-line bg-surface',
+                )}
+              >
+                <span className="block text-caption font-medium">{o.title}</span>
+                <span className="text-ink-500 block text-caption">{o.hint}</span>
+              </button>
+            ))}
+          </div>
+          {/*
+            公开的代价要在**按下之前**说，而且要说全。
+            
+            第二句是很多人想不到的：公开一条动态，等于同时把自己的
+            名字和头像对所有登录的人打开 —— 不然那条动态上没有作者，
+            而一条没有作者的动态没法看。这是 026 里那条 profiles 策略
+            的直接后果，不是可选项。
+          */}
+          {visibility === 'public' && (
+            <div className="border-warning-600/30 bg-warning-50 mt-2 rounded-card border p-3">
+              <p className="text-ink-700 text-caption">
+                {t(
+                  '公开之后，任何登录的人点进你的个人主页都看得到这一条 —— 包括还没加你好友的人。',
+                  'Anyone signed in who opens your profile will see this one — including people who are not your friends.',
+                )}
+              </p>
+              <p className="text-ink-700 mt-1.5 text-caption">
+                {t(
+                  '而且你的名字和头像也会跟着对所有人可见 —— 一条动态总要看得出是谁发的。',
+                  'Your name and photo become visible to everyone too — a post has to show who wrote it.',
+                )}
+              </p>
+              <p className="text-ink-700 mt-1.5 text-caption">
+                {t(
+                  '拉黑过的人还是看不到。发出去之后改不了，只能删。',
+                  'People you blocked still cannot see it. This cannot be changed later — only deleted.',
+                )}
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="space-y-2">
           <Button
             block
@@ -186,14 +267,18 @@ export function PostSheet({
               : t(`再加（${pics.length}/${MAX_PHOTOS}）`, `Add more (${pics.length}/${MAX_PHOTOS})`)}
           </Button>
           <Button block variant="primary" disabled={busy || empty} onClick={() => void send()}>
-            {busy ? t('正在发…', 'Posting…') : t('发出去', 'Post')}
+            {busy
+            ? t('正在发…', 'Posting…')
+            : visibility === 'public'
+              ? t('公开发出去', 'Post publicly')
+              : t('发给好友', 'Post to friends')}
           </Button>
         </div>
 
         <p className="text-ink-500 text-caption">
           {t(
-            '只有好友看得到。照片会在你手机上先压小再上传 —— 顺带把里面的拍摄地点信息一起去掉。发出去之后改不了，只能删了重发。',
-            'Only your friends can see this. Photos are shrunk on your phone before upload, which also strips the location data your camera embeds. Posts cannot be edited — delete and repost instead.',
+            '照片会在你手机上先压小再上传 —— 顺带把里面的拍摄地点信息一起去掉。发出去之后改不了（包括「谁看得到」），只能删了重发。',
+            'Photos are shrunk on your phone before upload, which also strips the location data your camera embeds. Nothing can be edited afterwards — including who can see it. Delete and repost instead.',
           )}
         </p>
       </div>

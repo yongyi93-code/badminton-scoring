@@ -38,12 +38,32 @@ export const POST_MAX_BYTES = 900 * 1024
 /** 链接签多久。一屏刷完足够，而越短越安全 */
 export const SIGN_SECONDS = 60 * 60
 
+/**
+ * 谁看得到。**和 026 里那条 check 是同一份清单**，改一处要改两处。
+ *
+ * 默认写成一个导出的常量而不是散在各处的字面量：这是这一块里最危险的
+ * 一个默认值 —— 反过来的话，每一条不去点的动态都发给了全世界，
+ * 而发的人以为自己只是在跟球友说话。
+ */
+export const VISIBILITIES = ['friends', 'public'] as const
+export type Visibility = (typeof VISIBILITIES)[number]
+export const defaultVisibility: Visibility = 'friends'
+
 export type Post = {
   id: string
   author: string
   body: string | null
   photos: string[]
   created_at: string
+  /**
+   * 谁看得到（026）。
+   *
+   *   friends  只有好友。默认，绝大多数
+   *   public   任何登录的人，点进作者主页都看得到
+   *
+   * 发出去之后改不了 —— 和正文、照片同一条规矩，冻在触发器里。
+   */
+  visibility?: Visibility
   /** 被管理员下架了。**作者自己还看得到**，别人看不到（025） */
   hidden_at?: string | null
 }
@@ -57,7 +77,7 @@ export type FeedItem = Post & {
   liked: boolean
 }
 
-const COLS = 'id, author, body, photos, created_at, hidden_at'
+const COLS = 'id, author, body, photos, created_at, hidden_at, visibility'
 
 /**
  * 这条动态能不能发。发不了就给一句人话。
@@ -134,6 +154,7 @@ export type PostResult = { ok: true; id: string } | { ok: false; error: string }
 export async function createPost(draft: {
   body: string
   files: Blob[]
+  visibility?: Visibility
 }): Promise<PostResult> {
   if (!supabase) return { ok: false, error: pick('没连上云端', 'Not connected') }
   const bad = checkDraft({ body: draft.body, count: draft.files.length })
@@ -173,7 +194,12 @@ export async function createPost(draft: {
 
   const { data, error } = await supabase
     .from('posts')
-    .insert({ author: uid, body: draft.body.trim() || null, photos: paths })
+    .insert({
+      author: uid,
+      body: draft.body.trim() || null,
+      photos: paths,
+      visibility: draft.visibility ?? defaultVisibility,
+    })
     .select('id')
   if (error) {
     await cleanUp(paths)
@@ -227,6 +253,17 @@ export async function deletePost(
  */
 export async function fetchMoments(opts: {
   uid?: string
+  /**
+   * 只看这几个人的（主时间线用：我 + 我的好友）。
+   *
+   * 这一条**必须**有，而且必须在这一层，不能靠策略：026 之后
+   * 「公开」的动态谁都读得到，不收窄的话主时间线会变成一个
+   * 所有人的广场 —— 而朋友圈不是广场（理由见 026 开头）。
+   *
+   * 策略管的是「读不读得到」，这里管的是「这一屏想显示谁」，
+   * 两件事分开。
+   */
+  authors?: string[]
   before?: string
   limit?: number
   meUid?: string | null
@@ -238,6 +275,7 @@ export async function fetchMoments(opts: {
     .order('created_at', { ascending: false })
     .limit(opts.limit ?? 20)
   if (opts.uid) q = q.eq('author', opts.uid)
+  else if (opts.authors) q = q.in('author', opts.authors.slice(0, 200))
   if (opts.before) q = q.lt('created_at', opts.before)
 
   const { data, error } = await q

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { BODY_MAX, MAX_PHOTOS, checkDraft, gridCols, tallyLikes } from '@/lib/moments'
+import {
+  BODY_MAX,
+  MAX_PHOTOS,
+  VISIBILITIES,
+  checkDraft,
+  defaultVisibility,
+  gridCols,
+  tallyLikes,
+} from '@/lib/moments'
 import { setLang } from '@/lib/i18n'
 
 /*
@@ -123,5 +131,26 @@ describe('两个上限要和数据库对得上', () => {
   })
   it('张数上限是 9', () => {
     expect(MAX_PHOTOS).toBe(9)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 公开那一档（026）
+ * ------------------------------------------------------------------ */
+
+describe('谁看得到', () => {
+  /*
+   * 默认必须是「只有好友」。
+   *
+   * 这一条看着像废话，但它是这一整块里最危险的一个默认值：
+   * 反过来的话，每一条不去点的动态都发给了全世界，而发的人
+   * 以为自己只是在跟球友说话。
+   */
+  it('不说的时候就是只给好友', () => {
+    expect(defaultVisibility).toBe('friends')
+  })
+
+  it('只有这两种', () => {
+    expect([...VISIBILITIES].sort()).toEqual(['friends', 'public'])
   })
 })

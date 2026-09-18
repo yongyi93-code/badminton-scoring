@@ -70,13 +70,20 @@ export function Moments({ uid }: { uid?: string }) {
   const avatarsById = useMemo(() => new Map(avatars.map((a) => [a.playerId, a])), [avatars])
 
   const load = useCallback(async () => {
+    /*
+     * 主时间线只拉「我 + 我的好友」。
+     *
+     * 026 之后公开的动态谁都读得到 —— 不收窄的话这一屏会变成一个
+     * 所有人的广场，而朋友圈不是广场。收窄放在这一层，不放在策略里：
+     * 策略管「读不读得到」，这一屏管「想显示谁」。
+     */
     const [rows, cs] = await Promise.all([
-      fetchMoments({ uid, meUid }),
+      fetchMoments(uid ? { uid, meUid } : { authors: [meUid ?? '', ...friends], meUid }),
       fetchCards(),
     ])
     setItems(rows)
     setCards(cs)
-  }, [uid, meUid])
+  }, [uid, meUid, friends])
 
   useEffect(() => {
     void load()
@@ -205,10 +212,23 @@ export function Moments({ uid }: { uid?: string }) {
           ) : (
             <EmptyState
               icon="🏸"
-              title={uid ? t('他还没发过', 'Nothing posted yet') : t('还没有人发', 'Nothing here yet')}
+              title={
+                uid
+                  ? mine || friends.includes(uid)
+                    ? t('他还没发过', 'Nothing posted yet')
+                    : /*
+                        不是好友的时候空着，多半不是「他没发过」，而是
+                        「他发的都只给好友」。说成前者是在猜，而且猜的
+                        那一种会让人以为这个人不玩这个 App。
+                      */
+                      t('他没有公开的动态', 'No public posts')
+                  : t('还没有人发', 'Nothing here yet')
+              }
               hint={
                 uid
-                  ? undefined
+                  ? mine || friends.includes(uid)
+                    ? undefined
+                    : t('加了好友才看得到只给好友的那些。', 'Add them as a friend to see friends-only posts.')
                   : t('打完一场发一条，好友就看得到。', 'Post after a session — your friends will see it.')
               }
             />
@@ -231,6 +251,19 @@ export function Moments({ uid }: { uid?: string }) {
                       </span>
                     </button>
                   </div>
+
+                  {/*
+                    公开那一条标出来。
+                    
+                    只对作者自己标：别人看到的每一条对他来说都一样
+                    （他看得到就是看得到），而作者需要一眼认出
+                    「哪几条是全世界看得到的」——尤其是想删的时候。
+                  */}
+                  {item.visibility === 'public' && item.author === meUid && (
+                    <p className="text-brand-600 mt-2 text-caption font-medium">
+                      {t('公开 · 陌生人也看得到', 'Public · strangers can see this')}
+                    </p>
+                  )}
 
                   {/*
                     被下架了。只有作者自己和管理员看得到这条动态，
@@ -348,8 +381,8 @@ export function Moments({ uid }: { uid?: string }) {
 
         <p className="text-ink-500 pb-2 text-caption">
           {t(
-            '动态只有好友看得到，同一个球群但没加好友的人也看不到 —— 球群是打球的事，好友是自己选的。发出去之后改不了，只能删了重发。',
-            'Posts are visible to friends only — not to clubmates who are not friends. A club is who you play with; friends are who you choose. Posts cannot be edited, only deleted.',
+            '动态默认只有好友看得到，同一个球群但没加好友的人也看不到 —— 球群是打球的事，好友是自己选的。发的时候可以单独把某一条设成公开。发出去之后改不了（包括「谁看得到」），只能删了重发。',
+            'Posts are friends-only by default — not visible to clubmates who are not friends. A club is who you play with; friends are who you choose. A single post can be set public when you write it. Nothing can be edited afterwards, including who can see it — delete and repost instead.',
           )}
         </p>
       </Body>
