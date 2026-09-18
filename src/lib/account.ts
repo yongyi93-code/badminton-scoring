@@ -1,6 +1,7 @@
 import { pick } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
 import { flushNow, stopSync } from '@/lib/sync'
+import { clearSignCache } from '@/lib/moments'
 import { useApp } from '@/store/useApp'
 
 /* ------------------------------------------------------------------ *
@@ -89,6 +90,8 @@ export async function deleteMyAccount(opts: DeleteOptions): Promise<DeleteResult
    */
   stopSync()
   useApp.getState().resetAll()
+  /* 签好的那些照片链接也要清 —— 和 signOut 同一条理由 */
+  clearSignCache()
   await supabase.auth.signOut().catch(() => {})
 
   return { ok: true }

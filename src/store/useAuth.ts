@@ -4,6 +4,7 @@ import { pick } from '@/lib/i18n'
 import { arrivedFromAuthLink, supabase } from '@/lib/supabase'
 import { flushNow, startSync, stopSync } from '@/lib/sync'
 import { startSocial, stopSocial } from '@/store/useSocial'
+import { clearSignCache } from '@/lib/moments'
 import { useApp } from '@/store/useApp'
 
 /* ------------------------------------------------------------------ *
@@ -213,6 +214,13 @@ export async function signOut(): Promise<{ ok: true } | { ok: false; error: stri
 
   stopSync()
   useApp.getState().resetAll()
+  /*
+   * 签好的那些动态照片链接也要清掉。
+   *
+   * 它们在有效期内是直接打得开的，而换一个人登录这台手机之后，
+   * 他不该还能打开上一个人好友的照片。
+   */
+  clearSignCache()
   await supabase?.auth.signOut()
   return { ok: true }
 }

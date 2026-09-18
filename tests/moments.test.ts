@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   BODY_MAX,
   MAX_PHOTOS,
+  SIGN_MARGIN_MS,
+  SIGN_SECONDS,
   VISIBILITIES,
   checkDraft,
   defaultVisibility,
   gridCols,
+  pickCached,
   tallyLikes,
+  trimCache,
 } from '@/lib/moments'
 import { setLang } from '@/lib/i18n'
 
@@ -152,5 +156,84 @@ describe('谁看得到', () => {
 
   it('只有这两种', () => {
     expect([...VISIBILITIES].sort()).toEqual(['friends', 'public'])
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 签好的链接留着重用
+ *
+ * 私有桶没有固定地址，每次都签一个新的 —— 而浏览器按完整网址缓存，
+ * 所以不留着重用的话，每刷一次朋友圈所有图都会重下一遍。
+ *
+ * 这一块出错的样子不是报错，是**一屏裂图**（过期的链接被当成好的），
+ * 或者**账单**（好的链接被当成过期的）。两个方向都要钉住。
+ * ------------------------------------------------------------------ */
+
+describe('缓存里哪几条还能用', () => {
+  const NOW = 1_000_000_000_000
+  const cache = new Map([
+    ['a.webp', { url: 'URL-A', expires: NOW + 60 * 60 * 1000 }],
+    ['快过期.webp', { url: 'URL-B', expires: NOW + 60 * 1000 }],
+    ['过期了.webp', { url: 'URL-C', expires: NOW - 1000 }],
+  ])
+
+  it('还早的接着用，不重签', () => {
+    const { hits, misses } = pickCached(cache, ['a.webp'], NOW)
+    expect(hits.get('a.webp')).toBe('URL-A')
+    expect(misses).toEqual([])
+  })
+
+  it('过期的要重签', () => {
+    const { hits, misses } = pickCached(cache, ['过期了.webp'], NOW)
+    expect(hits.size).toBe(0)
+    expect(misses).toEqual(['过期了.webp'])
+  })
+
+  /*
+   * 这一条是留余量的理由：一个还剩一分钟的链接，人慢慢往下翻的时候
+   * 会在半路失效 —— 翻到一半突然一屏裂图，而他什么都没做错。
+   */
+  it('快到期的当成没有 —— 不然翻到一半图会失效', () => {
+    const { misses } = pickCached(cache, ['快过期.webp'], NOW)
+    expect(misses).toEqual(['快过期.webp'])
+  })
+
+  it('没见过的路径直接进重签那一堆', () => {
+    const { misses } = pickCached(cache, ['新的.webp'], NOW)
+    expect(misses).toEqual(['新的.webp'])
+  })
+
+  it('一次能分出两堆来', () => {
+    const { hits, misses } = pickCached(cache, ['a.webp', '过期了.webp', '新的.webp'], NOW)
+    expect([...hits.keys()]).toEqual(['a.webp'])
+    expect(misses).toEqual(['过期了.webp', '新的.webp'])
+  })
+})
+
+describe('缓存不会无限长', () => {
+  const NOW = 1_000_000_000_000
+  const big = new Map(
+    Array.from({ length: 10 }, (_, i) => [`p${i}`, { url: `u${i}`, expires: NOW + i * 1000 }]),
+  )
+
+  it('没超上限就原样不动', () => {
+    expect(trimCache(big, 20)).toBe(big)
+  })
+
+  it('超了就只留最晚到期的那几条', () => {
+    const cut = trimCache(big, 3)
+    expect(cut.size).toBe(3)
+    /* 到期最晚 = 最近签的，也就是最可能还在屏幕上的那几张 */
+    expect([...cut.keys()].sort()).toEqual(['p7', 'p8', 'p9'])
+  })
+})
+
+describe('签多久', () => {
+  /*
+   * 短不等于安全：短了只会让同一张图在一天里被重新签、重新下好几遍，
+   * 而每一遍都是流量。余量必须比有效期小得多，否则缓存等于没有。
+   */
+  it('有效期比余量长得多', () => {
+    expect(SIGN_SECONDS * 1000).toBeGreaterThan(SIGN_MARGIN_MS * 10)
   })
 })

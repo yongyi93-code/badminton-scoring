@@ -35,8 +35,48 @@ export const MAX_PHOTOS = 9
 export const POST_BOX = 1080
 /** 压完不许超过多大。桶那边卡 1 MB，这里留一档余量 */
 export const POST_MAX_BYTES = 900 * 1024
-/** 链接签多久。一屏刷完足够，而越短越安全 */
-export const SIGN_SECONDS = 60 * 60
+/* ------------------------------------------------------------------ *
+ * 签出来的那些链接要留着重用，不然每刷一次就把所有图重下一遍
+ *
+ * 私有桶没有固定地址，每次显示都要签一个临时链接。而**浏览器是按
+ * 完整网址缓存的**，签名在查询串里 —— 每次签出来的都是一个新网址，
+ * 于是手机上明明有那张图，还是会再下一遍。
+ *
+ * 头像那边不受影响（公开桶，地址固定），所以这件事只在朋友圈发生，
+ * 而朋友圈正好是图最多的一屏。
+ *
+ * 解法是把签好的链接连同到期时间存下来，没过期就接着用同一个网址 ——
+ * 网址一样，浏览器才认得出是同一张图。
+ *
+ * 代价写在明面上：那些链接存在这台手机的 localStorage 里，在有效期内
+ * 谁拿到这台手机都打得开。而那些图本来就是这个人看得到的内容，
+ * 所以这一步没有放大任何权限 —— 放大的只是「拿到手机之后还能看多久」。
+ * ------------------------------------------------------------------ */
+
+/**
+ * 链接签多久。
+ *
+ * 从 1 小时拉到 6 —— 短不等于安全：短了只会让同一张图在一天里被
+ * 重新签、重新下好几遍，而每一遍都是真金白银的流量。
+ * 6 小时够一个晚上的球局从头看到尾。
+ */
+export const SIGN_SECONDS = 6 * 60 * 60
+
+/**
+ * 还剩这么多才敢接着用。
+ *
+ * 不留余量的话，一个快到期的链接会在人慢慢往下翻的时候失效 ——
+ * 翻到一半突然一屏裂图，而他什么都没做错。
+ */
+export const SIGN_MARGIN_MS = 10 * 60 * 1000
+
+/** 最多记住多少条。再多也没用 —— 老的图早就滚出时间线了 */
+export const SIGN_CACHE_MAX = 300
+
+const SIGN_CACHE_KEY = 'rally.moments.signed'
+
+/** 一条：这个路径签出来的网址，和它什么时候到期 */
+export type Signed = { url: string; expires: number }
 
 /**
  * 谁看得到。**和 026 里那条 check 是同一份清单**，改一处要改两处。
@@ -309,20 +349,98 @@ export async function fetchMoments(opts: {
  * 签的时候服务端会过一遍策略，所以这里不用再判「我能不能看」。
  */
 export async function signPhotos(paths: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>()
   const unique = [...new Set(paths)]
-  if (!supabase || unique.length === 0) return out
+  if (!supabase || unique.length === 0) return new Map()
+
+  const cache = readSignCache()
+  const { hits, misses } = pickCached(cache, unique)
+  if (misses.length === 0) return hits
+
   const { data, error } = await supabase.storage
     .from('moments')
-    .createSignedUrls(unique, SIGN_SECONDS)
+    .createSignedUrls(misses, SIGN_SECONDS)
   if (error) {
     console.warn('动态照片没签出来:', error.message)
-    return out
+    /* 签不出来的那几张不显示，但缓存里有的那几张照常 —— 别一起丢掉 */
+    return hits
   }
+  const expires = Date.now() + SIGN_SECONDS * 1000
   for (const row of data ?? []) {
-    if (row.signedUrl && !row.error && row.path) out.set(row.path, row.signedUrl)
+    if (row.signedUrl && !row.error && row.path) {
+      hits.set(row.path, row.signedUrl)
+      cache.set(row.path, { url: row.signedUrl, expires })
+    }
   }
-  return out
+  writeSignCache(trimCache(cache, SIGN_CACHE_MAX))
+  return hits
+}
+
+/**
+ * 缓存里哪几条还能用，哪几条要重签。
+ *
+ * 纯函数，所以测得了 —— 这一块出错的样子是「过期的链接被当成好的」，
+ * 而那在界面上是一屏裂图，不是一句报错。
+ */
+export function pickCached(
+  cache: Map<string, Signed>,
+  paths: string[],
+  now = Date.now(),
+): { hits: Map<string, string>; misses: string[] } {
+  const hits = new Map<string, string>()
+  const misses: string[] = []
+  for (const p of paths) {
+    const got = cache.get(p)
+    /* 留一段余量：快到期的当成没有，免得人翻到一半图失效 */
+    if (got && got.expires - now > SIGN_MARGIN_MS) hits.set(p, got.url)
+    else misses.push(p)
+  }
+  return { hits, misses }
+}
+
+/** 只留最晚到期的那几条。老的图早就滚出时间线了 */
+export function trimCache(cache: Map<string, Signed>, max: number): Map<string, Signed> {
+  if (cache.size <= max) return cache
+  const kept = [...cache.entries()].sort((a, b) => b[1].expires - a[1].expires).slice(0, max)
+  return new Map(kept)
+}
+
+/*
+ * 存取那一层。
+ *
+ * 每一处都包在 try 里：无痕窗口、关掉了站点数据、存满了，读和写都可能
+ * 直接抛 —— 而这只是个缓存，挂了应该退回「每次重签」，不是让整屏白掉。
+ */
+function readSignCache(): Map<string, Signed> {
+  try {
+    const raw = globalThis.localStorage?.getItem(SIGN_CACHE_KEY)
+    if (!raw) return new Map()
+    const obj = JSON.parse(raw) as Record<string, Signed>
+    return new Map(Object.entries(obj))
+  } catch {
+    return new Map()
+  }
+}
+
+function writeSignCache(cache: Map<string, Signed>): void {
+  try {
+    globalThis.localStorage?.setItem(SIGN_CACHE_KEY, JSON.stringify(Object.fromEntries(cache)))
+  } catch {
+    /* 存满了就算了 —— 下次照样签得出来，只是多花一点流量 */
+  }
+}
+
+/**
+ * 退出登录时清掉。
+ *
+ * 这些链接在有效期内是能直接打开的，而换一个人登录这台手机之后，
+ * 他不该还能打开上一个人好友的照片。
+ */
+export function clearSignCache(): void {
+  try {
+    globalThis.localStorage?.removeItem(SIGN_CACHE_KEY)
+  } catch {
+    /* 清不掉也不拦着退出登录 */
+  }
 }
 
 async function fetchLikes(ids: string[]): Promise<{ post_id: string; uid: string }[]> {
