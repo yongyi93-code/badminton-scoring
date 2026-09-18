@@ -35,6 +35,13 @@ export type Route =
    */
   | { name: 'person'; uid: string; hint?: string }
   | { name: 'avatar'; playerId: string }
+  /**
+   * 朋友圈。
+   *
+   * 不带 uid 是整个朋友圈（我的 + 好友的），带 uid 是只看一个人的 ——
+   * 同一屏两种用法，所以两处的规矩必然一样（见 screens/Moments.tsx）。
+   */
+  | { name: 'moments'; uid?: string }
   /** 好友：已经是好友的、发来的申请、聊过的那几段对话 */
   | { name: 'friends' }
   /*

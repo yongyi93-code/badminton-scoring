@@ -14,6 +14,7 @@ import { Leaderboard } from '@/screens/Leaderboard'
 import { SessionSummary } from '@/screens/SessionSummary'
 import { PlayerProfile } from '@/screens/PlayerProfile'
 import { Person } from '@/screens/Person'
+import { Moments } from '@/screens/Moments'
 import { Avatar } from '@/screens/Avatar'
 import { Friends } from '@/screens/Friends'
 import { Chat } from '@/screens/Chat'
@@ -144,6 +145,8 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <PlayerProfile playerId={route.playerId} />
     case 'person':
       return <Person uid={route.uid} hint={route.hint} />
+    case 'moments':
+      return <Moments uid={route.uid} />
     case 'avatar':
       return <Avatar playerId={route.playerId} />
     case 'friends':

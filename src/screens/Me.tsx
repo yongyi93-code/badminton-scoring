@@ -662,6 +662,15 @@ export function Me() {
                 onClick={() => push({ name: 'friends' })}
               />
               {/*
+                朋友圈。摆在「好友与私聊」下面，因为它是好友的事 ——
+                只有好友看得到，同一个球群但没加好友的人也看不到。
+              */}
+              <MenuRow
+                title={t('朋友圈', 'Moments')}
+                hint={t('只有好友看得到', 'Friends only')}
+                onClick={() => push({ name: 'moments' })}
+              />
+              {/*
                 举报队列。只有管理员看得见这一行 —— 别人看见一个
                 点不进去的入口，只会以为自己被降级了。
                 真正把门的是数据库那边的策略，不是这个判断。

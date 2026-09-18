@@ -239,6 +239,22 @@ export function Friends() {
     <Screen>
       <TopBar title={t('好友', 'Friends')} onBack={back} />
       <Body>
+        {/*
+          朋友圈。摆在最上面一行，不占一整张卡 —— 它是这一屏的邻居
+          （只有好友看得到），但这一屏的主业还是「谁在等我」。
+        */}
+        <Card onClick={() => push({ name: 'moments' })}>
+          <div className="flex items-center gap-3">
+            <span className="min-w-0 flex-1">
+              <span className="block text-label font-medium">{t('朋友圈', 'Moments')}</span>
+              <span className="text-ink-500 block text-caption">
+                {t('好友发的动态，只有好友看得到', 'What your friends posted — friends only')}
+              </span>
+            </span>
+            <span className="text-ink-500 shrink-0">›</span>
+          </div>
+        </Card>
+
         {/* 1. 有人在等我点头 */}
         {incoming.length > 0 && (
           <>

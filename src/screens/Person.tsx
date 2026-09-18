@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { lang, useT } from '@/lib/i18n'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
-import { useSocial } from '@/store/useSocial'
+import { standingWith, useSocial } from '@/store/useSocial'
 import { Body, Button, Card, Screen, TopBar } from '@/components/ui'
 import { Avatar, GenderTag } from '@/components/PlayerBits'
 import { AvatarView } from '@/components/Avatar'
@@ -96,6 +96,7 @@ export function Person({ uid, hint }: { uid: string; hint?: string }) {
 
   const name = nameOf({ club: player?.name, card: card?.name, hint })
   const isMe = social.meUid === uid
+  const standing = standingWith(social, uid).kind
 
   const avatar = useMemo(
     () => (player ? (avatars.find((a) => a.playerId === player.id) ?? undefined) : undefined),
@@ -174,6 +175,32 @@ export function Person({ uid, hint }: { uid: string; hint?: string }) {
             className="border-brand-500/20 mt-3 border-t pt-3"
           />
         </Card>
+
+        {/*
+          他的动态。
+
+          摆在战绩上面：这一屏是账号那一层的「他是谁」，而动态是这一层
+          的内容，战绩是另一层（球群）借过来的。
+
+          不是好友就不给入口 —— 点进去必定是空的，而一个必定是空的
+          入口只会让人以为坏了。自己的那一页照样给：人要看得到
+          「我发过什么」。
+        */}
+        {(isMe || standing === 'friends') && (
+          <Card onClick={() => push({ name: 'moments', uid })}>
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 flex-1">
+                <span className="block text-label font-medium">
+                  {isMe ? t('我的动态', 'My posts') : t('他的动态', 'Their posts')}
+                </span>
+                <span className="text-ink-500 block text-caption">
+                  {t('只有好友看得到', 'Friends only')}
+                </span>
+              </span>
+              <span className="text-ink-500 shrink-0">›</span>
+            </div>
+          </Card>
+        )}
 
         {/* ---------------------------------------------------------- *
           下半截：球群里的那一半。

@@ -81,27 +81,43 @@ export function checkFile(f: { type: string; size: number }): string | null {
 }
 
 /**
- * 把一张图压成方形的小图。
+ * 压一张图。**全 App 只有这一处画布**。
  *
- * 裁成正方形是因为它到处都画在圆圈里 —— 不裁的话，横图缩进圆圈里
- * 只剩中间一条，人脸在不在里面全看运气。裁中间那一块最接近
- * 「人对着镜头」的常态。
+ * 朋友圈的照片也走这里（lib/moments.ts），参数不同而已：
+ *
+ *   头像   长边 512，裁成正方形   —— 它到处都画在圆圈里
+ *   动态   长边 1080，原样比例     —— 横图竖图都要看得出是什么
+ *
+ * 不抄一份的理由不是省代码，是**去 EXIF 那句保证只能有一个出处**。
+ * 界面上写着「顺带把拍摄地点一起去掉」，那句话靠的就是「画到画布上
+ * 的只有像素」。第二份实现迟早有一天会绕过画布（比如为了省一次解码
+ * 直接传原图），而那时候没人会想起来去改那句文案。
  */
-export async function shrink(file: Blob): Promise<Blob> {
+export async function shrinkImage(
+  file: Blob,
+  opts: { box: number; square: boolean; quality?: number },
+): Promise<Blob> {
+  const q = opts.quality ?? 0.82
   const bitmap = await createImageBitmap(file)
   try {
-    /* 先裁成正方形：取中间那一块 */
+    /* 从原图上取哪一块：方的取中间那一块，不方的取整张 */
     const side = Math.min(bitmap.width, bitmap.height)
-    const sx = Math.round((bitmap.width - side) / 2)
-    const sy = Math.round((bitmap.height - side) / 2)
-    const { w } = fitBox(side, side)
+    const src = opts.square
+      ? {
+          x: Math.round((bitmap.width - side) / 2),
+          y: Math.round((bitmap.height - side) / 2),
+          w: side,
+          h: side,
+        }
+      : { x: 0, y: 0, w: bitmap.width, h: bitmap.height }
+    const out = fitBox(src.w, src.h, opts.box)
 
     const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = w
+    canvas.width = out.w
+    canvas.height = out.h
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error(pick('这台设备画不了图', 'This device cannot draw images'))
-    ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, w, w)
+    ctx.drawImage(bitmap, src.x, src.y, src.w, src.h, 0, 0, out.w, out.h)
 
     /*
      * 先试 webp，不行退回 jpeg。
@@ -110,15 +126,25 @@ export async function shrink(file: Blob): Promise<Blob> {
      * 而且它不报错，是**悄悄给你一张 png**（体积反而大得多）。
      * 所以不能只看有没有抛异常，要看回来的 type 对不对。
      */
-    const webp = await toBlob(canvas, 'image/webp', 0.82)
+    const webp = await toBlob(canvas, 'image/webp', q)
     if (webp && webp.type === 'image/webp') return webp
-    const jpeg = await toBlob(canvas, 'image/jpeg', 0.82)
+    const jpeg = await toBlob(canvas, 'image/jpeg', q)
     if (jpeg) return jpeg
     throw new Error(pick('这台设备压不了图', 'This device cannot compress images'))
   } finally {
     bitmap.close()
   }
 }
+
+/**
+ * 把一张图压成方形的小图（头像用）。
+ *
+ * 裁成正方形是因为它到处都画在圆圈里 —— 不裁的话，横图缩进圆圈里
+ * 只剩中间一条，人脸在不在里面全看运气。裁中间那一块最接近
+ * 「人对着镜头」的常态。
+ */
+export const shrink = (file: Blob): Promise<Blob> =>
+  shrinkImage(file, { box: PHOTO_SIZE, square: true })
 
 const toBlob = (c: HTMLCanvasElement, type: string, q: number): Promise<Blob | null> =>
   new Promise((res) => c.toBlob(res, type, q))
