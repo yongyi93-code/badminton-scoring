@@ -570,7 +570,7 @@ export function Me() {
           <>
             <Card>
               <div className="flex items-center gap-4">
-                <Avatar name={me.name} avatar={avatar} size="lg" />
+                <Avatar name={me.name} avatar={avatar} playerId={me.id} size="lg" />
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-h2">{me.name}</h2>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -636,7 +636,7 @@ export function Me() {
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-title">{t('我的角色', 'My character')}</span>
+                  <span className="block text-title">{t('我的 Avatar', 'My Avatar')}</span>
                   <span className="text-ink-500 mt-0.5 block text-label">
                     {avatar
                       ? t(`身上行头 ${progress.coins} 金币可花`, `${progress.coins} coins to spend`)

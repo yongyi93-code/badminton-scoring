@@ -56,6 +56,7 @@ export function Podium({
           <Avatar
             name={e.name}
             avatar={e.avatar}
+            playerId={e.id}
             size={place === 1 ? 'lg' : 'md'}
             className="mt-1.5"
           />

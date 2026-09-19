@@ -1,10 +1,12 @@
 import { pick } from '@/lib/i18n'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { Gender, Level, Player } from '@/types'
 import { itemById, itemName, type AvatarProfile, type LevelInfo } from '@/lib/avatar'
 import { AvatarFace, AvatarFrame } from './Avatar'
 import { stageOf } from '@/lib/avatarArt'
 import { useProgress } from '@/store/progress'
+import { usePhotoOf } from '@/store/useCards'
+import { faceKind, photoFor } from '@/lib/face'
 import { RankChip } from './RankMedal'
 import { cx } from './ui'
 
@@ -30,11 +32,29 @@ function hueOf(name: string) {
 }
 
 /**
- * 头像。建了角色就画角色，没建才退回名字首字的色块。
+ * 头像。有照片就是照片，其次是换装角色，最后才是名字首字的色块。
  *
- * 做成同一个组件而不是两个，是因为头像出现在十来处（排行榜、场地看板、
- * 等待队列、散场结算……）—— 分成两个的话每处都要自己判断该用哪个，
- * 迟早漏掉几处，就会出现「排行榜有角色、看板还是字母」这种不一致。
+ * -------------------------------------------------------------------
+ * 三层退路都在这一个组件里，不在调用点
+ *
+ * 头像出现在十来处（排行榜、场地看板、等待队列、散场结算……）——
+ * 让每处自己判断该用哪一层的话，迟早漏掉几处，就会出现「排行榜是
+ * 照片、看板还是角色」这种不一致。而这件事上不一致特别明显：
+ * 同一个人在隔一个手势的两屏上是两张脸。
+ *
+ * 照片的地址不走 props，自己从名片表里取（useCards）——
+ * 理由和下面成长阶段那条一样：十来处调用只要认得出这是谁，
+ * 就一定拿得到正确的那张脸，不会有哪一处忘了传。
+ *
+ * -------------------------------------------------------------------
+ * 照片在前，角色在后（2026-09-19 改的）
+ *
+ * 原来的分工是「照片只在社交那几屏，球场那一侧一律画角色」。
+ * 用下来不对：头像那个圆回答的永远是**「这是谁」**，而一个人自己的
+ * 脸回答得最快 —— 排行榜上十几行，认脸比认名字快得多。
+ *
+ * 角色没有被挤掉，它回答的是另一个问题（「他有多强」），
+ * 所以它留在自己那一屏上，入口就是「我的 Avatar」。
  *
  * 角色的取景往上偏：100×100 的立绘缩成一个小圆圈时，
  * 整个人只有几像素高，看不清是谁；裁到头和肩才认得出来。
@@ -45,23 +65,74 @@ function hueOf(name: string) {
 export function Avatar({
   name,
   avatar,
+  playerId,
+  photo,
   size = 'md',
   className,
 }: {
   name: string
   avatar?: AvatarProfile
+  /**
+   * 这是谁。只为了查照片 —— 绝大多数调用点传了 avatar，里面就有，
+   * 所以只有那几个手上没有 avatar 的地方（散场结算、管理员名单）
+   * 才需要显式传。
+   */
+  playerId?: string | null
+  /**
+   * 照片地址。给了就直接用，不去名片表里查。
+   *
+   * 给那些**手上只有账号、没有球员**的地方用（朋友圈、Story、
+   * 别的球群的人）—— 那些人在这个球群里根本没有球员行，查不到。
+   */
+  photo?: string | null
   size?: 'sm' | 'md' | 'lg'
   className?: string
 }) {
   const progress = useProgress(avatar?.playerId)
   const stage = stageOf(progress.level)
+  /* 显式给了地址就不去查 —— 为什么见 lib/face.ts */
+  const looked = usePhotoOf(photo === undefined ? (playerId ?? avatar?.playerId) : null)
+  const url = photoFor(photo, looked)
+  /*
+   * 这张图加载失败过没有。
+   *
+   * 会失败的情形是真的：桶里那个文件被删了，而 profiles 那一行还指着它
+   * （换头像时删旧文件那一步失败过、或者有人从后台清了桶）。不管的话
+   * 列表上会出现一个碎掉的图标 —— 比没有照片难看得多，
+   * 而且人会以为是 App 坏了。
+   *
+   * 失败就退回角色，和从来没设过照片一模一样。
+   */
+  const [broken, setBroken] = useState(false)
   const sizes = {
     sm: 'size-7 text-[11px]',
     md: 'size-10 text-sm',
     lg: 'size-16 text-xl',
   }
 
-  if (avatar) {
+  const kind = faceKind({ url, broken, hasCharacter: Boolean(avatar) })
+
+  if (kind === 'photo' && url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        onError={() => setBroken(true)}
+        /*
+         * 懒加载 + 异步解码：一屏十几个圆圈，同步解码会让整屏卡一下。
+         * 这两个属性是白送的，加了没有代价。
+         *
+         * shrink-0 不能少：这些圆圈都在 flex 行里，不写的话名字一长
+         * 头像就被压扁成椭圆。
+         */
+        loading="lazy"
+        decoding="async"
+        className={cx('shrink-0 rounded-full object-cover', sizes[size], className)}
+      />
+    )
+  }
+
+  if (kind === 'character' && avatar) {
     const frame = avatar.equipped.frame
     return (
       // 头像框画在圆圈外面，所以外层不能 overflow-hidden，裁切收到里面那层
@@ -177,7 +248,7 @@ export function PlayerRow({
 }) {
   const inner = (
     <>
-      <Avatar name={player.name} avatar={avatar} />
+      <Avatar name={player.name} avatar={avatar} playerId={player.id} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate font-medium">{player.name}</span>

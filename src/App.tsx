@@ -32,6 +32,7 @@ import { InviteHandler } from '@/components/InviteHandler'
 import { useOpenFromPush } from '@/lib/openFromPush'
 import { useBroadcastPlaying } from '@/lib/nowPlaying'
 import { useSeedMyName } from '@/lib/profile'
+import { useLoadCards } from '@/store/useCards'
 
 export default function App() {
   const route = useRoute()
@@ -67,6 +68,15 @@ export default function App() {
    * （不同群的好友那边，你一直显示「不认识的人」）。
    */
   useSeedMyName()
+
+  /*
+   * 照片拉一次，全 App 的头像共用一份。
+   *
+   * 挂在最外层而不是各屏自己拉：头像出现在十来屏上，各拉各的话
+   * 切一次 tab 就是一个新请求，而且会出现「排行榜上已经是新照片、
+   * 看板上还是旧的」——它们只隔一个手势。
+   */
+  useLoadCards()
 
   /*
    * 把「现在在哪一屏」告诉报错那边。

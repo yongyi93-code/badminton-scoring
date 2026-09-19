@@ -251,7 +251,7 @@ export function Admins() {
                   setAbout({ uid: p.ownerId!, name: p.name })
                 }}
               >
-                <Avatar name={p.name} size="sm" />
+                <Avatar name={p.name} playerId={p.id} size="sm" />
                 <span className="text-ink-900 text-label">{p.name}</span>
               </button>
             ))}

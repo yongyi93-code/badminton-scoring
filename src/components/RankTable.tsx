@@ -46,7 +46,7 @@ export function RankRow({
       <span className="tnum w-7 shrink-0 text-center text-sm font-semibold text-ink-500">
         {rank === 0 ? '–' : (medal(rank) ?? rank)}
       </span>
-      <Avatar name={player?.name ?? '?'} avatar={avatar} />
+      <Avatar name={player?.name ?? '?'} avatar={avatar} playerId={player?.id} />
       {/* 段位单独占一列固定宽度，一排下来才对得齐、好互相比 */}
       {level && (
         <span className="flex w-7 shrink-0 flex-col items-center">

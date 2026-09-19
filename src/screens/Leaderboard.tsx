@@ -243,6 +243,7 @@ export function Leaderboard({ sessionId, venue }: Scope) {
               <Avatar
                 name={names.get(champion.playerId)?.name ?? '?'}
                 avatar={avatarsById.get(champion.playerId)}
+                playerId={champion.playerId}
                 size="lg"
               />
             </div>

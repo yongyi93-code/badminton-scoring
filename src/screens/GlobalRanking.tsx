@@ -188,7 +188,7 @@ export function GlobalRanking() {
                       onClick={() => push({ name: 'profile', playerId: r.player.id })}
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
-                      <Avatar name={r.player.name} avatar={avatarsById.get(r.player.id)} />
+                      <Avatar name={r.player.name} avatar={avatarsById.get(r.player.id)} playerId={r.player.id} />
                       <span className="w-7 shrink-0">
                         <RankMedal level={r.progress.level} className="size-7" compact />
                       </span>

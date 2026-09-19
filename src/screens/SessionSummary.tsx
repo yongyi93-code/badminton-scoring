@@ -167,7 +167,7 @@ function ShareCard({
               <span className="w-5 text-center text-sm font-bold text-ink-500">
                 {i + 1}
               </span>
-              <Avatar name={names.get(s.playerId)?.name ?? '?'} size="sm" />
+              <Avatar name={names.get(s.playerId)?.name ?? '?'} playerId={s.playerId} size="sm" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">
                 {names.get(s.playerId)?.name}
               </span>
@@ -720,7 +720,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                         : 'border-line bg-surface text-ink-700',
                     )}
                   >
-                    <Avatar name={names.get(id)?.name ?? '?'} size="sm" />
+                    <Avatar name={names.get(id)?.name ?? '?'} playerId={id} size="sm" />
                     {names.get(id)?.name ?? '?'}
                     {paid && <span>✓</span>}
                   </button>

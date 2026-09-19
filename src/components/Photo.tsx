@@ -10,6 +10,7 @@ import {
   setMyPhoto,
 } from '@/lib/photo'
 import { NAME_MAX, myCard, setMyName } from '@/lib/profile'
+import { refreshCards } from '@/store/useCards'
 import type { AvatarProfile } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *
@@ -17,15 +18,19 @@ import type { AvatarProfile } from '@/lib/avatar'
  *
  * 两张脸，分工不同（决定见 docs/社交化.md）：
  *
- *   照片     名字旁边那个小圆      「你是谁」
- *   角色     点进个人主页才看到    「你有多强」
+ *   照片     所有头像那个圆      「你是谁」
+ *   角色     点进「我的 Avatar」  「你有多强」
  *
- * 所以这个组件只在**社交那几屏**用（好友、私聊、以后的朋友圈）。
- * 球场那一侧（看板、排队、排行榜）照旧用 Avatar 画角色 —— 那里问的
- * 是「这个人球打得怎么样」，一张自拍回答不了。
+ * 画图那件事已经全部收进 Avatar 了（见 PlayerBits）—— 照片、角色、
+ * 名字首字的色块三层退路在那一个组件里，所以不会出现「这屏是照片、
+ * 那屏是角色」。
  *
- * 没设照片的人自动退回 Avatar：角色、或者名字首字的色块。
- * 所以这个组件可以直接替换掉社交屏上的 Avatar，不用每处判断。
+ * 这里只剩两件 Avatar 管不了的：
+ *
+ *   1. 地址是**调用方给的**。朋友圈和 Story 上的人可能根本不在
+ *      这个球群里，名片表按球员查不到他 —— 那边手上只有 uid。
+ *   2. 点得开。社交那几屏点头像是看大图，球场那一侧点头像是选人，
+ *      两种手势不能混在一个组件里。
  * ------------------------------------------------------------------ */
 
 export function PhotoAvatar({
@@ -45,49 +50,31 @@ export function PhotoAvatar({
   className?: string
 }) {
   const t = useT()
-  const sizes = { sm: 'size-7', md: 'size-10', lg: 'size-16' }
   /*
-   * 这张图加载失败过没有。
+   * photo 显式传下去（哪怕是 null），Avatar 就不会再去名片表里查。
    *
-   * 会失败的情形是真的：桶里那个文件被删了，而 profiles 那一行还指着它
-   * （换头像时删旧文件那一步失败过、或者有人从后台清了桶）。不管的话
-   * 好友列表上会出现一个碎掉的图标 —— 比没有照片难看得多，
-   * 而且人会以为是 App 坏了。
-   *
-   * 失败就退回 Avatar，和从来没设过照片一模一样。
+   * 这一点是有意的：这几屏上的人不一定在这个球群里，查出来的
+   * 多半是空，而更坏的情形是**查到了别人的**（同名的球员行）。
+   * 调用方手上那个 uid 才是准的。
    */
-  const [broken, setBroken] = useState(false)
-
-  if (!url || broken) {
-    return <Avatar name={name} avatar={avatar} size={size} className={className} />
-  }
-
-  const img = (
-    <img
-      src={url}
-      alt={name}
-      onError={() => setBroken(true)}
-      /*
-       * 懒加载 + 异步解码：好友列表上十几个圆圈，同步解码会让整屏卡一下。
-       * 这几个属性是白送的，加了没有代价。
-       *
-       * shrink-0 不能少：这些圆圈都在 flex 行里，不写的话名字一长
-       * 头像就被压扁成椭圆。Avatar 那边一直有这一条，照抄。
-       */
-      loading="lazy"
-      decoding="async"
-      className={cx('shrink-0 rounded-full object-cover', sizes[size], className)}
+  const face = (
+    <Avatar
+      name={name}
+      avatar={avatar}
+      photo={url ?? null}
+      size={size}
+      className={className}
     />
   )
 
-  if (!onOpen) return img
+  if (!onOpen) return face
   return (
     <button
       onClick={onOpen}
       aria-label={t(`看 ${name} 的照片`, `View ${name}'s photo`)}
       className="shrink-0"
     >
-      {img}
+      {face}
     </button>
   )
 }
@@ -169,6 +156,7 @@ export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => vo
     }
     setSavedName(name.trim())
     setSaved(true)
+    void refreshCards()
   }
 
   const pick = async (f: File) => {
@@ -190,6 +178,14 @@ export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => vo
       return
     }
     setPath(r.path)
+    /*
+     * 让全 App 那份名片表跟着变，别等下次开 App。
+     *
+     * 头像现在出现在十来屏上（排行榜、看板、等待队列……）——
+     * 不刷的话，换完照片退回上一屏看到的还是旧的那张，而人会
+     * 以为没换上，于是再换一次。
+     */
+    void refreshCards()
   }
 
   const remove = async () => {
@@ -202,6 +198,7 @@ export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => vo
       return
     }
     setPath(null)
+    void refreshCards()
   }
 
   const url = photoUrl(path)
@@ -223,8 +220,8 @@ export function PhotoSheet({ open, onClose }: { open: boolean; onClose: () => vo
           )}
           <p className="text-ink-500 px-2 text-center text-caption">
             {t(
-              '这张照片会出现在好友列表和你发的动态旁边。你的换装角色不受影响 —— 它还在个人主页上，代表你打球有多强。',
-              'This shows next to your name for friends and on anything you post. Your character is untouched — it still lives on your profile and shows how strong you are.',
+              '这张照片会出现在所有有你头像的地方 —— 排行榜、场地看板、等待队列、好友、朋友圈。你的换装角色不受影响，它在「我的 Avatar」那一屏，代表你打球有多强。',
+              'This shows everywhere your avatar appears — leaderboards, the court board, the waiting queue, friends and posts. Your character is untouched: it lives under “My Avatar” and shows how strong you are.',
             )}
           </p>
         </div>

@@ -179,7 +179,7 @@ function ImpactRow({
         shown ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0',
       )}
     >
-      <Avatar name={name} avatar={avatar} />
+      <Avatar name={name} avatar={avatar} playerId={impact.playerId} />
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold">{name}</p>
         <p className="tnum text-ink-500 text-caption">

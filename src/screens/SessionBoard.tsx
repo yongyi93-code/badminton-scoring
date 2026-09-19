@@ -105,7 +105,7 @@ function CourtSide({
     >
       {ids.map((id) => (
         <span key={id} className="flex min-w-0 items-center gap-1">
-          <Avatar name={names.get(id)?.name ?? '?'} avatar={avatars?.get(id)} size="sm" />
+          <Avatar name={names.get(id)?.name ?? '?'} avatar={avatars?.get(id)} playerId={id} size="sm" />
           <span className="truncate text-caption text-on-court/85">
             {names.get(id)?.name ?? '?'}
           </span>
@@ -144,6 +144,7 @@ function TeamLine({
             <Avatar
               name={names.get(id)?.name ?? '?'}
               avatar={avatars?.get(id)}
+              playerId={id}
               size="sm"
             />
             <span className="truncate text-[15px]">{names.get(id)?.name ?? '?'}</span>
@@ -1155,7 +1156,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                   key={p.id}
                   className="border-line bg-surface flex items-center gap-2.5 rounded-xl border px-3 py-2"
                 >
-                  <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
+                  <Avatar name={p.name} avatar={avatarsById.get(p.id)} playerId={p.id} />
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate font-medium">{p.name}</span>
@@ -1438,7 +1439,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 <span className="tnum w-5 shrink-0 text-center text-sm text-ink-500">
                   {idx + 1}
                 </span>
-                <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
+                <Avatar name={p.name} avatar={avatarsById.get(p.id)} playerId={p.id} />
                 <span className="min-w-0 flex-1">
                   {/*
                     名字后面跟段位和 MMR：等着上场的时候，大家最想知道的
@@ -1476,7 +1477,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                 className="flex w-full items-center gap-3 rounded-xl border border-line bg-fill/60 px-3 py-2.5 opacity-60"
               >
                 <span className="w-5 shrink-0" />
-                <Avatar name={p.name} avatar={avatarsById.get(p.id)} />
+                <Avatar name={p.name} avatar={avatarsById.get(p.id)} playerId={p.id} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
                   <span className="text-xs text-ink-500">{t(`已打 ${l.games} 场`, `${l.games} played`)}</span>
@@ -1499,6 +1500,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                     <Avatar
                     name={names.get(id)?.name ?? '?'}
                     avatar={avatarsById.get(id)}
+                    playerId={id}
                     size="sm"
                   />
                     {names.get(id)?.name}
@@ -1638,6 +1640,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                       <Avatar
                         name={names.get(id)?.name ?? '?'}
                         avatar={avatarsById.get(id)}
+                        playerId={id}
                         size="sm"
                       />
                       <span className="min-w-0 flex-1">
@@ -1799,6 +1802,7 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                     <Avatar
                       name={names.get(l.playerId)?.name ?? '?'}
                       avatar={avatarsById.get(l.playerId)}
+                      playerId={l.playerId}
                       size="sm"
                     />
                     <span className="min-w-0 flex-1">
