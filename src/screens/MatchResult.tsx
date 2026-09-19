@@ -35,7 +35,9 @@ import {
   confirmPending,
   confirmers,
   disputed,
+  disputers,
   opponentConfirmed,
+  voided,
 } from '@/lib/confirm'
 import { DEFAULT_RULES, type Match, type Player, type TeamSide } from '@/types'
 
@@ -70,10 +72,22 @@ function ConfirmLine({
   nameOf: (id: string) => string
 }) {
   const t = useT()
+  /*
+   * 作废那种情形这里不用管：整个这一块只在「有 MMR 账」的那一支里
+   * 才渲染，而作废的场次根本走不到那一支（下面那个 voided 分支先接住了）。
+   * 在这儿再写一遍的话，那段话永远不会出现在任何人的屏幕上。
+   */
   if (confirmers(match, players).length === 0) return null
 
   if (disputed(match)) {
-    const who = (match.disputedBy ?? []).map(nameOf).join(t('、', ', '))
+    /*
+     * 名字从 disputers 取，不是从 disputedBy。
+     *
+     * 只读 disputedBy 的话，新版本提的每一条异议这里都是**空名字**
+     * （新的写在 disputes 里，老的那个字段活了不到一个下午）——
+     * 出来的是一句「 说这个比分不对」，而看的人只能挨个去问。
+     */
+    const who = disputers(match).map(nameOf).join(t('、', ', '))
     return (
       <p className="text-danger-600 px-1 text-caption">
         {t(
@@ -454,11 +468,31 @@ export function MatchResult({ matchId }: { matchId: string }) {
         </Card>
 
         {/*
-          三种情况各说各的：
-          友谊赛本来就不进 MMR；没分出胜负的场次也没有账；
-          正常打完的才有下面这张表。
+          四种情况各说各的：
+          作废的这一场不作数；友谊赛本来就不进 MMR；没分出胜负的场次
+          也没有账；正常打完的才有下面这张表。
+
+          作废要排在**最前面**，而且必须自己一支：作废之后 outcomeOf
+          查不到这一场（它已经被 decidedMatches 挡掉了），掉进下面那支
+          就会写成「这一场没有分出胜负」—— 而屏幕上明明摆着 21-18。
+          那种自相矛盾比什么都不说更让人怀疑这个 App。
         */}
-        {match.friendly ? (
+        {voided(match) ? (
+          <Card>
+            <p className="text-ink-700 text-sm">
+              {t(
+                '这一场作废了，不算进任何人的 MMR、段位和金币 —— 两边报的比分对不上，管理员不在场判不了谁对。',
+                'This match is void: no MMR, tier or coins for anyone — the two sides reported different scores and an admin was not there to judge.',
+              )}
+            </p>
+            <p className="text-ink-500 mt-1.5 text-caption">
+              {t(
+                '比分还留着，只是不作数。谈拢了回看板恢复，分照样会补回来。',
+                'The score is still here, it just does not count. Settle it, restore it from the board, and the points come back.',
+              )}
+            </p>
+          </Card>
+        ) : match.friendly ? (
           <Card>
             <p className="text-ink-700 text-sm">
               {t(

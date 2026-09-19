@@ -1,5 +1,7 @@
 import type { Match, Player } from '@/types'
-import { sideOf } from './ranking'
+import { sideOf, voided } from './ranking'
+
+export { voided }
 
 /* ------------------------------------------------------------------ *
  * 对手确认记分（异议制）
@@ -172,6 +174,14 @@ export function shouldAsk(
 ): boolean {
   if (!playerId) return false
   if (match.status !== 'done') return false
+  /*
+   * 作废了就别再问。
+   *
+   * 这一场已经不作数了，「这个比分对吗」问的是一个没有答案的问题 ——
+   * 答对答错都不改变任何东西，而那个问句会一直挂在看板最上面，
+   * 挡着真正要办的事。
+   */
+  if (voided(match)) return false
   if (!withinWindow(match, now)) return false
   return confirmPending(match, players).includes(playerId)
 }
@@ -188,7 +198,73 @@ export const CLEAR_CONFIRMATIONS = {
   scoreOk: undefined,
   disputes: undefined,
   disputedBy: undefined,
+  /*
+   * 作废也一起撤掉。
+   *
+   * 作废的理由只有一个：两边报的数对不上，而管理员判不了。那个理由
+   * 一旦没了（有人采纳了对方报的数，或者退回去重记了一遍），这一场就
+   * 该重新算数 —— 留着的话，一场大家已经谈拢的球永远进不了战绩，
+   * 而且没有任何一屏说得清为什么。
+   */
+  voidedAt: undefined,
+  voidedBy: undefined,
 } as const
+
+/* ------------------------------------------------------------------ *
+ * 仲裁：两边都不肯让的时候
+ *
+ * 绝大多数争议在「他报个数、你点一下采纳」就完了 —— 多半本来就是
+ * 手滑多点了一分。剩下那种「两个人记的完全不是一回事」的，上面那一整套
+ * 没有出路：采纳谁的都是把另一个人的说法当成假的。
+ *
+ * -------------------------------------------------------------------
+ * 管理员判的不是对错，是「这一场不作数」
+ *
+ * 他不在场上、没得看，判谁对只是猜 —— 而猜错一次的代价是四个人的
+ * MMR 和一段说不清的历史。所以这个按钮只有一个动作：**作废**。
+ * 作废之后谁也不加分、谁也不扣分，那一晚就像没打过这一场。
+ *
+ * -------------------------------------------------------------------
+ * 三条硬规矩
+ *
+ * 1. **只有被提过异议的场次作废得了。** 不设这条的话，管理员就有了
+ *    一个「随时抹掉任何一场」的按钮 —— 那不是仲裁，是改历史。
+ *    而且有了这条，作废的理由不用问就是知道的（只可能是那一个），
+ *    界面上那句解释才说得死。
+ *
+ * 2. **异议本身永远不等于作废。** 提异议的人不会因此把这一场从 MMR 里
+ *    拿掉 —— 那是给输的人一个稳赚的按钮，每个输的人都会点。
+ *    从「有人不服」到「这一场不算」中间必须隔着一个管理员。
+ *
+ * 3. **作废是可逆的，而且看得见。** 作废一场，四个人的战绩当场跟着变；
+ *    如果它是悄悄发生的，那四个人只会以为 App 算错了。所以那一场
+ *    留在历史里、挂着标记、写着为什么，而且恢复得回来。
+ * ------------------------------------------------------------------ */
+
+/**
+ * 现在能不能作废这一场。
+ *
+ * 「是不是管理员」不在这里判 —— 那是身份，不是这一场的状态，
+ * 而且真正的门在界面那一层（这个 App 里同群的人本来就能改彼此的比分，
+ * 见 supabase/006-who-can-delete.sql，作废不比改比分更危险）。
+ */
+export function canVoid(match: Match): boolean {
+  return match.status === 'done' && disputed(match) && !voided(match)
+}
+
+/** 作废。记谁作废的（账号 id）和什么时候 */
+export const withVoid = (uid: string, now = Date.now()): Partial<Match> => ({
+  voidedAt: now,
+  voidedBy: uid,
+})
+
+/**
+ * 恢复。
+ *
+ * 作废是可逆的，而且**恢复不要求它还在争议中**：管理员按错了一下，
+ * 不该要先去制造一条异议才能撤销。
+ */
+export const UNVOID: Partial<Match> = { voidedAt: undefined, voidedBy: undefined }
 
 /** 点一次「没错」。重复点不会重复记 */
 export const withConfirm = (match: Match, playerId: string): Partial<Match> => ({

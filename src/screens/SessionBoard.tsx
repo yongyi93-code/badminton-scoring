@@ -2,13 +2,18 @@ import { pick, useT } from '@/lib/i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { isFull, rosterForSession, sessionMatches, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
+import { useSocial } from '@/store/useSocial'
 import { matchWinnerBySets } from '@/lib/ranking'
 import {
   applyDispute,
+  canVoid,
   CLEAR_CONFIRMATIONS,
   disputed,
   opponentConfirmed,
   scoreText,
+  UNVOID,
+  voided,
+  withVoid,
 } from '@/lib/confirm'
 import { ConfirmScore } from '@/components/ConfirmScore'
 import {
@@ -233,12 +238,19 @@ function FinishedRow({
   names,
   onReopen,
   onAccept,
+  isAdmin,
+  onVoid,
+  onUnvoid,
 }: {
   match: Match
   names: Map<string, Player>
   onReopen: () => void
   /** 采纳某个人报的比分。传他的球员 id */
   onAccept: (by: string) => void
+  /** 只有管理员看得到作废那个出口 */
+  isAdmin: boolean
+  onVoid: () => void
+  onUnvoid: () => void
 }) {
   const winner = matchWinnerBySets(match)
   const side = (ids: string[], team: 'A' | 'B') => (
@@ -251,16 +263,45 @@ function FinishedRow({
       {ids.map((id) => names.get(id)?.name ?? '?').join(' / ')}
     </span>
   )
+  const isVoid = voided(match)
   return (
-    <div className="rounded-xl border border-line bg-surface px-3 py-2.5">
+    <div
+      className={cx(
+        'rounded-xl border px-3 py-2.5',
+        /* 作废那一场整行压暗：一眼看得出它和别的不是一回事 */
+        isVoid ? 'border-line bg-fill opacity-70' : 'border-line bg-surface',
+      )}
+    >
       <div className="flex items-center gap-2">
         <span className="tnum shrink-0 text-xs text-ink-500">#{match.seq}</span>
         {side(match.teamA, 'A')}
-        <span className="tnum shrink-0 text-sm text-ink-700">
+        <span
+          className={cx(
+            'tnum shrink-0 text-sm text-ink-700',
+            /* 比分划掉。这一场的数字还在，但它不再是任何人的战绩 */
+            isVoid && 'line-through',
+          )}
+        >
           {match.games.map((g) => `${g.a}-${g.b}`).join(' ')}
         </span>
         {side(match.teamB, 'B')}
       </div>
+
+      {/*
+        作废了就把话说全。
+
+        一场球从四个人的战绩里消失，如果只是悄悄变灰，那四个人只会
+        以为 App 算错了，然后来问你为什么胜率不对。所以这一行要同时
+        答三件事：它不算数了、为什么、谁做的决定。
+      */}
+      {isVoid && (
+        <p className="text-ink-500 mt-1.5 text-xs">
+          {pick(
+            '这一场作废了，谁的战绩里都不算 —— 两边报的比分对不上，管理员不在场判不了谁对。',
+            'This match is void and counts for nobody — the two sides reported different scores and an admin was not there to judge.',
+          )}
+        </p>
+      )}
       {/*
         有人说这个数不对。摆在「退回去改」正上方 —— 这一行要做的事
         就是那个按钮，两者隔开的话，看到的人还得自己想下一步是什么。
@@ -304,6 +345,25 @@ function FinishedRow({
       >
         {pick('记错了，退回去改 ›', 'Wrong score? Send it back ›')}
       </button>
+
+      {/* ---------------------------------------------------------- *
+        仲裁那一下。只有管理员看得到，而且**只在有人提过异议的场次上**
+        出现 —— 没有这个限制的话，它就成了一个「随时抹掉任何一场」的
+        按钮，那不是仲裁，是改历史。
+
+        摆在「退回去改」下面，顺序就是该试的顺序：先看看能不能改成
+        双方都认的那个数，实在谈不拢才作废。
+      * ---------------------------------------------------------- */}
+      {isAdmin && canVoid(match) && (
+        <button className="text-danger-600 ml-3 mt-1.5 text-xs" onClick={onVoid}>
+          {pick('谈不拢？作废这一场 ›', 'Deadlocked? Void this match ›')}
+        </button>
+      )}
+      {isAdmin && isVoid && (
+        <button className="text-brand-600 ml-3 mt-1.5 text-xs" onClick={onUnvoid}>
+          {pick('恢复这一场 ›', 'Restore this match ›')}
+        </button>
+      )}
       {/*
         对手确认过。只在没人提异议时显示 —— 两个标记同时挂着
         （「有人说不对」+「对手确认过」）是真实可能的，但一起摆出来
@@ -928,6 +988,16 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
    * 得先找一片空场：直接退回去的话，同一片场上会同时挂着两场，
    * 界面按 courtIndex 取，后面那场会被前面那场盖掉、点不开。
    */
+  /*
+   * 仲裁用的两样：我是不是管理员、我的账号 id（作废要记是谁做的决定）。
+   * 不是管理员的话下面那个按钮根本不出现。
+   */
+  const social = useSocial()
+  const isAdmin = social.isAdmin
+  const meUid = social.meUid
+  /* 正要作废哪一场。null = 没在作废 */
+  const [voiding, setVoiding] = useState<Match | null>(null)
+
   const reopenMatch = (match: Match) => {
     const free = courts.find((i) => !onCourt.has(i))
     if (free === undefined) {
@@ -1569,6 +1639,9 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
                       const patch = applyDispute(m, by)
                       if (patch) updateMatch(m.id, patch)
                     }}
+                    isAdmin={isAdmin}
+                    onVoid={() => setVoiding(m)}
+                    onUnvoid={() => updateMatch(m.id, UNVOID)}
                   />
                 ))}
               {finished.length > 3 && (
@@ -1914,6 +1987,82 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
             {t('继续打', 'Keep playing')}
           </Button>
         </div>
+      </Sheet>
+
+      {/* ------------------------------------------------------------ *
+        作废之前问一句。
+
+        不是走流程 —— 按下去的那一刻，**四个人的 MMR、段位、金币、
+        胜率同时变**，而他们谁也没在这块屏幕前面。一个能悄悄改四个人
+        历史的动作，值得多一次点击。
+      * ------------------------------------------------------------ */}
+      <Sheet
+        open={Boolean(voiding)}
+        onClose={() => setVoiding(null)}
+        title={t('作废这一场', 'Void this match')}
+      >
+        {voiding && (
+          <div className="space-y-4">
+            <div className="border-line bg-fill rounded-card border p-3.5">
+              <p className="tnum text-label font-medium">
+                #{voiding.seq}{' '}
+                {voiding.teamA.map((id) => names.get(id)?.name ?? '?').join(' / ')}
+                {' '}
+                {voiding.games.map((g) => `${g.a}-${g.b}`).join(' ')}
+                {' '}
+                {voiding.teamB.map((id) => names.get(id)?.name ?? '?').join(' / ')}
+              </p>
+              {(voiding.disputes ?? []).map((d) => (
+                <p key={d.by} className="text-ink-500 mt-1 text-caption">
+                  {t(
+                    `${names.get(d.by)?.name ?? '?'} 说应该是 ${scoreText(d.games)}`,
+                    `${names.get(d.by)?.name ?? '?'} says it was ${scoreText(d.games)}`,
+                  )}
+                </p>
+              ))}
+            </div>
+
+            <p className="text-ink-700 text-label">
+              {t(
+                '作废之后这一场谁的战绩里都不算 —— 场上四个人的 MMR、段位、金币、胜率都会当场跟着变。这一场还留在记录里，划掉、写明为什么。',
+                'Once void, this match counts for nobody — the MMR, rank, coins and win rate of all four players change immediately. The match stays in the history, struck through, with the reason shown.',
+              )}
+            </p>
+            {/*
+              先劝一句再给按钮。作废是最后一步，不是第一步 ——
+              绝大多数争议本来就是手滑多点了一分，采纳对方报的那个数
+              就完了，而那条路不动任何人的历史。
+            */}
+            <p className="text-ink-500 text-caption">
+              {t(
+                '先试试上面那个「改成 …」—— 多半的争议就是手滑多点了一分，采纳对方报的数就完了。谈不拢才用这一下。',
+                'Try “Change it to …” first — most disputes are a mis-tap, and adopting the other side’s score settles it without touching anyone’s history.',
+              )}
+            </p>
+
+            <div className="space-y-2">
+              <Button
+                block
+                variant="dangerSoft"
+                onClick={() => {
+                  /*
+                   * 记是谁作废的。没登录时记空的 —— 这种情形进不来
+                   * （isAdmin 一定要有账号），但不为一个不可能的分支
+                   * 去抛错。
+                   */
+                  updateMatch(voiding.id, withVoid(meUid ?? ''))
+                  setVoiding(null)
+                  setNotice(t('这一场作废了', 'That match is now void'))
+                }}
+              >
+                {t('确定作废', 'Void it')}
+              </Button>
+              <Button block variant="ghost" onClick={() => setVoiding(null)}>
+                {t('先不', 'Not now')}
+              </Button>
+            </div>
+          </div>
+        )}
       </Sheet>
     </Screen>
   )

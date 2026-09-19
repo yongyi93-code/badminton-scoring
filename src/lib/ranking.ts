@@ -12,6 +12,15 @@ import { RANK_MIN_GAMES, type Match, type PlayerStats, type TeamSide } from '@/t
 const settled = (m: Match) => m.status === 'done' && matchWinnerBySets(m) !== null
 
 /**
+ * 这一场被作废了 —— 谁的战绩里都不算。
+ *
+ * 判断写在这个文件里而不是 lib/confirm.ts（作废那一整套的所在地），
+ * 只为一件事：confirm.ts 要用 ranking 的 sideOf，反过来引就成环了。
+ * 而且「这一场算不算数」本来就是这个文件的题目。
+ */
+export const voided = (m: Match) => m.voidedAt != null
+
+/**
  * 只统计打完的比赛，并且默认把友谊赛排除在外。
  *
  * 过滤放在这一处是有意的：MMR、段位、金币、累计排行榜、最佳搭档、苦主、
@@ -19,12 +28,17 @@ const settled = (m: Match) => m.status === 'done' && matchWinnerBySets(m) !== nu
  * 友谊赛的客队大多只打这一晚，让他们的战绩去搅动常年累计的榜没有意义。
  *
  * 友谊赛自己那场的结算需要看这些比赛，用 includeFriendly 显式打开。
+ *
+ * 被作废的场次一律挡在这里，**连 includeFriendly 都不放行**：友谊赛
+ * 只是「不进常年累计的榜」，作废是「这一场根本不作数」，两件事不同。
+ * 挡在这一处的好处和上面那条一样 —— 作废一场，四个人的 MMR、段位、
+ * 金币、胜率、连胜、常去球馆同时跟着变，一处都不会漏。
  */
 export const decidedMatches = (
   matches: Match[],
   { includeFriendly = false } = {},
 ) =>
-  matches.filter((m) => settled(m) && (includeFriendly || !m.friendly))
+  matches.filter((m) => settled(m) && !voided(m) && (includeFriendly || !m.friendly))
 
 /**
  * 按真实先后顺序排。

@@ -11,8 +11,12 @@ import {
   sameScore,
   scoreText,
   shouldAsk,
+  UNVOID,
+  canVoid,
+  voided,
   withConfirm,
   withDispute,
+  withVoid,
   withinWindow,
 } from '@/lib/confirm'
 import { decidedMatches } from '@/lib/ranking'
@@ -349,5 +353,132 @@ describe('两个比分是不是同一个', () => {
   })
   it('比分写成给人看的样子', () => {
     expect(scoreText([{ a: 21, b: 18 }, { a: 15, b: 21 }])).toBe('21-18 15-21')
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 仲裁：两边都不肯让的时候
+ *
+ * 这一组钉的是三件，每一件错了都是「谁都不会发现，直到有人发现」：
+ *
+ *   1. 作废的场次真的从 MMR 里出去了（没出去的话这个按钮等于没做）
+ *   2. **异议本身永远不等于作废** —— 这一条错了，就是给输的人一个
+ *      稳赚的按钮，而且它会长得和「做对了」一模一样
+ *   3. 作废不能是随手的：没人提过异议的场次动不了
+ * ------------------------------------------------------------------ */
+
+describe('作废这一场', () => {
+  const disputedMatch = () =>
+    match({ disputes: [{ by: 'b1', games: [{ a: 18, b: 21 }] }] })
+
+  it('作废之后 MMR 那边就看不到它了', () => {
+    const m = { ...disputedMatch(), ...withVoid('uid-admin', NOW) }
+    expect(voided(m)).toBe(true)
+    expect(decidedMatches([m])).toEqual([])
+  })
+
+  /*
+   * 友谊赛那个开关不该把作废的放回来。
+   *
+   * 两件事不同：友谊赛是「不进常年累计的榜」，作废是「这一场根本
+   * 不作数」。混在一起的话，散场结算那一屏（它显式打开 includeFriendly）
+   * 会把一场作废的球算进当晚的账。
+   */
+  it('includeFriendly 也不会把作废的放回来', () => {
+    const m = { ...disputedMatch(), ...withVoid('uid-admin', NOW) }
+    expect(decidedMatches([m], { includeFriendly: true })).toEqual([])
+  })
+
+  it('没作废的照常算', () => {
+    expect(decidedMatches([disputedMatch()])).toHaveLength(1)
+  })
+
+  /*
+   * 整套里最要紧的一条。
+   *
+   * 提异议不该把这一场从 MMR 里拿掉 —— 拿掉的话每个输的人都会点它。
+   * 从「有人不服」到「这一场不算」中间必须隔着一个管理员。
+   */
+  it('光提异议不会让这一场不算数', () => {
+    const m = disputedMatch()
+    expect(disputed(m)).toBe(true)
+    expect(voided(m)).toBe(false)
+    expect(decidedMatches([m])).toHaveLength(1)
+  })
+
+  it('记下是谁作废的、什么时候', () => {
+    const m = { ...disputedMatch(), ...withVoid('uid-admin', NOW) }
+    expect(m.voidedBy).toBe('uid-admin')
+    expect(m.voidedAt).toBe(NOW)
+  })
+
+  it('恢复之后又算数了', () => {
+    const m = { ...disputedMatch(), ...withVoid('uid-admin', NOW), ...UNVOID }
+    expect(voided(m)).toBe(false)
+    expect(decidedMatches([m])).toHaveLength(1)
+  })
+})
+
+describe('什么场次作废得了', () => {
+  /*
+   * 没有这条限制的话，管理员手上就是一个「随时抹掉任何一场」的按钮 ——
+   * 那不是仲裁，是改历史。而且有了它，作废的理由不用问就是知道的
+   * （只可能是那一个），界面上那句解释才说得死。
+   */
+  it('没人提过异议的动不了', () => {
+    expect(canVoid(match())).toBe(false)
+    expect(canVoid(match({ scoreOk: ['b1', 'b2'] }))).toBe(false)
+  })
+
+  it('有人提过异议的可以', () => {
+    expect(canVoid(match({ disputes: [{ by: 'b1', games: [{ a: 18, b: 21 }] }] }))).toBe(true)
+  })
+
+  /* 老版本那种只说「不对」、没说是多少的，一样算争议 */
+  it('老版本的异议也算', () => {
+    expect(canVoid(match({ disputedBy: ['b1'] }))).toBe(true)
+  })
+
+  it('还没打完的动不了', () => {
+    const m = match({ status: 'playing', disputes: [{ by: 'b1', games: [{ a: 18, b: 21 }] }] })
+    expect(canVoid(m)).toBe(false)
+  })
+
+  it('已经作废的不用再作废一次', () => {
+    const m = { ...match({ disputes: [{ by: 'b1', games: [{ a: 18, b: 21 }] }] }), ...withVoid('uid-admin', NOW) }
+    expect(canVoid(m)).toBe(false)
+  })
+})
+
+describe('争议谈拢了，作废跟着撤', () => {
+  /*
+   * 作废的理由只有一个：两边报的数对不上，而管理员判不了。那个理由
+   * 一旦没了，这一场就该重新算数 —— 留着的话，一场大家已经谈拢的球
+   * 永远进不了战绩，而且没有任何一屏说得清为什么。
+   */
+  it('采纳了对方报的比分，作废自动撤掉', () => {
+    const m = { ...match({ disputes: [{ by: 'b1', games: [{ a: 18, b: 21 }] }] }), ...withVoid('uid-admin', NOW) }
+    const patch = applyDispute(m, 'b1')
+    expect(patch).not.toBeNull()
+    expect({ ...m, ...patch }.voidedAt).toBeUndefined()
+    expect(voided({ ...m, ...patch! })).toBe(false)
+  })
+
+  it('退回去重记一遍也一样（走的是同一份 CLEAR_CONFIRMATIONS）', () => {
+    expect(CLEAR_CONFIRMATIONS.voidedAt).toBeUndefined()
+    expect('voidedAt' in CLEAR_CONFIRMATIONS).toBe(true)
+    expect('voidedBy' in CLEAR_CONFIRMATIONS).toBe(true)
+  })
+})
+
+describe('作废之后别再问「这个比分对吗」', () => {
+  /*
+   * 问一个没有答案的问题：答对答错都不改变任何东西，而那个问句
+   * 会一直挂在看板最上面，挡着真正要办的事。
+   */
+  it('作废了就不问了', () => {
+    const m = match({ disputes: [{ by: 'b1', games: [{ a: 18, b: 21 }] }] })
+    expect(shouldAsk(m, 'b2', PLAYERS, NOW)).toBe(true)
+    expect(shouldAsk({ ...m, ...withVoid('uid-admin', NOW) }, 'b2', PLAYERS, NOW)).toBe(false)
   })
 })
