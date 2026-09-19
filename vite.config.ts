@@ -216,6 +216,21 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     /*
+     * 让测试也能 import 那两个推送 Edge Function。
+     *
+     * 它们跑在 Deno 上，写的是 `npm:` 前缀的 import —— Node 这边不认，
+     * 所以在测试里把那两个包换成假的。只在 test 这一层加，打包出去的
+     * App 一个字都不受影响（那两个函数本来也不进前端的包）。
+     *
+     * 为什么值得这么绕：这两个函数是**唯一一处没法在本机跑真 Postgres
+     * 撞出来的权限**（它在 Deno 那一侧，不在数据库策略里），而它们一直
+     * 一条测试都没有。
+     */
+    alias: [
+      { find: /^npm:@supabase\/supabase-js.*$/, replacement: fileURLToPath(new URL('./tests/edge-fakes/supabase.ts', import.meta.url)) },
+      { find: /^npm:web-push.*$/, replacement: fileURLToPath(new URL('./tests/edge-fakes/web-push.ts', import.meta.url)) },
+    ],
+    /*
      * 测试跑在马来西亚时区，不是 UTC。
      *
      * 用户全在 UTC+8，而这个 App 里到处是「今天是哪一天」的判断 ——

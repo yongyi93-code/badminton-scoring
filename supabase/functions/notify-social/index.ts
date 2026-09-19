@@ -274,12 +274,71 @@ async function adminUids(admin: Admin): Promise<string[]> {
 }
 
 /* ------------------------------------------------------------------ *
+ * 谁在调这个函数
+ *
+ * 以前一个字都不问 —— 挡在前面的只有网关那个「Verify JWT」开关，
+ * 而那个开关认的是「有没有一把这个项目的钥匙」，不是「你是谁」。
+ * anon key 是打包进前端的，谁都看得到，所以那等于没有门。
+ *
+ * -------------------------------------------------------------------
+ * 光「是个登录用户」还不够，要问的是「这件事跟你有关吗」
+ *
+ * 只验登录的话，任何一个装了这个 App 的人都能拿着别人的消息 id
+ * 让别人的手机再响一遍 —— 半夜连发一百次，被骚扰的人只能关掉推送。
+ *
+ * 所以每一种通知都往下再问一句：
+ *
+ *   message   你得是这条消息的**发件人**
+ *   friend    申请是申请人发的，同意是同意的人发的
+ *   report    你得是举报的那个人
+ *   feedback  你得是写反馈的那个人
+ *
+ * 这几样都不用多查一次库：那几行本来就要读出来（通知内容只信数据库，
+ * 不信请求体，见文件开头）。
+ *
+ * -------------------------------------------------------------------
+ * uid 只能从令牌里拿，绝不能从请求体里拿
+ *
+ * 和 delete-me 里那一段同一条规矩。请求体是调用方写的，让它自报家门
+ * 等于把门留着不锁还挂个「请说你是谁」的牌子。
+ * ------------------------------------------------------------------ */
+
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info',
+  'access-control-allow-methods': 'POST, OPTIONS',
+}
+
+const reply = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS, 'content-type': 'application/json' },
+  })
+
+/** 调用者是谁。认不出来就是 null —— 认不出就什么都不做 */
+async function callerUid(req: Request, admin: Admin): Promise<string | null> {
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+  if (!token) return null
+  const { data, error } = await admin.auth.getUser(token)
+  if (error) return null
+  return data?.user?.id ?? null
+}
+
+/* ------------------------------------------------------------------ *
  * 主流程
  * ------------------------------------------------------------------ */
 
 type Ask = { kind?: string; id?: string; table?: string; record?: { id?: string } }
 
 Deno.serve(async (req) => {
+  /*
+   * 预检要在验身份之前回：预检请求本来就不带 Authorization 头，
+   * 拿它当「没带令牌」挡回去的话，正式请求永远发不出来。
+   * delete-me 那次就是栽在这儿（界面上只显示一句
+   * 「Failed to send a request」，函数一次都没被调到）。
+   */
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+
   try {
     const body: Ask = await req.json()
 
@@ -307,10 +366,20 @@ Deno.serve(async (req) => {
     console.log('收到:', kind, id)
 
     if (!id || (kind !== 'message' && kind !== 'friend' && kind !== 'report' && kind !== 'feedback')) {
-      return new Response(JSON.stringify({ skipped: 'not mine' }), { status: 200 })
+      return reply({ skipped: 'not mine' })
     }
 
     const admin = await getAdmin()
+
+    /*
+     * 先问「你是谁」。认不出来就到此为止 —— 下面每一支都要拿它
+     * 和那一行里的人对一遍。
+     */
+    const uid = await callerUid(req, admin)
+    if (!uid) {
+      console.log('认不出调用者，拒掉')
+      return reply({ error: '不知道你是谁' }, 401)
+    }
 
     /*
      * 反馈：通知每个管理员。
@@ -331,14 +400,20 @@ Deno.serve(async (req) => {
       if (error) throw error
       if (!data) {
         console.log('这条反馈不存在，跳过')
-        return new Response(JSON.stringify({ skipped: 'no such feedback' }), { status: 200 })
+        return reply({ skipped: 'no such feedback' })
       }
       const fb = data as { kind: string; body: string; author: string }
+
+      /* 只有写反馈的那个人能让管理员的手机响 */
+      if (fb.author !== uid) {
+        console.log('不是本人写的反馈，拒掉')
+        return reply({ error: '这条不是你的' }, 403)
+      }
 
       const admins = await adminUids(admin)
       if (admins.length === 0) {
         console.error('一个管理员都没有：反馈存下来了，但不会有人看到。跑 012 最后那句 SQL')
-        return new Response(JSON.stringify({ admins: 0 }), { status: 200 })
+        return reply({ admins: 0 })
       }
 
       const who = await nameOf(admin, fb.author)
@@ -362,10 +437,7 @@ Deno.serve(async (req) => {
       const sent = out.reduce((n, r) => n + r.sent, 0)
       const failed = out.reduce((n, r) => n + r.failed, 0)
       console.log('推完:', sent, '成功 /', failed, '失败')
-      return new Response(JSON.stringify({ sent, failed }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
+      return reply({ sent, failed })
     }
 
     /*
@@ -387,13 +459,24 @@ Deno.serve(async (req) => {
       if (error) throw error
       if (!data) {
         console.log('这条举报不存在，跳过')
-        return new Response(JSON.stringify({ skipped: 'no such report' }), { status: 200 })
+        return reply({ skipped: 'no such report' })
       }
       const rep = data as {
         reporter: string
         reported: string
         status: string
         evidence: unknown
+      }
+
+      /*
+       * 只有举报的那个人能触发它。
+       *
+       * 这一支比别的更要紧：它会**拍一份聊天记录快照**存进证据里。
+       * 不验的话，任何人都能拿一个举报 id 让系统反复去拍快照。
+       */
+      if (rep.reporter !== uid) {
+        console.log('不是举报人本人，拒掉')
+        return reply({ error: '这条不是你的' }, 403)
       }
 
       /*
@@ -412,7 +495,7 @@ Deno.serve(async (req) => {
          * 所以这里大声地记一笔，不然这件事只能等到有人翻表才发现。
          */
         console.error('一个管理员都没有：举报存下来了，但不会有人看到。跑 012 最后那句 SQL')
-        return new Response(JSON.stringify({ evidence: shot, admins: 0 }), { status: 200 })
+        return reply({ evidence: shot, admins: 0 })
       }
 
       const who = await nameOf(admin, rep.reported)
@@ -429,10 +512,7 @@ Deno.serve(async (req) => {
       const sent = out.reduce((n, r) => n + r.sent, 0)
       const failed = out.reduce((n, r) => n + r.failed, 0)
       console.log('推完:', sent, '成功 /', failed, '失败')
-      return new Response(JSON.stringify({ evidence: shot, sent, failed }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
+      return reply({ evidence: shot, sent, failed })
     }
 
     let to = ''
@@ -454,9 +534,20 @@ Deno.serve(async (req) => {
       if (error) throw error
       if (!data) {
         console.log('这条消息不存在，跳过')
-        return new Response(JSON.stringify({ skipped: 'no such message' }), { status: 200 })
+        return reply({ skipped: 'no such message' })
       }
       const m = data as { sender: string; recipient: string }
+      /*
+       * 只有发件人能让收件人的手机响。
+       *
+       * 不验的话，任何人拿着一条消息的 id 就能半夜连发一百次 ——
+       * 内容是真的（这个函数不信请求体），但**响一百次**这件事本身
+       * 就是骚扰，而被骚扰的人只能把推送整个关掉。
+       */
+      if (m.sender !== uid) {
+        console.log('不是发件人本人，拒掉')
+        return reply({ error: '这条不是你的' }, 403)
+      }
       to = m.recipient
       const who = await nameOf(admin, m.sender)
       title = {
@@ -475,7 +566,7 @@ Deno.serve(async (req) => {
       if (error) throw error
       if (!data) {
         console.log('这条关系不存在，跳过')
-        return new Response(JSON.stringify({ skipped: 'no such friendship' }), { status: 200 })
+        return reply({ skipped: 'no such friendship' })
       }
       const f = data as { requester: string; addressee: string; status: string }
 
@@ -485,6 +576,17 @@ Deno.serve(async (req) => {
        *   accepted 被申请的人 → 发起的人   「他答应了」
        * 弄反的话，通知会发给刚刚自己按了按钮的那个人。
        */
+      /*
+       * 方向决定该由谁来触发：申请是申请人按的，同意是同意的人按的。
+       * 拿反了不只是权限问题 —— 那意味着通知会发给刚刚自己按了按钮
+       * 的那个人。
+       */
+      const mover = f.status === 'pending' ? f.requester : f.addressee
+      if (mover !== uid) {
+        console.log('不是按下那一步的人，拒掉')
+        return reply({ error: '这条不是你的' }, 403)
+      }
+
       if (f.status === 'pending') {
         to = f.addressee
         const who = await nameOf(admin, f.requester)
@@ -506,12 +608,9 @@ Deno.serve(async (req) => {
 
     const r = await pushTo(admin, to, title, text, tag)
     console.log('推完:', r.sent, '成功 /', r.failed, '失败')
-    return new Response(JSON.stringify(r), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    })
+    return reply(r)
   } catch (e) {
     console.error('整个函数炸了:', describe(e))
-    return new Response(JSON.stringify({ error: describe(e) }), { status: 500 })
+    return reply({ error: describe(e) }, 500)
   }
 })

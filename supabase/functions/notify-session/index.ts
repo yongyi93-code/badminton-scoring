@@ -125,9 +125,64 @@ async function getAdmin() {
   throw new Error(`手上的钥匙都查不通 push_subscribers：${tried.join(' ; ')}`)
 }
 
+/* ------------------------------------------------------------------ *
+ * 谁在调这个函数
+ *
+ * 以前一个字都不问，而这个函数比别的都危险：**整条通知的文字都来自
+ * 请求体**（球馆名、上限人数、开局的人），而且它推给订阅表里的
+ * 每一个人。也就是说，拿到那个地址的人可以让所有装了这个 App 的
+ * 手机弹出他想要的任何一句话。
+ *
+ * 挡在前面的只有网关那个「Verify JWT」开关，而它认的是「有没有一把
+ * 这个项目的钥匙」—— anon key 打包在前端里，谁都看得到。
+ *
+ * -------------------------------------------------------------------
+ * 验到「你就是开这场局的人」，不只是「你登录了」
+ *
+ * 只验登录的话，任何一个装了 App 的人照样能广播任意文字。
+ * 所以再往下问一句：body 里那个 createdBy，是不是你？
+ *
+ * 那一行球员本来就要读出来（通知里要写开局的人叫什么），所以这一步
+ * 不多花一次查询 —— 顺手把 ownerId 一起读回来比一下就行。
+ *
+ * **代价写在明面上**：一个登录了、但球员身份还没认领的人（ownerId
+ * 是空的）开局，通知发不出去了。那种人本来也拿不到名字，通知上会写
+ * 「有人开球局了」—— 少一条没名字的通知，比留着一个任何人都能
+ * 广播任意文字的口子划算。日志里会写清楚是被这一条挡的。
+ * ------------------------------------------------------------------ */
+
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info',
+  'access-control-allow-methods': 'POST, OPTIONS',
+}
+
+const reply = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS, 'content-type': 'application/json' },
+  })
+
+type Admin = Awaited<ReturnType<typeof getAdmin>>
+
+/** 调用者是谁。认不出来就是 null —— uid 只从令牌里拿，绝不从请求体里拿 */
+async function callerUid(req: Request, admin: Admin): Promise<string | null> {
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+  if (!token) return null
+  const { data, error } = await admin.auth.getUser(token)
+  if (error) return null
+  return data?.user?.id ?? null
+}
+
 type Row = { kind?: string; id?: string; data?: Record<string, unknown> }
 
 Deno.serve(async (req) => {
+  /*
+   * 预检要在验身份之前回 —— 预检本来就不带 Authorization 头，
+   * 拿它当「没带令牌」挡回去的话，正式请求永远发不出来。
+   */
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+
   try {
     const body = await req.json()
     // 数据库 Webhook 的格式：{ type, table, record, old_record }
@@ -159,7 +214,7 @@ Deno.serve(async (req) => {
 
     if (row?.kind !== 'session') {
       console.log('不是球局，跳过')
-      return new Response(JSON.stringify({ skipped: 'not a session' }), { status: 200 })
+      return reply({ skipped: 'not a session' })
     }
 
     const data = (row.data ?? {}) as {
@@ -171,23 +226,48 @@ Deno.serve(async (req) => {
     }
     if (data.status && data.status !== 'active') {
       console.log('球局不是进行中，跳过:', data.status)
-      return new Response(JSON.stringify({ skipped: 'not active' }), { status: 200 })
+      return reply({ skipped: 'not active' })
     }
 
     /* 到这儿才去挑钥匙：不是球局的那些请求根本不用碰数据库 */
     const admin = await getAdmin()
 
-    /* 开局的人叫什么 —— 通知里没有名字，收到的人不知道该不该去 */
-    let hostName = ''
-    if (data.createdBy) {
-      const { data: host } = await admin
-        .from('records')
-        .select('data')
-        .eq('kind', 'player')
-        .eq('id', data.createdBy)
-        .maybeSingle()
-      hostName = (host?.data as { name?: string } | undefined)?.name ?? ''
+    const uid = await callerUid(req, admin)
+    if (!uid) {
+      console.log('认不出调用者，拒掉')
+      return reply({ error: '不知道你是谁' }, 401)
     }
+
+    /*
+     * 开局的人叫什么 —— 通知里没有名字，收到的人不知道该不该去。
+     * 顺手把 ownerId 一起读回来：这一行就是用来验「是不是你开的局」的。
+     */
+    if (!data.createdBy) {
+      console.log('没说是谁开的局，拒掉')
+      return reply({ error: '没说是谁开的局' }, 400)
+    }
+    const { data: host } = await admin
+      .from('records')
+      .select('data')
+      .eq('kind', 'player')
+      .eq('id', data.createdBy)
+      .maybeSingle()
+    const hostRow = host?.data as { name?: string; ownerId?: string | null } | undefined
+    if (!hostRow) {
+      console.log('开局的那个球员查不到，拒掉')
+      return reply({ error: '开局的人查不到' }, 400)
+    }
+    /*
+     * 只有本人能替自己吆喝。
+     *
+     * 不验的话，这一整条通知的文字（球馆、人数、谁开的）都来自请求体，
+     * 而它推给订阅表里的每一个人 —— 那等于一个对全网开着的广播口。
+     */
+    if (hostRow.ownerId !== uid) {
+      console.log('不是开局那个人本人，拒掉')
+      return reply({ error: '这不是你开的局' }, 403)
+    }
+    const hostName = hostRow.name ?? ''
 
     const venueZh = data.venue?.trim() || '球馆'
     const venueEn = data.venue?.trim() || 'a venue'
@@ -253,15 +333,9 @@ Deno.serve(async (req) => {
 
     const sent = results.filter((r) => r.status === 'fulfilled').length
     console.log('推完:', sent, '成功 /', results.length - sent, '失败')
-    return new Response(
-      JSON.stringify({ sent, failed: results.length - sent }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
-    )
+    return reply({ sent, failed: results.length - sent })
   } catch (e) {
     console.error('整个函数炸了:', describe(e))
-    return new Response(
-      JSON.stringify({ error: describe(e) }),
-      { status: 500, headers: { 'content-type': 'application/json' } },
-    )
+    return reply({ error: describe(e) }, 500)
   }
 })
