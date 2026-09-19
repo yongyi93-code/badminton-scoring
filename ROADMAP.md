@@ -104,6 +104,26 @@ revoke legacy secret 之后它到底还认不认新钥匙签的令牌）我没�
 从 Authorization 头里取令牌，`admin.auth.getUser(token)` 问出 uid，
 问不出就 401。补完再把那个网关开关关掉，前后都说得清。
 
+### Story 的清理任务要在后台自己排一次（028 之后）
+
+`supabase/028-stories.sql` 跑完，过期的 Story 在**界面上**已经看不到了 ——
+读策略把它们挡住了。但**行还在、文件还在桶里**，而存储只涨不跌。
+
+剩下那一半是 `supabase/functions/cleanup-stories`：部署那个函数，
+在 Edge Functions → Secrets 里加一条 `CLEANUP_SECRET`，
+再建一个每小时跑一次的 Cron 任务调它、请求头带 `x-cleanup-secret`。
+
+**这一步是这一整块里唯一一个「不做也看不出区别」的步骤**，
+所以它最容易被忘掉 —— 忘掉的代价是一年后发现桶里堆了几个 G，
+而且那些照片其实还在，只是没人显示它。
+
+想确认它真的在跑，看这个数会不会一直涨（正常是 0 或者个位数）：
+
+```sql
+select count(*) from public.posts
+ where expires_at is not null and expires_at <= now();
+```
+
 ---
 
 ## 二、用起来最缺的

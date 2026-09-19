@@ -53,6 +53,9 @@ export const POST_MAX_BYTES = 900 * 1024
  * 所以这一步没有放大任何权限 —— 放大的只是「拿到手机之后还能看多久」。
  * ------------------------------------------------------------------ */
 
+/** Story 活多久。和 028 里那个夹子是同一个数，改一处要改两处 */
+export const STORY_MS = 24 * 60 * 60 * 1000
+
 /**
  * 链接签多久。
  *
@@ -96,6 +99,14 @@ export type Post = {
   photos: string[]
   created_at: string
   /**
+   * 什么时候消失（028）。null = 永久，有值 = Story。
+   *
+   * 「Story」在数据库里不是另一张表，就是这一列 —— 理由见
+   * supabase/028-stories.sql 开头：另起一张表意味着可见范围、下架、
+   * 评论、点赞、禁言那六样全要抄一遍。
+   */
+  expires_at?: string | null
+  /**
    * 谁看得到（026）。
    *
    *   friends  只有好友。默认，绝大多数
@@ -117,7 +128,7 @@ export type FeedItem = Post & {
   liked: boolean
 }
 
-const COLS = 'id, author, body, photos, created_at, hidden_at, visibility'
+const COLS = 'id, author, body, photos, created_at, hidden_at, visibility, expires_at'
 
 /**
  * 这条动态能不能发。发不了就给一句人话。
@@ -195,6 +206,8 @@ export async function createPost(draft: {
   body: string
   files: Blob[]
   visibility?: Visibility
+  /** 真 = 这是一条 Story，24 小时之后自己消失 */
+  story?: boolean
 }): Promise<PostResult> {
   if (!supabase) return { ok: false, error: pick('没连上云端', 'Not connected') }
   const bad = checkDraft({ body: draft.body, count: draft.files.length })
@@ -239,6 +252,11 @@ export async function createPost(draft: {
       body: draft.body.trim() || null,
       photos: paths,
       visibility: draft.visibility ?? defaultVisibility,
+      /*
+       * 报一个 24 小时之后。真正说了算的是数据库那个触发器 ——
+       * 它会夹住（最多 24 小时），所以这台手机的时钟偏了也不要紧。
+       */
+      expires_at: draft.story ? new Date(Date.now() + STORY_MS).toISOString() : null,
     })
     .select('id')
   if (error) {
@@ -307,6 +325,16 @@ export async function fetchMoments(opts: {
   before?: string
   limit?: number
   meUid?: string | null
+  /**
+   * 要哪一种。
+   *
+   *   'posts'（默认）  只要永久的 —— 时间线上不混 Story
+   *   'stories'        只要会过期的 —— 顶上那一排圈圈
+   *
+   * 分开是因为它们在界面上是两个东西：时间线是往下翻的，
+   * Story 是横着一排、点开全屏看的。混在一起两边都不像。
+   */
+  kind?: 'posts' | 'stories'
 } = {}): Promise<FeedItem[]> {
   if (!supabase) return []
   let q = supabase
@@ -317,6 +345,12 @@ export async function fetchMoments(opts: {
   if (opts.uid) q = q.eq('author', opts.uid)
   else if (opts.authors) q = q.in('author', opts.authors.slice(0, 200))
   if (opts.before) q = q.lt('created_at', opts.before)
+  /*
+   * 过期的那些在策略那边就已经读不到了（028），所以这里只管分两种，
+   * 不用再判一次「有没有过期」—— 判两遍的两处迟早不一样。
+   */
+  if (opts.kind === 'stories') q = q.not('expires_at', 'is', null)
+  else q = q.is('expires_at', null)
 
   const { data, error } = await q
   if (error) {

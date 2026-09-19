@@ -28,17 +28,26 @@ export function PostSheet({
   open,
   onClose,
   onDone,
+  story: storyDefault = false,
 }: {
   open: boolean
   onClose: () => void
   /** 发出去之后让外面那一屏重新刷 */
   onDone: () => void
+  /**
+   * 打开的时候就是「24 小时后消失」那一档（028）。
+   *
+   * 从顶上那一排圈圈的「＋」进来时是真：人点的是 Story 那个入口，
+   * 再让他自己去勾一下开关，等于那个入口没意思。
+   */
+  story?: boolean
 }) {
   const t = useT()
   const input = useRef<HTMLInputElement>(null)
   const [body, setBody] = useState('')
   const [pics, setPics] = useState<Picked[]>([])
   const [visibility, setVisibility] = useState<Visibility>(defaultVisibility)
+  const [story, setStory] = useState(storyDefault)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -64,6 +73,17 @@ export function PostSheet({
     setVisibility(defaultVisibility)
     setError(null)
   }, [open])
+
+  /*
+   * 打开的那一下决定这是「动态」还是「Story」。
+   *
+   * 放在打开时而不是关闭时：从「＋」进来的那一次，外面是**同时**
+   * 把「开」和「是 Story」两件事设过来的 —— 只在关闭时读 storyDefault
+   * 的话，读到的永远是上一次那个值，于是从 Story 入口进来却发成了动态。
+   */
+  useEffect(() => {
+    if (open) setStory(storyDefault)
+  }, [open, storyDefault])
 
   const add = (files: File[]) => {
     const room = MAX_PHOTOS - pics.length
@@ -99,7 +119,7 @@ export function PostSheet({
     }
     setBusy(true)
     setError(null)
-    const r = await createPost({ body, files: pics.map((p) => p.file), visibility })
+    const r = await createPost({ body, files: pics.map((p) => p.file), visibility, story })
     setBusy(false)
     if (!r.ok) {
       setError(r.error)
@@ -113,7 +133,11 @@ export function PostSheet({
   const empty = !body.trim() && pics.length === 0
 
   return (
-    <Sheet open={open} onClose={busy ? () => {} : onClose} title={t('发动态', 'New post')}>
+    <Sheet
+      open={open}
+      onClose={busy ? () => {} : onClose}
+      title={story ? t('发一条会消失的', 'New story') : t('发动态', 'New post')}
+    >
       <div className="space-y-4">
         <textarea
           className={cx(inputClass, 'min-h-28 resize-none')}
@@ -256,6 +280,70 @@ export function PostSheet({
           )}
         </div>
 
+        {/* ---------------------------------------------------------- *
+          留多久（028）。
+
+          和上面「谁看得到」同一种摆法，理由也同一条：这是一个**读错
+          了会后悔**的选择。一条本想留着的动态第二天没了，和一条本想
+          第二天就没的动态永远留着 —— 两个方向都难受，而开关要人先
+          猜「开」是哪一边。
+
+          默认永远是「一直在」：会消失是一个要特意去点的选择。
+        * ---------------------------------------------------------- */}
+        <div>
+          <p className="text-label font-medium">{t('留多久', 'How long it stays')}</p>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            {(
+              [
+                {
+                  v: false,
+                  title: t('一直在', 'Keep it'),
+                  hint: t('普通动态', 'A normal post'),
+                },
+                {
+                  v: true,
+                  title: t('24 小时后消失', 'Gone in 24h'),
+                  hint: t('摆在朋友圈最上面那一排', 'Shows in the ring row on top'),
+                },
+              ] as const
+            ).map((o) => (
+              <button
+                key={String(o.v)}
+                onClick={() => setStory(o.v)}
+                disabled={busy}
+                className={cx(
+                  'rounded-lg border px-3 py-2 text-left',
+                  story === o.v ? 'border-brand-500 bg-brand-100' : 'border-line bg-surface',
+                )}
+              >
+                <span className="block text-caption font-medium">{o.title}</span>
+                <span className="text-ink-500 block text-caption">{o.hint}</span>
+              </button>
+            ))}
+          </div>
+          {/*
+            「消失」这两个字要兑现，所以这里把它到底消失到什么程度说清楚：
+            时间到了连你自己都看不到（028 那条策略里写死的），照片也是真删。
+            说成「别人看不到了」是在留后路，而人是按字面意思信的。
+          */}
+          {story && (
+            <div className="border-line bg-fill mt-2 rounded-card border p-3">
+              <p className="text-ink-700 text-caption">
+                {t(
+                  '24 小时之后这一条会真的没掉 —— 连你自己也看不到，照片也会从云端删掉。',
+                  'After 24 hours this is really gone — you will not see it either, and the photos are deleted from the cloud.',
+                )}
+              </p>
+              <p className="text-ink-700 mt-1.5 text-caption">
+                {t(
+                  '看过的人截过图的话，那张图还在他手机上 —— 这一点谁也管不了。',
+                  'If someone screenshotted it, that copy is on their phone — nothing can undo that.',
+                )}
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="space-y-2">
           <Button
             block
@@ -268,17 +356,22 @@ export function PostSheet({
           </Button>
           <Button block variant="primary" disabled={busy || empty} onClick={() => void send()}>
             {busy
-            ? t('正在发…', 'Posting…')
-            : visibility === 'public'
-              ? t('公开发出去', 'Post publicly')
-              : t('发给好友', 'Post to friends')}
+              ? t('正在发…', 'Posting…')
+              : story
+                ? /* 会消失这件事写在按钮上 —— 那是按下去之前最后一次机会 */
+                  visibility === 'public'
+                  ? t('公开发出去（24 小时）', 'Post publicly (24h)')
+                  : t('发给好友（24 小时）', 'Post to friends (24h)')
+                : visibility === 'public'
+                  ? t('公开发出去', 'Post publicly')
+                  : t('发给好友', 'Post to friends')}
           </Button>
         </div>
 
         <p className="text-ink-500 text-caption">
           {t(
-            '照片会在你手机上先压小再上传 —— 顺带把里面的拍摄地点信息一起去掉。发出去之后改不了（包括「谁看得到」），只能删了重发。',
-            'Photos are shrunk on your phone before upload, which also strips the location data your camera embeds. Nothing can be edited afterwards — including who can see it. Delete and repost instead.',
+            '照片会在你手机上先压小再上传 —— 顺带把里面的拍摄地点信息一起去掉。发出去之后改不了（包括「谁看得到」和「留多久」），只能删了重发。',
+            'Photos are shrunk on your phone before upload, which also strips the location data your camera embeds. Nothing can be edited afterwards — including who can see it and how long it stays. Delete and repost instead.',
           )}
         </p>
       </div>
