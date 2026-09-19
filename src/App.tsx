@@ -22,6 +22,7 @@ import { Reports } from '@/screens/Reports'
 import { Feedback } from '@/screens/Feedback'
 import { Appeals } from '@/screens/Appeals'
 import { Admins } from '@/screens/Admins'
+import { Roster } from '@/screens/Roster'
 import { Legal } from '@/screens/Legal'
 import { setRoute } from '@/lib/errorlog'
 import { TabBar } from '@/components/TabBar'
@@ -172,6 +173,8 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <Appeals />
     case 'admins':
       return <Admins />
+    case 'roster':
+      return <Roster />
     case 'legal':
       return <Legal tab={route.tab} />
   }

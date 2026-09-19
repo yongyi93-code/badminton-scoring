@@ -714,6 +714,15 @@ export function Me() {
                 />
               )}
               {/*
+                球群成员。谁都看得见 —— 「谁还在打」是这个球群里每个人
+                的事，不是管理员的事。真正的门在数据库那边（同群才改得动）。
+              */}
+              <MenuRow
+                title={t('球群成员', 'Club roster')}
+                hint={t('不打了的人可以收起来', 'Put away anyone who stopped playing')}
+                onClick={() => push({ name: 'roster' })}
+              />
+              {/*
                 管理员名单。只有 owner 看得见 —— 普通管理员看见一个
                 改不动的入口，只会以为是坏了。
               */}
