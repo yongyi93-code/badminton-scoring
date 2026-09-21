@@ -47,6 +47,7 @@ export function PostSheet({
   onClose,
   onDone,
   story: storyDefault = false,
+  initialFiles,
 }: {
   open: boolean
   onClose: () => void
@@ -59,6 +60,18 @@ export function PostSheet({
    * 再让他自己去勾一下开关，等于那个入口没意思。
    */
   story?: boolean
+  /**
+   * 打开之前就已经选好的照片。
+   *
+   * 给那一排圈圈的「＋」用：它在**点下去那一刻**就把相册开起来了
+   * （见 StoryStrip），选完照片才轮到这张纸。所以照片是跟着
+   * 「打开」一起到的，不是进来之后再挑的。
+   *
+   * 为什么不由这张纸自己去开相册：Safari 只认**用户手势那一下**，
+   * 等弹层开了再用 effect 去 click 那个 input 会被静悄悄挡掉 ——
+   * 而「点了没反应」是最难查的一类。
+   */
+  initialFiles?: File[]
 }) {
   const t = useT()
   const input = useRef<HTMLInputElement>(null)
@@ -126,6 +139,26 @@ export function PostSheet({
     setPics((old) => [...old, ...taking.map((f) => ({ file: f, url: URL.createObjectURL(f) }))])
   }
 
+  /*
+   * 外面选好的那几张，放进来。
+   *
+   * 走的是上面那个 add，不是直接 setPics —— 张数上限、格式、大小
+   * 那几道判断只有一份，外面进来的不该有第二条规矩。
+   *
+   * 认的是**这个数组换了没有**：外面每挑一次给一个新数组，所以
+   * 同一批不会被加两遍，而挑两次会各加一次。
+   *
+   * StrictMode 会不会把它加两遍？不会 —— 真浏览器里开着 StrictMode
+   * 量过，一张就是一张。StrictMode 只在**挂载**那一次重跑 effect，
+   * 而这张纸是一直挂着的（关着的时候 Sheet 自己返回 null），
+   * 挂载那一刻 initialFiles 还是空的，被上面那句挡掉了。
+   */
+  useEffect(() => {
+    if (!open || !initialFiles?.length) return
+    add(initialFiles)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialFiles])
+
   const drop = (i: number) => {
     setPics((old) => {
       URL.revokeObjectURL(old[i].url)
@@ -161,21 +194,6 @@ export function PostSheet({
       title={story ? t('发一条会消失的', 'New story') : t('发动态', 'New post')}
     >
       <div className="space-y-4">
-        <textarea
-          className={cx(inputClass, 'min-h-28 resize-none')}
-          value={body}
-          disabled={busy}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder={t('今晚打得怎么样？', 'How did it go tonight?')}
-          aria-label={t('说点什么', 'Say something')}
-        />
-        {/* 字数只在快满的时候出现 —— 平时它是噪音 */}
-        {left < 100 && (
-          <p className={cx('text-right text-caption', left < 0 ? 'text-danger-600' : 'text-ink-500')}>
-            {left}
-          </p>
-        )}
-
         {pics.length > 0 && (
           <div
             className="grid gap-1.5"
@@ -201,6 +219,28 @@ export function PostSheet({
               </div>
             ))}
           </div>
+        )}
+
+        {/*
+          文字在照片下面。
+
+          点「＋」直接开相册之后，走到这张纸的时候照片已经在手上了 ——
+          它才是这一条的内容，那一段字是配的。把空文本框摆在照片上面
+          会让人以为「还得先写点什么」。
+        */}
+        <textarea
+          className={cx(inputClass, 'min-h-28 resize-none')}
+          value={body}
+          disabled={busy}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder={t('今晚打得怎么样？', 'How did it go tonight?')}
+          aria-label={t('说点什么', 'Say something')}
+        />
+        {/* 字数只在快满的时候出现 —— 平时它是噪音 */}
+        {left < 100 && (
+          <p className={cx('text-right text-caption', left < 0 ? 'text-danger-600' : 'text-ink-500')}>
+            {left}
+          </p>
         )}
 
         <input

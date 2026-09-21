@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '@/store/useApp'
 import { useCards } from '@/store/useCards'
 import { useSocial, friendUids } from '@/store/useSocial'
@@ -49,7 +49,10 @@ export function StoryStrip() {
   const [stories, setStories] = useState<FeedItem[]>([])
   const [watching, setWatching] = useState<number | null>(null)
   const [composing, setComposing] = useState(false)
+  /** 点「＋」那一下就选好的照片，跟着弹层一起递进去 */
+  const [picked, setPicked] = useState<File[]>([])
   const [note, setNote] = useState<string | null>(null)
+  const picker = useRef<HTMLInputElement>(null)
 
   const meUid = social.meUid
   const friends = useMemo(() => friendUids(social), [social])
@@ -108,6 +111,28 @@ export function StoryStrip() {
     feedChanged()
   }
 
+  /*
+   * 点「＋」= **直接开相册**，和 Instagram 一样。
+   *
+   * 原来点进去先看到的是一个空文本框，要再点一下「加照片」才轮到
+   * 相册 —— 可是发 Story 十次有九次是为了发一张照片，那一下点击
+   * 纯粹是挡在中间的。
+   *
+   * 两件事必须在**同一个点击事件里**做完：
+   *
+   *   1. input.click() —— Safari 只认用户手势那一下。放到弹层打开
+   *      之后的 effect 里会被静悄悄挡掉，表现是「点了没反应」。
+   *   2. 同时把弹层也打开 —— 相册是系统盖上来的一层，取消掉之后
+   *      露出来的就是这张纸。这样**不用去判断人有没有取消**
+   *      （iOS 上取消根本不发事件，判不出来），而且想发一条纯文字的
+   *      Story 时，取消相册就正好落在文本框前面。
+   */
+  const newStory = () => {
+    setPicked([])
+    setComposing(true)
+    picker.current?.click()
+  }
+
   const canPost = Boolean(meUid) && !myBan
   if (rings.length === 0 && !canPost) return null
 
@@ -118,12 +143,35 @@ export function StoryStrip() {
         meUid={meUid}
         canPost={canPost}
         onOpen={setWatching}
-        onNew={() => setComposing(true)}
+        onNew={newStory}
+      />
+
+      {/*
+        这个 input 摆在 StoryStrip 里而不是弹层里，就为了上面那条：
+        点下去的那一刻弹层还没挂出来，而手势不等人。
+      */}
+      <input
+        ref={picker}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          /*
+           * 先把 FileList 摊成数组，**再**清空 value —— input.files
+           * 是活的引用，顺序反过来一张都拿不到（PostSheet 里那段
+           * 注释写了是怎么撞出来的）。
+           */
+          const files = e.target.files ? [...e.target.files] : []
+          e.target.value = ''
+          if (files.length) setPicked(files)
+        }}
       />
 
       <PostSheet
         open={composing}
         story
+        initialFiles={picked}
         onClose={() => setComposing(false)}
         /* 自己不用刷：bump 变了 load 会跟着变，effect 自己再跑一遍 */
         onDone={feedChanged}
