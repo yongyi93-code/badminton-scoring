@@ -116,6 +116,8 @@ export type SessionDraft = {
   createdBy?: string
   /** 要不要开局的人点头，别人才进得来 */
   approval?: boolean
+  /** 私人局：不挂到全 App 的公开列表上。默认不勾 = 公开 */
+  private?: boolean
 }
 
 type AppState = {
@@ -538,6 +540,7 @@ export const useApp = create<AppState>()(
           maxPlayers: draft.maxPlayers,
           createdBy: draft.createdBy,
           approval: draft.approval,
+          private: draft.private,
         }
         set((s) => ({ sessions: [session, ...s.sessions] }))
         return session

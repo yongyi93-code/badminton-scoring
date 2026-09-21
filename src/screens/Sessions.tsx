@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { activeSessionOf, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Body, Button, Card, EmptyState, Pill, Screen, Segmented, cx } from '@/components/ui'
+import { OpenBoard } from '@/components/OpenBoard'
 import {
   formatDate,
   formatMonth,
@@ -15,7 +16,7 @@ import {
 import { FORMAT_LABELS, formatOf, type Session } from '@/types'
 import { venueLabel } from '@/lib/venues'
 
-type Filter = 'byDate' | 'past'
+type Filter = 'byDate' | 'open' | 'past'
 
 /**
  * 球局列表。
@@ -187,11 +188,21 @@ export function Sessions() {
           onChange={setFilter}
           options={[
             { value: 'byDate', label: t('按日期', 'By date') },
+            /*
+             * 「公开」= 全 App 的局，不只是自己球群的。
+             *
+             * 摆在中间不是随手排的：左边是「我们自己的局」，右边是
+             * 「打过的」—— 中间这一栏是唯一一处能看到陌生人的地方，
+             * 而找局的人多半是先看自己群有没有，没有才往外找。
+             */
+            { value: 'open', label: t('公开', 'Open') },
             { value: 'past', label: `${t('历史', 'History')} (${past.length})` },
           ]}
         />
 
-        {filter === 'byDate' ? (
+        {filter === 'open' ? (
+          <OpenBoard />
+        ) : filter === 'byDate' ? (
           <>
             {/*
               一周七天摆一排，点哪天看哪天。

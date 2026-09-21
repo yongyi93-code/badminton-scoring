@@ -90,6 +90,15 @@ export function SessionSetup() {
    * 多一道手续只是添麻烦，而绝大多数局是熟人局。
    */
   const [approval, setApproval] = useState(false)
+  /*
+   * 私人局：不挂到全 App 的公开列表上。
+   *
+   * 默认不勾 —— 这个 App 接下来要做的事就是让人找得到局，所以
+   * 「能被找到」是常态。和上面那个 approval 是两件事，别混：
+   * approval 管「进来要不要我点头」，这个管「别人看不看得见」。
+   * 一场公开但要审批的局是完全说得通的，而且多半是最常见的那种。
+   */
+  const [isPrivate, setPrivate] = useState(false)
   const [defaultType, setDefaultType] = useState<MatchType>('doubles')
   const [pairingMode, setPairingMode] = useState<PairingMode>('balanced')
   const [pointsToWin, setPointsToWin] = useState(DEFAULT_RULES.pointsToWin)
@@ -230,6 +239,7 @@ export function SessionSetup() {
       playerIds: selected,
       maxPlayers: maxPlayers > 0 ? maxPlayers : undefined,
       approval: approval || undefined,
+      private: isPrivate || undefined,
       createdBy: meId ?? undefined,
       defaultType,
       rules: { pointsToWin, winBy2, bestOf, cap: capFor(pointsToWin) },
@@ -422,6 +432,39 @@ export function SessionSetup() {
               checked={approval}
               onChange={setApproval}
               label={t('要我通过才能加入', 'I approve each person')}
+            />
+          </Field>
+
+          {/*
+            看不看得见。
+
+            默认公开：这个 App 的下一步就是让人找得到局，而一场没人
+            找得到的局等于没开。勾一下能收回来 —— 朋友之间约的、
+            公司包场的，那些不该出现在陌生人的列表里。
+
+            **公开出去的到底是什么，要在这儿说全**，不能只写在代码里：
+            球馆、时间、人数、谁开的，**还有球群邀请码** —— 最后那样
+            是别人点得动「我要来」的前提，也意味着看到这场局的人
+            拿得到进你球群的门牌号。比分、名单、聊天一样都不出去。
+          */}
+          <Field
+            label={t('谁看得见', 'Who can see it')}
+            hint={
+              isPrivate
+                ? t(
+                    '只有你球群里的人看得到这一场',
+                    'Only people already in your club can see this one',
+                  )
+                : t(
+                    '装了 App 的人都能在「加入球局」里看到：球馆、时间、几个人、谁开的，以及进你球群的邀请码',
+                    'Anyone with the app sees it under Join: venue, time, headcount, who started it — and the code to get into your club',
+                  )
+            }
+          >
+            <Toggle
+              checked={isPrivate}
+              onChange={setPrivate}
+              label={t('私人局，不公开', 'Private — do not list it')}
             />
           </Field>
 

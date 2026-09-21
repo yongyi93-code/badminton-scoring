@@ -34,6 +34,7 @@ import { useOpenFromPush } from '@/lib/openFromPush'
 import { useBroadcastPlaying } from '@/lib/nowPlaying'
 import { useSeedMyName } from '@/lib/profile'
 import { useLoadCards } from '@/store/useCards'
+import { useOpenBoardSync } from '@/store/useOpenBoard'
 
 export default function App() {
   const route = useRoute()
@@ -78,6 +79,8 @@ export default function App() {
    * 看板上还是旧的」——它们只隔一个手势。
    */
   useLoadCards()
+  /* 公开球局：拉别人的，推自己的（见 store/useOpenBoard.ts） */
+  useOpenBoardSync()
 
   /*
    * 把「现在在哪一屏」告诉报错那边。
