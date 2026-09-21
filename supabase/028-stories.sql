@@ -179,7 +179,14 @@ do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     grant select on public.expired_stories to service_role;
-    grant delete on public.posts to service_role;
+    /*
+     * 这两句都要。
+     *
+     * 只写 delete 是不够的 —— 清理函数发的是**带 where 的 delete**，
+     * 而带 where 的 DELETE 要读那些列。线上就因为漏了 select 白跑了
+     * 一整天（见 029-cleanup-grants.sql，那儿有本机撞出来的两句对比）。
+     */
+    grant select, delete on public.posts to service_role;
   end if;
 end $$;
 

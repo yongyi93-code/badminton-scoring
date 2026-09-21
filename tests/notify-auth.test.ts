@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { fake } from './edge-fakes/supabase'
+import { hush, installDeno, load, type Handler } from './edge-fakes/deno'
 
 /* ------------------------------------------------------------------ *
  * 那两个推送函数：谁调得动它们
@@ -22,58 +23,13 @@ import { fake } from './edge-fakes/supabase'
  *      先推了再返回 403 是完全可能写出来的）
  * ------------------------------------------------------------------ */
 
-type Handler = (req: Request) => Promise<Response>
-
-/*
- * Deno 的壳。必须在第一次 import 那两个函数**之前**就摆好 ——
- * 它们在模块顶层就调 Deno.env.get 和 Deno.serve。
- */
-let caught: Handler | null = null
-;(globalThis as { Deno?: unknown }).Deno = {
-  env: {
-    get: (k: string) =>
-      ({
-        SUPABASE_URL: 'http://fake',
-        SUPABASE_SERVICE_ROLE_KEY: 'svc',
-        VAPID_PUBLIC_KEY: 'pub',
-        VAPID_PRIVATE_KEY: 'priv',
-      })[k],
-  },
-  serve: (h: Handler) => {
-    caught = h
-  },
-}
-
-/*
- * 接住 Deno.serve 交上来的那个 handler，接一次记住。
- *
- * 记住这件事不是省事：ESM 的模块只会执行一次，第二次 import 拿到的是
- * 缓存 —— Deno.serve 不会再被调一遍。不记的话除了第一条用例全会
- * 报「那个函数没有调 Deno.serve」，而那个错看着完全像函数写坏了。
- */
-const handlers = new Map<string, Handler>()
-async function load(path: string): Promise<Handler> {
-  const had = handlers.get(path)
-  if (had) return had
-  caught = null
-  await import(path)
-  if (!caught) throw new Error('那个函数没有调 Deno.serve')
-  handlers.set(path, caught)
-  return caught
-}
-
-/* 这两个函数里的 console.log 是给线上排错用的，测试里全部吞掉 */
-const hush = async <T>(fn: () => Promise<T>): Promise<T> => {
-  const { log, error } = console
-  console.log = () => {}
-  console.error = () => {}
-  try {
-    return await fn()
-  } finally {
-    console.log = log
-    console.error = error
-  }
-}
+/* Deno 的壳。必须在第一次 import 那两个函数**之前**就摆好 */
+installDeno({
+  SUPABASE_URL: 'http://fake',
+  SUPABASE_SERVICE_ROLE_KEY: 'svc',
+  VAPID_PUBLIC_KEY: 'pub',
+  VAPID_PRIVATE_KEY: 'priv',
+})
 
 const post = (h: Handler, body: unknown, token?: string) =>
   hush(async () => {
@@ -111,7 +67,7 @@ beforeEach(() => {
 })
 
 describe('notify-social：谁调得动', () => {
-  const load社 = () => load('../supabase/functions/notify-social/index.ts')
+  const load社 = () => load('../../supabase/functions/notify-social/index.ts')
 
   /*
    * 预检必须在验身份之前回。
@@ -201,7 +157,7 @@ describe('notify-social：谁调得动', () => {
 })
 
 describe('notify-session：谁调得动', () => {
-  const load局 = () => load('../supabase/functions/notify-session/index.ts')
+  const load局 = () => load('../../supabase/functions/notify-session/index.ts')
   const ask = (createdBy: string | undefined, venue = '城中') => ({
     kind: 'session',
     id: 's1',

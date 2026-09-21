@@ -82,6 +82,15 @@ const describe = (e: unknown) => (e instanceof Error ? e.message : String(e))
  * 探针用的是「读得到 expired_stories 吗」—— 那个视图只发给了
  * service_role（028），所以拿一把 anon 钥匙探必定失败。
  * 探一张普通表是没用的：anon 读得通，RLS 只会返回空数组、不报错。
+ *
+ * **这个探针只证明钥匙是对的，不证明这个函数干得成活。**
+ *
+ * 分清这件事是有代价的（029）：expired_stories 是个普通视图，视图
+ * 跟着**建它的人**的权限走，所以哪怕 service_role 在 posts 上一点
+ * 读权限都没有，这个探针照样过。本机验过：读得到 2 条、删掉 0 条。
+ *
+ * 真正的那道检查在底下 —— 删完数一下动了几行。探针管「钥匙对不对」，
+ * 那一句管「这活干成了没有」，两件事，谁也代替不了谁。
  * ------------------------------------------------------------------ */
 function candidateKeys(): { name: string; key: string }[] {
   const out: { name: string; key: string }[] = []
@@ -211,8 +220,28 @@ Deno.serve(async (req) => {
      * 数不上的话，这个函数会年复一年地返回成功，而一行都没清掉。
      */
     const removed = (gone ?? []).length
+
+    /*
+     * 一行都没删掉 = 这一轮**失败了**，不是「清了 0 条」。
+     *
+     * 原来这儿只 console.error 一句就照样返回 200 —— 也就是上面那段
+     * 注释担心的事，我自己在它下面三行又犯了一遍。排班那边看到的是
+     * 一串绿色的成功，而每一轮都在原地打转：文件删掉、行删不掉、
+     * 下一轮再来一遍。线上就是这么过了一整天没人发现的（029）。
+     *
+     * 返回 500 之后，排班列表里那一行会是红的 —— 这个函数没有别的
+     * 出口能让人知道它出事了。
+     *
+     * 只在**一行都没删掉**的时候算失败。删掉了一部分是正常的：
+     * 作者可以在这中间自己把某一条删了，那一行就不在了。
+     */
+    if (removed === 0) {
+      throw new Error(
+        `该删 ${ids.length} 行，一行都没删掉 —— 多半是 service_role 在 posts 上少了权限（见 supabase/029-cleanup-grants.sql）`,
+      )
+    }
     if (removed !== ids.length) {
-      console.error(`该删 ${ids.length} 行，实际删了 ${removed} 行 —— 权限或策略不对`)
+      console.error(`该删 ${ids.length} 行，实际删了 ${removed} 行`)
     }
 
     /* 还剩多少（这一轮之后）。排班每小时一次，剩得多说明批量不够大 */
