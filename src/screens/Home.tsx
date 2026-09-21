@@ -7,6 +7,7 @@ import { InstallCard } from '@/components/InstallCard'
 import { Body, Card, Screen, cx } from '@/components/ui'
 import { RallyLogo, RallyMark } from '@/components/Brand'
 import { NoticeBoard } from '@/components/NoticeBoard'
+import { StoryStrip } from '@/components/StoryStrip'
 import { formatDate, formatTime, percent, todayISO, weekOf } from '@/lib/format'
 import { buildFeed, type FeedItem } from '@/lib/feed'
 import { scoreLine } from '@/lib/scoring'
@@ -117,6 +118,18 @@ export function Home() {
           两个都放就是把同一件事说两遍，所以留看得清的那个。
         */}
         <NoticeBoard feed={feed} onOpen={openFeed} />
+
+        {/*
+          会消失的那些（028）。
+
+          摆在公告下面、主行动卡上面：这两块都是「有什么新鲜事」，
+          而它们谁也不是这一屏的主角 —— 主角是那张深绿的卡（我现在
+          该去哪）。这一排只有一行圈圈那么高，压不到它。
+
+          一条都没有、而且自己也发不了的时候这一块整个不出现，
+          所以对不用这个功能的人来说首页和以前一模一样。
+        */}
+        <StoryStrip />
 
         {/*
           「装到手机上」。放在主行动卡上面，因为对一个还没装的人来说，

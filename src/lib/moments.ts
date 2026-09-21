@@ -92,6 +92,23 @@ export const VISIBILITIES = ['friends', 'public'] as const
 export type Visibility = (typeof VISIBILITIES)[number]
 export const defaultVisibility: Visibility = 'friends'
 
+/**
+ * 发布设置收起来之后，替它们站在外面的那一行字。
+ *
+ * 「谁看得到」和「留多久」这两组摊开来占了大半屏，而绝大多数人
+ * 两样都不改 —— 那就不该每次发一条都先答两道题。但收起来不等于
+ * 藏起来：这两件事**发出去之后都改不了**，所以不管收得多干净，
+ * 当前是哪一档必须一直看得见。这一行就是它们唯一还看得见的地方。
+ *
+ * 顺序是「谁看得到」在前：读错它的代价大得多 —— 一条本想只给球友
+ * 看的动态发成了公开，而反过来最多是少了几个人看到。
+ */
+export function composerSummary(visibility: Visibility, story: boolean): string {
+  const who = visibility === 'public' ? pick('公开', 'Public') : pick('只有好友', 'Friends only')
+  const how = story ? pick('24 小时后消失', 'Gone in 24h') : pick('一直在', 'Stays')
+  return `${who} · ${how}`
+}
+
 export type Post = {
   id: string
   author: string

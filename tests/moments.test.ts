@@ -6,6 +6,7 @@ import {
   SIGN_SECONDS,
   VISIBILITIES,
   checkDraft,
+  composerSummary,
   defaultVisibility,
   gridCols,
   pickCached,
@@ -235,5 +236,63 @@ describe('签多久', () => {
    */
   it('有效期比余量长得多', () => {
     expect(SIGN_SECONDS * 1000).toBeGreaterThan(SIGN_MARGIN_MS * 10)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 设置收起来之后，外面那一行
+ *
+ * 「谁看得到」和「留多久」收进折叠里之后，这一行是它们**唯一**还
+ * 看得见的地方 —— 而这两件事发出去之后都改不了。这一行说错，等于
+ * 把一条本想只给球友看的动态发成了公开，而人以为自己看过了。
+ * ------------------------------------------------------------------ */
+
+describe('发布设置那一行摘要', () => {
+  it('默认那一档：只有好友、一直在', () => {
+    setLang('zh')
+    expect(composerSummary('friends', false)).toBe('只有好友 · 一直在')
+  })
+
+  it('Story 那一档说得出会消失', () => {
+    setLang('zh')
+    expect(composerSummary('friends', true)).toBe('只有好友 · 24 小时后消失')
+  })
+
+  /*
+   * 公开必须出现在这一行里。
+   *
+   * 它是这两组设置里唯一一个**读错了会后悔**的方向 —— 收起来之后
+   * 人看不到那两个按钮，就只剩这一行告诉他刚才点过什么。
+   */
+  it('公开那一档说得出是公开', () => {
+    setLang('zh')
+    expect(composerSummary('public', false)).toContain('公开')
+    expect(composerSummary('public', true)).toBe('公开 · 24 小时后消失')
+  })
+
+  /* 「谁看得到」排在前面：它读错的代价大得多 */
+  it('谁看得到排在留多久前面', () => {
+    setLang('zh')
+    const s = composerSummary('public', true)
+    expect(s.indexOf('公开')).toBeLessThan(s.indexOf('24 小时'))
+  })
+
+  it('英文也说得出来', () => {
+    setLang('en')
+    expect(composerSummary('friends', false)).toBe('Friends only · Stays')
+    expect(composerSummary('public', true)).toBe('Public · Gone in 24h')
+    setLang('zh')
+  })
+
+  /* 四种组合两两不同 —— 有一对撞了的话，这一行就分不出那两档 */
+  it('四种组合各不相同', () => {
+    setLang('zh')
+    const all = [
+      composerSummary('friends', false),
+      composerSummary('friends', true),
+      composerSummary('public', false),
+      composerSummary('public', true),
+    ]
+    expect(new Set(all).size).toBe(4)
   })
 })

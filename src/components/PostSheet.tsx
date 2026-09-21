@@ -6,6 +6,7 @@ import {
   BODY_MAX,
   MAX_PHOTOS,
   checkDraft,
+  composerSummary,
   createPost,
   defaultVisibility,
   gridCols,
@@ -20,6 +21,23 @@ import {
  * 「谁看得到」这一档在 026 才开（024 里故意留着不做，等封号）。
  * 默认永远是「只有好友」—— 公开是一个要**特意去点**的选择，
  * 不是一个忘了改就生效的默认值。
+ *
+ * -------------------------------------------------------------------
+ * 两组设置收起来（2026-09-21）
+ *
+ * 原来一打开就是两道选择题 —— 「谁看得到」两个按钮、「留多久」两个
+ * 按钮，加上两段说明，正文框被挤到最上面一小条。从那一排圈圈的
+ * 「＋」进来的人想做的是**发一条会消失的**，而这件事在他点那个
+ * 「＋」的时候就已经说过了，进来再问一遍是在问一个已经答过的问题。
+ *
+ * 现在：默认那一档（只有好友 · 24 小时）直接可以发，两组设置收在
+ * 一行摘要后面，要改才点开。
+ *
+ * **收起来不等于藏起来**，这是这一版唯一要小心的地方：这两件事发出去
+ * 之后都改不了，所以当前是哪一档必须一直看得见 —— 那一行摘要
+ * （composerSummary）和按钮上那句话就是为此留的，不是装饰。
+ * 「公开」那段警告也还在原处：它只可能在人**刚点下公开**的那一下
+ * 出现，而那正是它该出现的时候。
  * ------------------------------------------------------------------ */
 
 type Picked = { file: File; url: string }
@@ -48,6 +66,8 @@ export function PostSheet({
   const [pics, setPics] = useState<Picked[]>([])
   const [visibility, setVisibility] = useState<Visibility>(defaultVisibility)
   const [story, setStory] = useState(storyDefault)
+  /** 两组设置摊开了没有。每次打开都从收起来开始 */
+  const [settings, setSettings] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -71,6 +91,8 @@ export function PostSheet({
     })
     /* 每次都退回「只有好友」—— 上一条选了公开不该把下一条也带成公开 */
     setVisibility(defaultVisibility)
+    /* 设置也收回去：上一条特意点开过，不代表下一条也要先看两道选择题 */
+    setSettings(false)
     setError(null)
   }, [open])
 
@@ -212,137 +234,187 @@ export function PostSheet({
         )}
 
         {/* ---------------------------------------------------------- *
-          谁看得到。
+          两组设置的入口，兼它们收起来之后唯一还看得见的地方。
 
-          两个按钮，不是一个开关 —— 开关要人先读懂「开」是哪一边，
-          而这件事读错的代价是把一条私事发给了全世界。
+          做成一整行可点，不是一个小小的齿轮：这一行左边那句话本身
+          就是信息（「只有好友 · 24 小时后消失」），而人想改的时候
+          最先去点的就是它。
         * ---------------------------------------------------------- */}
-        <div>
-          <p className="text-label font-medium">{t('谁看得到', 'Who can see this')}</p>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            {(
-              [
-                {
-                  v: 'friends' as Visibility,
-                  title: t('只有好友', 'Friends only'),
-                  hint: t('和以前一样', 'Same as before'),
-                },
-                {
-                  v: 'public' as Visibility,
-                  title: t('公开', 'Public'),
-                  hint: t('陌生人点进你主页也看得到', 'Anyone who opens your profile'),
-                },
-              ]
-            ).map((o) => (
-              <button
-                key={o.v}
-                onClick={() => setVisibility(o.v)}
-                disabled={busy}
-                className={cx(
-                  'rounded-lg border px-3 py-2 text-left',
-                  visibility === o.v ? 'border-brand-500 bg-brand-100' : 'border-line bg-surface',
-                )}
-              >
-                <span className="block text-caption font-medium">{o.title}</span>
-                <span className="text-ink-500 block text-caption">{o.hint}</span>
-              </button>
-            ))}
-          </div>
-          {/*
-            公开的代价要在**按下之前**说，而且要说全。
+        <button
+          onClick={() => setSettings((s) => !s)}
+          disabled={busy}
+          aria-expanded={settings}
+          className="border-line bg-fill flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left"
+        >
+          <span className="text-ink-500 min-w-0 flex-1 truncate text-caption">
+            {composerSummary(visibility, story)}
+          </span>
+          <span className="shrink-0 text-caption font-medium">
+            {settings ? t('收起', 'Hide') : t('设置', 'Settings')}
+          </span>
+          <svg
+            viewBox="0 0 24 24"
+            className={cx('size-4 shrink-0 transition-transform', settings && 'rotate-180')}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        {settings && (
+          <div className="space-y-4">
+            {/* ---------------------------------------------------------- *
+              谁看得到。
+
+              两个按钮，不是一个开关 —— 开关要人先读懂「开」是哪一边，
+              而这件事读错的代价是把一条私事发给了全世界。
+            * ---------------------------------------------------------- */}
+            <div>
+              <p className="text-label font-medium">{t('谁看得到', 'Who can see this')}</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    {
+                      v: 'friends' as Visibility,
+                      title: t('只有好友', 'Friends only'),
+                      hint: t('和以前一样', 'Same as before'),
+                    },
+                    {
+                      v: 'public' as Visibility,
+                      title: t('公开', 'Public'),
+                      hint: t('陌生人点进你主页也看得到', 'Anyone who opens your profile'),
+                    },
+                  ]
+                ).map((o) => (
+                  <button
+                    key={o.v}
+                    onClick={() => setVisibility(o.v)}
+                    disabled={busy}
+                    className={cx(
+                      'rounded-lg border px-3 py-2 text-left',
+                      visibility === o.v ? 'border-brand-500 bg-brand-100' : 'border-line bg-surface',
+                    )}
+                  >
+                    <span className="block text-caption font-medium">{o.title}</span>
+                    <span className="text-ink-500 block text-caption">{o.hint}</span>
+                  </button>
+                ))}
+              </div>
+              {/*
+                公开的代价要在**按下之前**说，而且要说全。
             
-            第二句是很多人想不到的：公开一条动态，等于同时把自己的
-            名字和头像对所有登录的人打开 —— 不然那条动态上没有作者，
-            而一条没有作者的动态没法看。这是 026 里那条 profiles 策略
-            的直接后果，不是可选项。
-          */}
-          {visibility === 'public' && (
-            <div className="border-warning-600/30 bg-warning-50 mt-2 rounded-card border p-3">
-              <p className="text-ink-700 text-caption">
-                {t(
-                  '公开之后，任何登录的人点进你的个人主页都看得到这一条 —— 包括还没加你好友的人。',
-                  'Anyone signed in who opens your profile will see this one — including people who are not your friends.',
-                )}
-              </p>
-              <p className="text-ink-700 mt-1.5 text-caption">
-                {t(
-                  '而且你的名字和头像也会跟着对所有人可见 —— 一条动态总要看得出是谁发的。',
-                  'Your name and photo become visible to everyone too — a post has to show who wrote it.',
-                )}
-              </p>
-              <p className="text-ink-700 mt-1.5 text-caption">
-                {t(
-                  '拉黑过的人还是看不到。发出去之后改不了，只能删。',
-                  'People you blocked still cannot see it. This cannot be changed later — only deleted.',
-                )}
-              </p>
+                第二句是很多人想不到的：公开一条动态，等于同时把自己的
+                名字和头像对所有登录的人打开 —— 不然那条动态上没有作者，
+                而一条没有作者的动态没法看。这是 026 里那条 profiles 策略
+                的直接后果，不是可选项。
+              */}
+              {visibility === 'public' && (
+                <div className="border-warning-600/30 bg-warning-50 mt-2 rounded-card border p-3">
+                  <p className="text-ink-700 text-caption">
+                    {t(
+                      '公开之后，任何登录的人点进你的个人主页都看得到这一条 —— 包括还没加你好友的人。',
+                      'Anyone signed in who opens your profile will see this one — including people who are not your friends.',
+                    )}
+                  </p>
+                  <p className="text-ink-700 mt-1.5 text-caption">
+                    {t(
+                      '而且你的名字和头像也会跟着对所有人可见 —— 一条动态总要看得出是谁发的。',
+                      'Your name and photo become visible to everyone too — a post has to show who wrote it.',
+                    )}
+                  </p>
+                  <p className="text-ink-700 mt-1.5 text-caption">
+                    {t(
+                      '拉黑过的人还是看不到。发出去之后改不了，只能删。',
+                      'People you blocked still cannot see it. This cannot be changed later — only deleted.',
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* ---------------------------------------------------------- *
-          留多久（028）。
+            {/* ---------------------------------------------------------- *
+              留多久（028）。
 
-          和上面「谁看得到」同一种摆法，理由也同一条：这是一个**读错
-          了会后悔**的选择。一条本想留着的动态第二天没了，和一条本想
-          第二天就没的动态永远留着 —— 两个方向都难受，而开关要人先
-          猜「开」是哪一边。
+              和上面「谁看得到」同一种摆法，理由也同一条：这是一个**读错
+              了会后悔**的选择。一条本想留着的动态第二天没了，和一条本想
+              第二天就没的动态永远留着 —— 两个方向都难受，而开关要人先
+              猜「开」是哪一边。
 
-          默认永远是「一直在」：会消失是一个要特意去点的选择。
-        * ---------------------------------------------------------- */}
-        <div>
-          <p className="text-label font-medium">{t('留多久', 'How long it stays')}</p>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            {(
-              [
-                {
-                  v: false,
-                  title: t('一直在', 'Keep it'),
-                  hint: t('普通动态', 'A normal post'),
-                },
-                {
-                  v: true,
-                  title: t('24 小时后消失', 'Gone in 24h'),
-                  hint: t('摆在朋友圈最上面那一排', 'Shows in the ring row on top'),
-                },
-              ] as const
-            ).map((o) => (
-              <button
-                key={String(o.v)}
-                onClick={() => setStory(o.v)}
-                disabled={busy}
-                className={cx(
-                  'rounded-lg border px-3 py-2 text-left',
-                  story === o.v ? 'border-brand-500 bg-brand-100' : 'border-line bg-surface',
-                )}
-              >
-                <span className="block text-caption font-medium">{o.title}</span>
-                <span className="text-ink-500 block text-caption">{o.hint}</span>
-              </button>
-            ))}
+              默认永远是「一直在」：会消失是一个要特意去点的选择。
+            * ---------------------------------------------------------- */}
+            <div>
+              <p className="text-label font-medium">{t('留多久', 'How long it stays')}</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    {
+                      v: false,
+                      title: t('一直在', 'Keep it'),
+                      hint: t('普通动态', 'A normal post'),
+                    },
+                    {
+                      v: true,
+                      title: t('24 小时后消失', 'Gone in 24h'),
+                      hint: t('摆在朋友圈最上面那一排', 'Shows in the ring row on top'),
+                    },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={String(o.v)}
+                    onClick={() => setStory(o.v)}
+                    disabled={busy}
+                    className={cx(
+                      'rounded-lg border px-3 py-2 text-left',
+                      story === o.v ? 'border-brand-500 bg-brand-100' : 'border-line bg-surface',
+                    )}
+                  >
+                    <span className="block text-caption font-medium">{o.title}</span>
+                    <span className="text-ink-500 block text-caption">{o.hint}</span>
+                  </button>
+                ))}
+              </div>
+              {/*
+                「消失」这两个字要兑现，所以这里把它到底消失到什么程度说清楚：
+                时间到了连你自己都看不到（028 那条策略里写死的），照片也是真删。
+                说成「别人看不到了」是在留后路，而人是按字面意思信的。
+              */}
+              {story && (
+                <div className="border-line bg-fill mt-2 rounded-card border p-3">
+                  <p className="text-ink-700 text-caption">
+                    {t(
+                      '24 小时之后这一条会真的没掉 —— 连你自己也看不到，照片也会从云端删掉。',
+                      'After 24 hours this is really gone — you will not see it either, and the photos are deleted from the cloud.',
+                    )}
+                  </p>
+                  <p className="text-ink-700 mt-1.5 text-caption">
+                    {t(
+                      '看过的人截过图的话，那张图还在他手机上 —— 这一点谁也管不了。',
+                      'If someone screenshotted it, that copy is on their phone — nothing can undo that.',
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/*
+              这段小字跟着设置一起收。
+
+              它说的是三件「发出去之后才发现就晚了」的事（照片会被压小、
+              定位信息会去掉、发完改不了），但都不是**按下去之前非看不可**
+              的 —— 真要紧的那一件（这一条会不会消失、谁看得到）写在上面
+              那一行摘要和按钮上。摆在外面的话，每次发一条都要先跨过一段
+              没人再读第二遍的字。
+            */}
+            <p className="text-ink-500 text-caption">
+              {t(
+                '照片会在你手机上先压小再上传 —— 顺带把里面的拍摄地点信息一起去掉。发出去之后改不了（包括「谁看得到」和「留多久」），只能删了重发。',
+                'Photos are shrunk on your phone before upload, which also strips the location data your camera embeds. Nothing can be edited afterwards — including who can see it and how long it stays. Delete and repost instead.',
+              )}
+            </p>
           </div>
-          {/*
-            「消失」这两个字要兑现，所以这里把它到底消失到什么程度说清楚：
-            时间到了连你自己都看不到（028 那条策略里写死的），照片也是真删。
-            说成「别人看不到了」是在留后路，而人是按字面意思信的。
-          */}
-          {story && (
-            <div className="border-line bg-fill mt-2 rounded-card border p-3">
-              <p className="text-ink-700 text-caption">
-                {t(
-                  '24 小时之后这一条会真的没掉 —— 连你自己也看不到，照片也会从云端删掉。',
-                  'After 24 hours this is really gone — you will not see it either, and the photos are deleted from the cloud.',
-                )}
-              </p>
-              <p className="text-ink-700 mt-1.5 text-caption">
-                {t(
-                  '看过的人截过图的话，那张图还在他手机上 —— 这一点谁也管不了。',
-                  'If someone screenshotted it, that copy is on their phone — nothing can undo that.',
-                )}
-              </p>
-            </div>
-          )}
-        </div>
+        )}
 
         <div className="space-y-2">
           <Button
@@ -367,13 +439,6 @@ export function PostSheet({
                   : t('发给好友', 'Post to friends')}
           </Button>
         </div>
-
-        <p className="text-ink-500 text-caption">
-          {t(
-            '照片会在你手机上先压小再上传 —— 顺带把里面的拍摄地点信息一起去掉。发出去之后改不了（包括「谁看得到」和「留多久」），只能删了重发。',
-            'Photos are shrunk on your phone before upload, which also strips the location data your camera embeds. Nothing can be edited afterwards — including who can see it and how long it stays. Delete and repost instead.',
-          )}
-        </p>
       </div>
     </Sheet>
   )

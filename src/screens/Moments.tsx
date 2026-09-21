@@ -3,10 +3,11 @@ import { useT } from '@/lib/i18n'
 import { useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { useSocial, friendUids } from '@/store/useSocial'
+import { feedChanged, useFeed } from '@/store/useFeed'
 import { Body, Button, Card, EmptyState, Screen, TopBar, cx } from '@/components/ui'
 import { PhotoAvatar, PhotoViewer } from '@/components/Photo'
 import { PostSheet } from '@/components/PostSheet'
-import { StoryRow, StoryViewer, tellers } from '@/components/Stories'
+import { StoryStrip } from '@/components/StoryStrip'
 import { BanNotice, useMyBan } from '@/components/BanNotice'
 import { Comments } from '@/components/Comments'
 import { fetchComments, type Comment } from '@/lib/comments'
@@ -51,19 +52,7 @@ export function Moments({ uid }: { uid?: string }) {
   const [items, setItems] = useState<FeedItem[] | null>(null)
   const [cards, setCards] = useState<Map<string, NameCard>>(new Map())
   const [comments, setComments] = useState<Map<string, Comment[]>>(new Map())
-  /*
-   * 会消失的那些（028）单独拿一份。
-   *
-   * 不和时间线混在一起：一条「明天就没了」的动态夹在永久的中间，
-   * 人不会注意到它会消失 —— 而那是它唯一的特点。
-   */
-  const [stories, setStories] = useState<FeedItem[]>([])
-  const [watching, setWatching] = useState<number | null>(null)
-  /*
-   * 发什么。一个值而不是两个布尔：「开着」和「是 Story」必须同时到位，
-   * 分成两个 state 的话从「＋」进来的那一次会发成普通动态。
-   */
-  const [composing, setComposing] = useState<null | 'post' | 'story'>(null)
+  const [composing, setComposing] = useState(false)
   const [big, setBig] = useState<{ url: string; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -77,6 +66,8 @@ export function Moments({ uid }: { uid?: string }) {
 
   const meUid = social.meUid
   const friends = useMemo(() => friendUids(social), [social])
+  /* 别处发了或删了一条也要跟着刷（那一条可能该出现在这条时间线上） */
+  const bump = useFeed((s) => s.n)
 
   const byUid = useMemo(() => {
     const map = new Map<string, (typeof players)[number]>()
@@ -105,37 +96,11 @@ export function Moments({ uid }: { uid?: string }) {
      * 就是二十个请求。
      */
     setComments(await fetchComments(rows.map((r) => r.id)))
-  }, [uid, meUid, friends])
-
-  /*
-   * 顶上那一排只在整个朋友圈那一屏上出现。
-   *
-   * 一个人的动态页上不放：那一屏是「翻他发过的东西」，而 Story 的
-   * 意思是「现在」—— 把一排圈圈摆在一页历史的顶上讲不通。
-   */
-  const loadStories = useCallback(async () => {
-    if (uid) return
-    /*
-     * 拿得比时间线多：这里是按**人**合并的，二十条可能就三个人，
-     * 而那一排本来就该显示得下十几个人。
-     */
-    setStories(
-      await fetchMoments({
-        kind: 'stories',
-        authors: [meUid ?? '', ...friends],
-        meUid,
-        limit: 60,
-      }),
-    )
-  }, [uid, meUid, friends])
+  }, [uid, meUid, friends, bump])
 
   useEffect(() => {
     void load()
   }, [load])
-
-  useEffect(() => {
-    void loadStories()
-  }, [loadStories])
 
   const who = (author: string) => {
     const p = byUid.get(author)
@@ -146,24 +111,6 @@ export function Moments({ uid }: { uid?: string }) {
       photo: card?.photo,
       avatar: p ? avatarsById.get(p.id) : undefined,
     }
-  }
-
-  /* 那一排圈圈：按人合并，自己排最前（那一格同时是发一条的入口） */
-  const rings = tellers(stories, meUid, who)
-
-  const removeStory = async (item: FeedItem) => {
-    const r = await deletePost(item)
-    if (!r.ok) {
-      setNote(r.error)
-      return
-    }
-    /*
-     * 从手上这份里拿掉就行，不用重新拉一趟。
-     *
-     * 全屏那一层会自己发现「手上这条没了」然后退出来 —— 这里不去
-     * 关它，因为删的可能是他那几条里的一条，剩下的还该接着看。
-     */
-    setStories((old) => old.filter((x) => x.id !== item.id))
   }
 
   const like = async (item: FeedItem) => {
@@ -254,15 +201,7 @@ export function Moments({ uid }: { uid?: string }) {
           摆在「发一条」上面：它们过期就没了，所以先看到的该是
           快没了的那些，而不是一个永远都在的按钮。
         */}
-        {!uid && (
-          <StoryRow
-            tellers={rings}
-            meUid={meUid}
-            canPost={!myBan}
-            onOpen={setWatching}
-            onNew={() => setComposing('story')}
-          />
-        )}
+        {!uid && <StoryStrip />}
 
         {/* 只在整个朋友圈那一屏上给「发」—— 别人的动态页上发东西没道理 */}
         {!uid &&
@@ -270,7 +209,7 @@ export function Moments({ uid }: { uid?: string }) {
             /* 被封着就别给那个按钮：写完一段再被拒，比一开始就说清楚糟 */
             <BanNotice ban={myBan} compact />
           ) : (
-            <Button block variant="primary" onClick={() => setComposing('post')}>
+            <Button block variant="primary" onClick={() => setComposing(true)}>
               {t('发一条', 'New post')}
             </Button>
           ))}
@@ -486,33 +425,19 @@ export function Moments({ uid }: { uid?: string }) {
       </Body>
 
       <PostSheet
-        open={composing !== null}
-        story={composing === 'story'}
-        onClose={() => setComposing(null)}
+        open={composing}
+        onClose={() => setComposing(false)}
         /*
-         * 两边都刷一下。
+         * 只报一声「有人发了一条」，不自己去刷。
          *
-         * 发完不知道它落在哪一边（人可以在那张纸上把「留多久」改了），
-         * 而只刷一边的话，发完看不见自己刚发的那条 —— 那是最让人
-         * 以为「没发出去」然后再发一遍的一种错。
+         * 发完不知道它落在哪一边 —— 那张纸上的「留多久」一改，本该
+         * 进时间线的就变成了那一排圈圈里的一个。两边各刷各的会漏，
+         * 所以统一由那个信号来（store/useFeed.ts）。
          */
-        onDone={() => {
-          void load()
-          void loadStories()
-        }}
+        onDone={feedChanged}
       />
       {/* 点开看大图。挂在最外层，不然会被卡片裁掉 */}
       <PhotoViewer url={big?.url ?? null} name={big?.name ?? ''} onClose={() => setBig(null)} />
-      {/* 全屏那一层。挂在最外层 —— 它要盖住整个屏幕，包括顶上那一条 */}
-      {watching !== null && (
-        <StoryViewer
-          tellers={rings}
-          start={watching}
-          meUid={meUid}
-          onClose={() => setWatching(null)}
-          onDelete={(item) => void removeStory(item)}
-        />
-      )}
     </Screen>
   )
 }
