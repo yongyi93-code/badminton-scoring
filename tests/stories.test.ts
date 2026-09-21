@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { leftLine, tellers, type Teller } from '@/components/Stories'
+import { addEntry, leftLine, tellers, type Teller } from '@/components/Stories'
 import { STORY_MS, type FeedItem } from '@/lib/moments'
 import { setLang } from '@/lib/i18n'
 
@@ -194,5 +194,51 @@ describe('过期的不进那一排圈圈', () => {
       expires_at: new Date(NOW + 1000).toISOString(),
     }
     expect(tellers([almost], null, who, NOW)).toHaveLength(1)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 「发一条」那个入口在哪
+ *
+ * 线上撞出来的（2026-09-21）：**自己发过一条之后，「＋」整个消失，
+ * 第二条再也发不出去。**
+ *
+ * 原来那一句是 `canPost && !mineFirst` —— 自己那个圈排第一，于是
+ * 「＋」不渲染。当时那句注释写着「自己那一格同时是发一条的入口」，
+ * 而那是**意图**，不是事实：点自己那个圈打开的是全屏播放。
+ *
+ * 一句描述意图的注释读起来和描述行为的一模一样 —— 它掩护了这个 bug
+ * 一整版。所以这件事现在有名字、有返回值，也有这几条。
+ * ------------------------------------------------------------------ */
+
+describe('「发一条」的入口', () => {
+  const teller = (uid: string): Teller => ({ uid, name: uid, items: [] })
+
+  it('一条都没有的时候，单独占一格', () => {
+    expect(addEntry([], 'u-me', true)).toBe('tile')
+  })
+
+  it('只有别人发过，自己还是单独占一格', () => {
+    expect(addEntry([teller('u-a')], 'u-me', true)).toBe('tile')
+  })
+
+  /* 这一条就是那个 bug。以前这里返回的是「没有入口」 */
+  it('自己已经发过了，入口挂在自己那个圈上 —— 不是消失', () => {
+    expect(addEntry([teller('u-me'), teller('u-a')], 'u-me', true)).toBe('badge')
+  })
+
+  /* 自己那个圈不一定排第一（虽然现在排序保证了），入口也不该跟着丢 */
+  it('自己那个圈就算没排第一，入口也还在', () => {
+    expect(addEntry([teller('u-a'), teller('u-me')], 'u-me', true)).toBe('badge')
+  })
+
+  /* 被禁言、没登录：写完一段再被拒，比一开始就没有那个按钮糟 */
+  it('发不了的时候没有入口', () => {
+    expect(addEntry([], 'u-me', false)).toBe('none')
+    expect(addEntry([teller('u-me')], 'u-me', false)).toBe('none')
+  })
+
+  it('没登录的时候，别人的圈照常显示，但没有入口', () => {
+    expect(addEntry([teller('u-a')], null, false)).toBe('none')
   })
 })

@@ -89,6 +89,36 @@ export function leftLine(item: FeedItem, zh: boolean, now = Date.now()): string 
  * 那一排圈圈
  * ------------------------------------------------------------------ */
 
+/**
+ * 「发一条」的入口摆在哪。
+ *
+ *   tile   单独占一格（那个虚线的「＋」）—— 自己还没发过的时候
+ *   badge  挂在自己那个圈的右下角 —— 已经发过了，圈已经占着第一格
+ *   none   发不了（没登录、被禁言）
+ *
+ * -------------------------------------------------------------------
+ * 这个函数是为了一个线上 bug 才单拎出来的（2026-09-21）
+ *
+ * 原来那一句是 `canPost && !mineFirst` —— 自己发过一条之后，自己那个
+ * 圈排到第一位，于是「＋」整个消失，**第二条永远发不出去**。
+ *
+ * 当时那句注释写着「自己那一格同时是发一条的入口」。那是意图，
+ * 不是事实：点自己那个圈调的是 onOpen，打开的是全屏播放。
+ * 一句描述意图的注释，读起来和描述行为的一模一样 —— 而它掩护了
+ * 这个 bug 一整版。
+ *
+ * 所以现在它是一个有名字、有返回值、能被测试钉住的东西，
+ * 不是藏在 JSX 里的一个 `&&`。
+ */
+export function addEntry(
+  rows: Teller[],
+  meUid: string | null,
+  canPost: boolean,
+): 'tile' | 'badge' | 'none' {
+  if (!canPost) return 'none'
+  return rows.some((r) => r.uid === meUid) ? 'badge' : 'tile'
+}
+
 export function StoryRow({
   tellers: rows,
   meUid,
@@ -104,14 +134,14 @@ export function StoryRow({
   onNew: () => void
 }) {
   const t = useT()
-  const mineFirst = rows[0]?.uid === meUid
-  if (rows.length === 0 && !canPost) return null
+  const entry = addEntry(rows, meUid, canPost)
+  if (rows.length === 0 && entry === 'none') return null
 
   return (
     <div className="-mx-4 overflow-x-auto px-4">
       <div className="flex gap-3 pb-1">
-        {/* 自己还没发的时候，第一格是「发一条」 */}
-        {canPost && !mineFirst && (
+        {/* 自己还没发过的时候，第一格是「发一条」 */}
+        {entry === 'tile' && (
           <button onClick={onNew} className="w-[72px] shrink-0 text-center">
             {/*
               72 = 头像 64 + 那一圈边 2 + 边跟头像之间的 2，两边各一份。
@@ -126,20 +156,47 @@ export function StoryRow({
             </span>
           </button>
         )}
-        {rows.map((r, i) => (
-          <button key={r.uid} onClick={() => onOpen(i)} className="w-[72px] shrink-0 text-center">
-            {/*
-              那一圈绿边是这一排唯一的信息：它说「这里有还没消失的东西」。
-              所以边要粗、要是品牌色，而不是一条淡淡的灰线。
-            */}
-            <span className="border-brand-500 inline-flex rounded-full border-2 p-0.5">
-              <PhotoAvatar url={r.photo} name={r.name} avatar={r.avatar} size="lg" />
-            </span>
-            <span className="mt-1 block truncate text-caption">
-              {r.uid === meUid ? t('我', 'You') : r.name}
-            </span>
-          </button>
-        ))}
+        {rows.map((r, i) => {
+          const isMe = r.uid === meUid
+          return (
+            /*
+              外面这一层是 div 不是 button：自己那一格上要再挂一个
+              「＋」小按钮，而按钮里套按钮在 HTML 里是非法的 ——
+              浏览器会把它拆开，点哪个都说不准。
+            */
+            <div key={r.uid} className="relative w-[72px] shrink-0">
+              <button onClick={() => onOpen(i)} className="w-full text-center">
+                {/*
+                  那一圈绿边是这一排唯一的信息：它说「这里有还没消失的东西」。
+                  所以边要粗、要是品牌色，而不是一条淡淡的灰线。
+                */}
+                <span className="border-brand-500 inline-flex rounded-full border-2 p-0.5">
+                  <PhotoAvatar url={r.photo} name={r.name} avatar={r.avatar} size="lg" />
+                </span>
+                <span className="mt-1 block truncate text-caption">
+                  {isMe ? t('我', 'You') : r.name}
+                </span>
+              </button>
+
+              {/*
+                自己已经发过了，「＋」就挂在自己那个圈的右下角。
+
+                和 Instagram 一个摆法，而且是唯一说得通的摆法：
+                点圈 = 看自己发的，点角上那个 = 再发一条。
+                两件事都要有入口，而这一排只放得下一格。
+              */}
+              {isMe && entry === 'badge' && (
+                <button
+                  onClick={onNew}
+                  aria-label={t('再发一条', 'Add another')}
+                  className="bg-brand-600 text-canvas border-canvas absolute right-0 top-[48px] flex size-6 items-center justify-center rounded-full border-2 text-sm leading-none"
+                >
+                  +
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
