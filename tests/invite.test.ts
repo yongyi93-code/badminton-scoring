@@ -28,9 +28,24 @@ describe('分享链接', () => {
     expect(readInvite(url)).toEqual({ sessionId: 's-1' })
   })
 
+  /*
+   * 只带球群码的也算一条邀请。这一条改过：原来断言的是「不算」。
+   *
+   * 那时候邀请只有一种用途 —— 把人领进某一场球局。现在赛后那张战绩卡
+   * 上的二维码带的正是只有球群码的链接：那场球已经打完了，把扫码的人
+   * 领进一场结束的球局没有意义，而那张图真正的用处是把看到它的人
+   * 领进这个球群。
+   */
+  it('只带球群码的也是邀请', () => {
+    const url = inviteUrl({ clubCode: '7e8adb' }, BASE)
+    expect(url).toBe('https://rallybadminton.com/?c=7E8ADB')
+    expect(readInvite(url)).toEqual({ clubCode: '7E8ADB' })
+  })
+
   it('不是邀请链接就说不是，别瞎猜', () => {
+    /* 两样都没有 —— 直接打开首页的人走的就是这一条 */
     expect(readInvite('https://rallybadminton.com/')).toBeNull()
-    expect(readInvite('https://rallybadminton.com/?c=7E8ADB')).toBeNull() // 只有群码不算球局邀请
+    expect(inviteUrl({}, BASE)).toBe('https://rallybadminton.com/')
     expect(readInvite('这不是网址')).toBeNull()
     expect(readInvite('https://x.test/?j=%20%20')).toBeNull() // 空白的球局 id
   })

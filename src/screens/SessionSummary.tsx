@@ -18,6 +18,7 @@ import {
 } from '@/components/ui'
 import { Avatar } from '@/components/PlayerBits'
 import { QrCode } from '@/components/QrCode'
+import { inviteUrl } from '@/lib/invite'
 import { ConfirmScore } from '@/components/ConfirmScore'
 import { RankTable } from '@/components/RankTable'
 import {
@@ -67,6 +68,17 @@ function ShareCard({
 }) {
   const t = useT()
   const top = ranked.filter((r) => r.qualified).slice(0, 8)
+
+  /*
+   * 卡上那个码里放什么：自己当前球群的邀请码。
+   *
+   * 没进群的人退回站点首页 —— 不带码的链接对他没用，而一个进不去的
+   * 二维码比没有二维码更糟：人扫了、跳过去了、然后什么也没发生。
+   */
+  const clubs = useApp((st) => st.clubs)
+  const clubId = useApp((st) => st.clubId)
+  const code = clubs.find((c) => c.id === clubId)?.code
+  const cardUrl = code ? inviteUrl({ clubCode: code }) : inviteUrl({})
   return (
     <div className="pointer-events-none fixed top-0 -left-[2000px]" aria-hidden>
       <div
@@ -199,17 +211,23 @@ function ShareCard({
           不知道它是哪儿来的，也没法问 —— 而「发到群里」本来是这个 App
           最便宜的一条拉新路。图传出去了，传不回来。
 
-          二维码是编译期生成的内联 SVG（见 design/make-qr.py）：
-          不加运行时依赖，也不用在转图片的时候去抓一个外部文件 ——
-          那一步要是悄悄失败，图还是出得来，只是二维码那块是空白，
-          而没人会发现。
+          二维码里带的是**球群邀请码**，不是这场球局。
 
-          80px 不是随手定的：导出时整张卡按 2 倍画，所以它在图里是 160px。
-          实测 160px 的二维码被再缩一半（微信、WhatsApp 都会压图）还扫得出来，
-          128px 的就不行了。
+          这张卡是赛后才有的，那场球已经打完了 —— 把扫码的人领进一场
+          结束了的球局没有意义。他看到这张图之后真正可能想做的是
+          「这群人在哪打、我能不能一起」，那就是进群。
+
+          没进球群的人（理论上发不出这张卡，但界面是可以走到的）退回
+          站点首页，总比一个进不去的码好。
+
+          尺寸：导出时整张卡按 2 倍画，所以 96px 在图里是 192px。
+          从 80 提到 96 是因为内容变长了 —— 带邀请码是 29 格，原来那条
+          站点首页是 25 格。实测（zxing-cpp + OpenCV，两个解码器）：
+          29 格的码 160px 两个都读得出，80px 只剩一个读得出；
+          192px 是给聊天软件再压一道留的余量。
         * ------------------------------------------------------------ */}
         <div className="mt-5 flex items-center gap-3 border-t border-line pt-4">
-          <QrCode size={80} className="shrink-0 rounded" />
+          <QrCode text={cardUrl} size={96} className="shrink-0 rounded" />
           <div className="min-w-0">
             <p className="text-sm font-bold tracking-tight">RALLY</p>
             <p className="text-xs text-ink-700">rallybadminton.com</p>

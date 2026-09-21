@@ -26,9 +26,18 @@
 const P_SESSION = 'j'
 const P_CODE = 'c'
 
+/**
+ * 一条邀请链接能带两样东西，**至少要有一样**。
+ *
+ *   只有 j  进某一场球局（理论上进得去，实际上没有 c 多半进不了群，
+ *           所以分享球局的时候两样都带）
+ *   只有 c  只进球群 —— 赛后那张战绩卡上的二维码用的就是这种：
+ *           那场球已经打完了，把人领进一场结束的球局没有意义，
+ *           而那张卡真正的用处是把看到它的人领进这个球群
+ *   两样都有 进群 + 进局，一条链接办两件事
+ */
 export type Invite = {
-  sessionId: string
-  /** 球群邀请码。分享的人自己也可能没有（理论上不会），所以可选 */
+  sessionId?: string
   clubCode?: string
 }
 
@@ -46,7 +55,7 @@ export function inviteUrl(invite: Invite, base?: string): string {
       ? `${window.location.origin}${window.location.pathname}`
       : '/')
   const url = new URL(origin, 'https://rallybadminton.com')
-  url.searchParams.set(P_SESSION, invite.sessionId)
+  if (invite.sessionId) url.searchParams.set(P_SESSION, invite.sessionId)
   if (invite.clubCode) url.searchParams.set(P_CODE, invite.clubCode.toUpperCase())
   return url.toString()
 }
@@ -56,9 +65,13 @@ export function readInvite(href: string): Invite | null {
   try {
     const url = new URL(href)
     const sessionId = url.searchParams.get(P_SESSION)?.trim()
-    if (!sessionId) return null
     const clubCode = url.searchParams.get(P_CODE)?.trim().toUpperCase()
-    return clubCode ? { sessionId, clubCode } : { sessionId }
+    /* 两样都没有就不是邀请链接 —— 直接打开首页的人也走这一段 */
+    if (!sessionId && !clubCode) return null
+    return {
+      ...(sessionId ? { sessionId } : {}),
+      ...(clubCode ? { clubCode } : {}),
+    }
   } catch {
     return null
   }
@@ -126,9 +139,12 @@ export function pendingInvite(): Invite | null {
     if (!raw) return null
     const v = JSON.parse(raw) as { sessionId?: unknown; clubCode?: unknown }
     const sessionId = typeof v.sessionId === 'string' ? v.sessionId.trim() : ''
-    if (!sessionId) return null
     const clubCode = typeof v.clubCode === 'string' ? v.clubCode.trim() : ''
-    return clubCode ? { sessionId, clubCode } : { sessionId }
+    if (!sessionId && !clubCode) return null
+    return {
+      ...(sessionId ? { sessionId } : {}),
+      ...(clubCode ? { clubCode } : {}),
+    }
   } catch {
     return null
   }

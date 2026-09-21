@@ -44,11 +44,13 @@ export function InviteHandler() {
     const invite = pendingInvite()
     if (!invite) return
 
+    const wanted = invite.sessionId
+
     // 没接云端就没有球群这回事，本机有那场球局就直接过去
     if (!cloudReady) {
-      if (sessions.some((s) => s.id === invite.sessionId)) {
+      if (wanted && sessions.some((s) => s.id === wanted)) {
         clearInvite()
-        resetTo({ name: 'board', sessionId: invite.sessionId })
+        resetTo({ name: 'board', sessionId: wanted })
       }
       return
     }
@@ -63,11 +65,29 @@ export function InviteHandler() {
      * 球局已经在本机了 —— 说明群也对、数据也拉下来了，直接过去。
      * 这是最常见的一条路：群里的人点了链接。
      */
-    if (sessions.some((s) => s.id === invite.sessionId)) {
+    if (wanted && sessions.some((s) => s.id === wanted)) {
       clearInvite()
       setPhase({ kind: 'idle' })
-      resetTo({ name: 'board', sessionId: invite.sessionId })
+      resetTo({ name: 'board', sessionId: wanted })
       return
+    }
+
+    /*
+     * 只带球群码的那种（赛后战绩卡上的二维码）。
+     *
+     * 已经在这个群里就什么都不用做 —— 悄悄把邀请清掉就行。弹一句
+     * 「你已经在这个群里了」没有意义：他多半是自己群里的人，
+     * 顺手扫了一下自己发的那张图。
+     */
+    if (!wanted) {
+      const already = invite.clubCode
+        ? clubs.some((c) => c.code.toUpperCase() === invite.clubCode)
+        : true
+      if (already) {
+        clearInvite()
+        setPhase({ kind: 'idle' })
+        return
+      }
     }
 
     /*

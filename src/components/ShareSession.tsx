@@ -5,6 +5,7 @@ import { inviteUrl, shareText } from '@/lib/invite'
 import { formatDate } from '@/lib/format'
 import { venueLabel } from '@/lib/venues'
 import { Button, Sheet, inputClass } from '@/components/ui'
+import { QrCode } from '@/components/QrCode'
 import type { Session } from '@/types'
 
 /* ------------------------------------------------------------------ *
@@ -122,6 +123,28 @@ function ShareSheet({ session, onClose }: { session: Session; onClose: () => voi
           <Button block variant={canShare ? 'soft' : 'primary'} onClick={() => void doCopy()}>
             {copied ? t('复制好了', 'Copied') : t('复制这段话', 'Copy the message')}
           </Button>
+        </div>
+
+        {/* ---------------------------------------------------------- *
+          当面那一条路：让他扫你的屏幕。
+
+          发链接要先有对方的联系方式 —— 而球馆里最常见的情形恰恰是
+          「刚认识，加个局」。那时候掏出手机让他扫一下，比互加好友
+          再发链接快得多，也不用先问人家电话。
+
+          摆在两个按钮**下面**而不是上面：发链接才是主路，这一条是
+          当面才用得上的。放上面的话，200px 的码会把「分享到…」挤出
+          小屏幕的第一屏 —— 为一条次要的路挡住主要的那条。
+
+          200px 不是随手定的：这条邀请是 37 格的码（球局 id + 球群码），
+          实测 160px 两个解码器都读得出、80px 只剩一个 —— 屏幕上这块
+          地方管够，就给足余量。
+        * ---------------------------------------------------------- */}
+        <div className="flex flex-col items-center gap-2 pt-1">
+          <QrCode text={url} size={200} className="rounded-lg" />
+          <p className="text-ink-500 text-caption">
+            {t('当面就让他扫这个', 'In person, just let them scan this')}
+          </p>
         </div>
 
         {/*
