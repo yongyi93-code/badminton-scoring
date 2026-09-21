@@ -346,11 +346,26 @@ export async function fetchMoments(opts: {
   else if (opts.authors) q = q.in('author', opts.authors.slice(0, 200))
   if (opts.before) q = q.lt('created_at', opts.before)
   /*
-   * 过期的那些在策略那边就已经读不到了（028），所以这里只管分两种，
-   * 不用再判一次「有没有过期」—— 判两遍的两处迟早不一样。
+   * 过期的那些**这里必须自己再挡一次**。
+   *
+   * 原来这儿写的是「策略那边已经读不到了，判两遍迟早不一样」。那句话
+   * 错了，而且错得很隐蔽：028 那条读策略的第一支是
+   * `is_admin(auth.uid())` —— 管理员看得到所有动态，过期的也包括在内
+   * （那一支是故意留的：一条被举报的 Story 在处理时多半已经过期了）。
+   *
+   * 于是这个 bug 只有管理员自己撞得到，别人那边一切正常 —— 而管理员
+   * 恰好是最不会怀疑「是不是我看到的和别人不一样」的那个人。
+   * 线上就是这么撞出来的：过了 24 小时那条还挂在圈圈里，点开一片黑
+   * （照片已经被清理函数删掉了，行还在）。
+   *
+   * 所以：策略管「谁有资格读」，这一层管「这一屏要显示什么」。
+   * 这两件事本来就不同，admin 那一支正好把它们劈开了。
    */
-  if (opts.kind === 'stories') q = q.not('expires_at', 'is', null)
-  else q = q.is('expires_at', null)
+  if (opts.kind === 'stories') {
+    q = q.not('expires_at', 'is', null).gt('expires_at', new Date().toISOString())
+  } else {
+    q = q.is('expires_at', null)
+  }
 
   const { data, error } = await q
   if (error) {

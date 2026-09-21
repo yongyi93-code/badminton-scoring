@@ -38,7 +38,7 @@ const ids = (t: Teller) => t.items.map((i) => i.id)
 describe('按人分堆', () => {
   it('一个人一个圈，不是一条一个圈', () => {
     const rows = [story('a1', 'u-a', 10), story('a2', 'u-a', 30), story('b1', 'u-b', 20)]
-    const out = tellers(rows, null, who)
+    const out = tellers(rows, null, who, NOW)
     expect(out.length).toBe(2)
     expect(out.map((t) => t.uid).sort()).toEqual(['u-a', 'u-b'])
   })
@@ -49,13 +49,13 @@ describe('按人分堆', () => {
    */
   it('自己排最前，哪怕自己那条最旧', () => {
     const rows = [story('b1', 'u-b', 1), story('me1', 'u-me', 600)]
-    const out = tellers(rows, 'u-me', who)
+    const out = tellers(rows, 'u-me', who, NOW)
     expect(out[0].uid).toBe('u-me')
   })
 
   it('其余按最新那条倒着排', () => {
     const rows = [story('a1', 'u-a', 100), story('b1', 'u-b', 5), story('c1', 'u-c', 50)]
-    expect(tellers(rows, null, who).map((t) => t.uid)).toEqual(['u-b', 'u-c', 'u-a'])
+    expect(tellers(rows, null, who, NOW).map((t) => t.uid)).toEqual(['u-b', 'u-c', 'u-a'])
   })
 
   /*
@@ -69,31 +69,33 @@ describe('按人分堆', () => {
       story('a3', 'u-a', 100),
       story('b1', 'u-b', 5),
     ]
-    expect(tellers(rows, null, who).map((t) => t.uid)).toEqual(['u-b', 'u-a'])
+    expect(tellers(rows, null, who, NOW).map((t) => t.uid)).toEqual(['u-b', 'u-a'])
   })
 
   /* 一个人自己那几条顺着看：先发的先看，和对话一个道理 */
   it('一个人自己那几条从旧到新', () => {
     const rows = [story('新', 'u-a', 10), story('旧', 'u-a', 300), story('中', 'u-a', 100)]
-    expect(ids(tellers(rows, null, who)[0])).toEqual(['旧', '中', '新'])
+    expect(ids(tellers(rows, null, who, NOW)[0])).toEqual(['旧', '中', '新'])
   })
 
   it('名字和照片从外面拿', () => {
-    const out = tellers([story('a1', 'u-a', 10)], null, (u) => ({
-      name: u === 'u-a' ? '阿力' : '?',
-      photo: 'p.webp',
-    }))
+    const out = tellers(
+      [story('a1', 'u-a', 10)],
+      null,
+      (u) => ({ name: u === 'u-a' ? '阿力' : '?', photo: 'p.webp' }),
+      NOW,
+    )
     expect(out[0].name).toBe('阿力')
     expect(out[0].photo).toBe('p.webp')
   })
 
   it('一条都没有的时候是空的，不是抛错', () => {
-    expect(tellers([], 'u-me', who)).toEqual([])
+    expect(tellers([], 'u-me', who, NOW)).toEqual([])
   })
 
   /* 没登录的时候没有「自己」那一格，但别人的圈照常排 */
   it('没登录也排得出来', () => {
-    const out = tellers([story('a1', 'u-a', 10)], null, who)
+    const out = tellers([story('a1', 'u-a', 10)], null, who, NOW)
     expect(out.map((t) => t.uid)).toEqual(['u-a'])
   })
 })
@@ -135,5 +137,62 @@ describe('还剩多久', () => {
   it('没有到期时间就按发出来那一刻加 24 小时算', () => {
     const noExpiry: FeedItem = { ...story('x', 'u-a', 0), expires_at: null }
     expect(leftLine(noExpiry, true, NOW)).toBe('还有 24 小时')
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 过期的不许再露面
+ *
+ * 线上撞出来的（2026-09-21）：过了 24 小时那条 Story 还挂在圈圈里，
+ * 点开一片黑。
+ *
+ * 原因不在这一层，在我对上一层的误解：028 那条读策略的第一支是
+ * `is_admin(auth.uid())`，管理员看得到所有动态，过期的也包括在内。
+ * 而客户端当时写着「策略那边已经读不到了，不用再判」。
+ *
+ * 于是这个 bug **只有管理员自己撞得到** —— 而他恰好是最不会怀疑
+ * 「我看到的和别人不一样」的那个人。
+ * ------------------------------------------------------------------ */
+
+describe('过期的不进那一排圈圈', () => {
+  const expired = (id: string, author: string): FeedItem => ({
+    ...story(id, author, 60 * 25),
+    /* 25 小时前发的，到期时间在一小时前 */
+    expires_at: new Date(NOW - 60 * 60_000).toISOString(),
+  })
+
+  it('过期的那条直接不算', () => {
+    expect(tellers([expired('x1', 'u-a')], null, who, NOW)).toEqual([])
+  })
+
+  it('一个人有过期也有没过期的，只留没过期的', () => {
+    const out = tellers([expired('x1', 'u-a'), story('ok', 'u-a', 10)], null, who, NOW)
+    expect(out).toHaveLength(1)
+    expect(ids(out[0])).toEqual(['ok'])
+  })
+
+  /* 整个人只剩过期的，那个圈圈就该整个消失，不是留一个点开没东西的 */
+  it('一个人只有过期的，他那个圈整个不出现', () => {
+    const out = tellers([expired('x1', 'u-a'), story('ok', 'u-b', 10)], null, who, NOW)
+    expect(out.map((t) => t.uid)).toEqual(['u-b'])
+  })
+
+  /*
+   * 差一秒都算过期。
+   *
+   * 边界写松的话，「还有 0 分钟」那条会在圈圈里多挂一会儿 ——
+   * 而那正是线上看到的样子。
+   */
+  it('刚好到点就算过期', () => {
+    const justNow: FeedItem = { ...story('x', 'u-a', 0), expires_at: new Date(NOW).toISOString() }
+    expect(tellers([justNow], null, who, NOW)).toEqual([])
+  })
+
+  it('还差一秒到点的还在', () => {
+    const almost: FeedItem = {
+      ...story('x', 'u-a', 0),
+      expires_at: new Date(NOW + 1000).toISOString(),
+    }
+    expect(tellers([almost], null, who, NOW)).toHaveLength(1)
   })
 })

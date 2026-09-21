@@ -44,9 +44,22 @@ export function tellers(
   rows: FeedItem[],
   meUid: string | null,
   who: (uid: string) => { name: string; photo?: string | null; avatar?: AvatarProfile },
+  now = Date.now(),
 ): Teller[] {
   const by = new Map<string, FeedItem[]>()
-  for (const r of rows) by.set(r.author, [...(by.get(r.author) ?? []), r])
+  /*
+   * 过期的在这儿再筛一次。
+   *
+   * 拉数据那一层已经筛过了（lib/moments.ts），这一道管的是**另一种
+   * 情形**：App 一直开着，而那条 Story 在这中间到点了。不筛的话那个
+   * 圈圈会一直挂着，点开是一条「还有 0 分钟」的东西。
+   *
+   * 这不是「判两遍」—— 一次是问服务端要什么，一次是这一刻该画什么。
+   */
+  for (const r of rows) {
+    if (r.expires_at && Date.parse(r.expires_at) <= now) continue
+    by.set(r.author, [...(by.get(r.author) ?? []), r])
+  }
 
   const out: Teller[] = [...by.entries()].map(([uid, items]) => ({
     uid,
@@ -262,9 +275,19 @@ export function StoryViewer({
               alt=""
               className="max-h-full max-w-full rounded-card object-contain"
             />
-          ) : (
+          ) : item.body ? (
             <p className="whitespace-pre-wrap break-words px-6 text-center text-h2 text-white">
               {item.body}
+            </p>
+          ) : (
+            /*
+             * 既没图也没字 —— 正常发不出这样一条（发的时候两样至少有
+             * 一样）。走到这儿只有一种可能：照片已经不在桶里了，签不出
+             * 地址。说一句，总比给人看一片黑好 —— 一片黑什么都不说，
+             * 而人会以为是 App 坏了。
+             */
+            <p className="px-6 text-center text-label text-white/60">
+              {t('这条看不了了 —— 照片已经不在了。', 'This one cannot be shown — the photo is gone.')}
             </p>
           )}
         </div>
