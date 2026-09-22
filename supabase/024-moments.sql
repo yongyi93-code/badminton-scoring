@@ -210,14 +210,21 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values (
   'moments', 'moments', false,
   /*
-   * 1 MB。客户端压完（长边 1080、webp）通常 100–250 KB，
-   * 留这么多是给压缩退回 jpeg 的那条路。
+   * 20 MB。
    *
-   * 卡在数据库这层，不是只在界面上卡：界面那道拦得住手滑，
-   * 拦不住改过的客户端。
+   * 原来是 1 MB —— 客户端压完（长边 1080、webp）通常 100–250 KB，
+   * 留那么多是给压缩退回 jpeg 的那条路。031 让 Story 能放视频之后
+   * 提到了这里，因为**桶上的大小限制只有一个数**，照片和视频共用。
+   *
+   * 这一句和 031 必须一直一样：这里是 `on conflict do update`，
+   * 重跑一次 024 就会把 031 改的覆盖回去。整段取舍写在 031 开头。
    */
-  1024 * 1024,
-  array['image/webp', 'image/jpeg', 'image/png']
+  20 * 1024 * 1024,
+  array[
+    'image/webp', 'image/jpeg', 'image/png',
+    /* quicktime 就是 .mov —— iPhone 录出来的十有八九是它（031） */
+    'video/mp4', 'video/quicktime', 'video/webm'
+  ]
 )
 on conflict (id) do update
   set public = false,

@@ -159,7 +159,16 @@ const toBlob = (c: HTMLCanvasElement, type: string, q: number): Promise<Blob | n
  * 不是给人猜的：知道文件夹不等于知道文件名。
  */
 export function photoPath(uid: string, type: string): string {
-  const ext = type === 'image/webp' ? 'webp' : 'jpg'
+  return randomPath(uid, type === 'image/webp' ? 'webp' : 'jpg')
+}
+
+/**
+ * 同一条随机路径，后缀由调用方给。
+ *
+ * 动态那边要传视频（lib/media.ts），后缀多了 mp4/mov —— 而「不能用 uid
+ * 当文件名」那条对视频一样成立，所以随机名这一段只能有一份。
+ */
+export function randomPath(uid: string, ext: string): string {
   const rand =
     globalThis.crypto?.randomUUID?.() ??
     `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`

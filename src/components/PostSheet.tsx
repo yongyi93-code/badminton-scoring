@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { Button, Sheet, cx, inputClass } from '@/components/ui'
-import { checkFile } from '@/lib/photo'
+import { MAX_VIDEOS, MEDIA_ACCEPT, checkMedia, isVideoType } from '@/lib/media'
 import {
   BODY_MAX,
   MAX_PHOTOS,
@@ -129,11 +129,20 @@ export function PostSheet({
     const taking = files.slice(0, room)
     /* 挑完立刻判一次，别等压了几秒才说不行 —— 和头像那边同一条 */
     for (const f of taking) {
-      const bad = checkFile(f)
+      const bad = checkMedia(f)
       if (bad) {
         setError(bad)
         return
       }
+    }
+    /*
+     * 视频只放得下一段（理由是流量，见 lib/media.ts）。在这儿就挡住，
+     * 别等传完两段几十兆才在 createPost 里被拒。
+     */
+    const videos = [...pics.map((p) => p.file), ...taking].filter((f) => isVideoType(f.type))
+    if (videos.length > MAX_VIDEOS) {
+      setError(t('一条里只能放一段视频', 'Only one video per post'))
+      return
     }
     setError(null)
     setPics((old) => [...old, ...taking.map((f) => ({ file: f, url: URL.createObjectURL(f) }))])
@@ -167,7 +176,11 @@ export function PostSheet({
   }
 
   const send = async () => {
-    const bad = checkDraft({ body, count: pics.length })
+    const bad = checkDraft({
+      body,
+      count: pics.length,
+      videos: pics.filter((p) => isVideoType(p.file.type)).length,
+    })
     if (bad) {
       setError(bad)
       return
@@ -201,11 +214,26 @@ export function PostSheet({
           >
             {pics.map((p, i) => (
               <div key={p.url} className="relative">
-                <img
-                  src={p.url}
-                  alt=""
-                  className="bg-fill aspect-square w-full rounded-lg object-cover"
-                />
+                {/*
+                  视频用 <video> 画第一帧，不是一个灰块加个播放图标：
+                  人要看得出自己刚拍的是哪一段。muted + playsInline 是
+                  iOS 上能显示出画面的最低条件，少一个就是一片黑。
+                */}
+                {isVideoType(p.file.type) ? (
+                  <video
+                    src={p.url}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="bg-fill aspect-square w-full rounded-lg object-cover"
+                  />
+                ) : (
+                  <img
+                    src={p.url}
+                    alt=""
+                    className="bg-fill aspect-square w-full rounded-lg object-cover"
+                  />
+                )}
                 <button
                   onClick={() => drop(i)}
                   disabled={busy}
@@ -243,10 +271,14 @@ export function PostSheet({
           </p>
         )}
 
+        {/*
+          这一个**不带 capture**：它是「从相册里挑」那条路。
+          那一排圈圈的「＋」才是相机（见 StoryStrip），两个入口各管一头。
+        */}
         <input
           ref={input}
           type="file"
-          accept="image/*"
+          accept={MEDIA_ACCEPT}
           multiple
           className="hidden"
           onChange={(e) => {
@@ -453,6 +485,17 @@ export function PostSheet({
                 'Photos are shrunk on your phone before upload, which also strips the location data your camera embeds. Nothing can be edited afterwards — including who can see it and how long it stays. Delete and repost instead.',
               )}
             </p>
+            {/*
+              视频这条要单独说，因为它和照片那条**不一样**：视频是原样
+              传上去的，没压过。所以一条里只放得下一段，而且太长了会被
+              拦住 —— 与其让人拍完三十秒才被拒，不如先说。
+            */}
+            <p className="text-ink-500 text-caption">
+              {t(
+                '视频不压，原样上传 —— 所以一条里只能放一段，而且要小于 20MB（大概十几秒）。拍长了会发不出去。',
+                'Videos are uploaded as-is, not compressed — one per post, under 20MB (roughly 15 seconds). Longer clips will be rejected.',
+              )}
+            </p>
           </div>
         )}
 
@@ -463,7 +506,7 @@ export function PostSheet({
             onClick={() => input.current?.click()}
           >
             {pics.length === 0
-              ? t('加照片', 'Add photos')
+              ? t('加照片或视频', 'Add photos or video')
               : t(`再加（${pics.length}/${MAX_PHOTOS}）`, `Add more (${pics.length}/${MAX_PHOTOS})`)}
           </Button>
           <Button block variant="primary" disabled={busy || empty} onClick={() => void send()}>

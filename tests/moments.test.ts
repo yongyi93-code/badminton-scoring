@@ -67,6 +67,21 @@ describe('这条能不能发', () => {
   it('字数按 trim 之后算', () => {
     expect(checkDraft({ body: '  ' + 'あ'.repeat(BODY_MAX) + '  ', count: 0 })).toBeNull()
   })
+
+  /*
+   * 一条只放一段视频（031）。这一条是按**流量**定的，不是设计洁癖：
+   * 九张图压完是两兆，九段视频是一百八十兆，而球群里每个人点开都要
+   * 下一遍（数字在 src/lib/media.ts 开头）。
+   */
+  it('一段视频可以，两段不行', () => {
+    expect(checkDraft({ body: '', count: 1, videos: 1 })).toBeNull()
+    expect(checkDraft({ body: '', count: 2, videos: 2 })).not.toBeNull()
+  })
+
+  /* 不传 videos 的老调用方一个都不受影响 */
+  it('没说有几段视频就当没有', () => {
+    expect(checkDraft({ body: '', count: MAX_PHOTOS })).toBeNull()
+  })
 })
 
 describe('几张图摆成几列', () => {

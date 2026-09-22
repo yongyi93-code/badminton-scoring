@@ -12,6 +12,7 @@ import { BanNotice, useMyBan } from '@/components/BanNotice'
 import { Comments } from '@/components/Comments'
 import { fetchComments, type Comment } from '@/lib/comments'
 import { setPostHidden } from '@/lib/ban'
+import { isVideo } from '@/lib/media'
 import { fetchCards, nameOf, type Card as NameCard } from '@/lib/profile'
 import {
   deletePost,
@@ -313,21 +314,44 @@ export function Moments({ uid }: { uid?: string }) {
                         gridTemplateColumns: `repeat(${gridCols(item.urls.length)}, minmax(0, 1fr))`,
                       }}
                     >
-                      {item.urls.map((url) => (
-                        <button key={url} onClick={() => setBig({ url, name: w.name })}>
-                          <img
+                      {item.urls.map((url) =>
+                        /*
+                         * 视频在时间线上就地播，不点进大图那一层：
+                         * 那一层是给照片放大用的，视频放大没有意义。
+                         *
+                         * preload="metadata" —— 只拉够画出第一帧的那点
+                         * 数据，不整段下下来。一屏十条动态各二十兆的话，
+                         * 光是滑过去就把一个月的流量用掉了。
+                         * controls 交给人自己点：自动播十条视频同样是流量。
+                         */
+                        isVideo(url) ? (
+                          <video
+                            key={url}
                             src={url}
-                            alt=""
-                            loading="lazy"
-                            decoding="async"
+                            controls
+                            playsInline
+                            preload="metadata"
                             className={cx(
-                              'bg-fill w-full rounded-lg object-cover',
-                              /* 一张的时候不裁成方的 —— 竖图裁掉一半就不是那张照片了 */
-                              item.urls.length === 1 ? 'max-h-80 object-contain' : 'aspect-square',
+                              'bg-fill w-full rounded-lg',
+                              item.urls.length === 1 ? 'max-h-80' : 'aspect-square object-cover',
                             )}
                           />
-                        </button>
-                      ))}
+                        ) : (
+                          <button key={url} onClick={() => setBig({ url, name: w.name })}>
+                            <img
+                              src={url}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                              className={cx(
+                                'bg-fill w-full rounded-lg object-cover',
+                                /* 一张的时候不裁成方的 —— 竖图裁掉一半就不是那张照片了 */
+                                item.urls.length === 1 ? 'max-h-80 object-contain' : 'aspect-square',
+                              )}
+                            />
+                          </button>
+                        ),
+                      )}
                     </div>
                   )}
 

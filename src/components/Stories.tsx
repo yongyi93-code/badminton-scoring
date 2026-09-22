@@ -4,6 +4,7 @@ import { cx } from '@/components/ui'
 import { PhotoAvatar } from '@/components/Photo'
 import { relativeTime } from '@/lib/format'
 import { STORY_MS, type FeedItem } from '@/lib/moments'
+import { isVideo } from '@/lib/media'
 import type { AvatarProfile } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *
@@ -227,22 +228,52 @@ export function StoryViewer({
   const [idx, setIdx] = useState(0)
   /* 进度条重放用的。换一条就换一个 key，CSS 动画才会从头跑 */
   const tick = useRef(0)
+  /*
+   * 这一条如果是视频，它有多长（毫秒）。还没读到就是 null。
+   *
+   * 视频不能按五秒切：一段十五秒的片子放到第五秒被掐掉，人会以为
+   * App 坏了。所以这一条在读到时长之前**不计时**，读到了就照它走。
+   */
+  const [clipMs, setClipMs] = useState<number | null>(null)
 
   const teller = rows[person]
   const item = teller?.items[idx]
+  const url = item?.urls[0]
+  const playing = url ? isVideo(url) : false
+
+  /* 换一条就把上一条的时长忘掉，不然图片会继承视频的长度 */
+  useEffect(() => {
+    setClipMs(null)
+  }, [person, idx])
+
+  /*
+   * 视频十秒还没报出时长就别等了，按五秒走。
+   *
+   * 正常情况下 loadedmetadata 或者 error 总有一个会来。**但网卡在中间
+   * 的时候两个都不来** —— 那时候没有计时器、没有 ended，这一条会永远
+   * 停在那儿。人还能点右边翻页（那两块透明的按钮在最上层），但一个
+   * 一动不动的黑屏看起来就是坏了。
+   */
+  useEffect(() => {
+    if (!playing || clipMs !== null) return
+    const id = setTimeout(() => setClipMs(STEP_MS), 10000)
+    return () => clearTimeout(id)
+  }, [playing, clipMs, person, idx])
 
   /*
    * 自己往下走。
    *
-   * 一条五秒 —— 短了看不完一句话，长了让人觉得卡住了。
+   * 照片五秒 —— 短了看不完一句话，长了让人觉得卡住了。
+   * 视频按它自己的长度走（上面那段）。
    * 每换一条重置一次计时，包括手动点下一条的时候。
    */
+  const stepMs = playing ? clipMs : STEP_MS
   useEffect(() => {
-    if (!item) return
-    const id = setTimeout(() => next(), STEP_MS)
+    if (!item || stepMs === null) return
+    const id = setTimeout(() => next(), stepMs)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [person, idx])
+  }, [person, idx, stepMs])
 
   /*
    * 手上这一条没了就自己退出来。
@@ -290,7 +321,13 @@ export function StoryViewer({
               className={cx('block h-full bg-white', i < idx && 'w-full')}
               style={
                 i === idx
-                  ? { animation: `rally-story ${STEP_MS}ms linear forwards` }
+                  ? /*
+                     * 进度条跟着这一条真正的长度跑。视频在读到时长之前
+                     * 停在 0 —— 让它先按五秒跑再跳一下，比不动还难看。
+                     */
+                    stepMs === null
+                    ? { width: 0 }
+                    : { animation: `rally-story ${stepMs}ms linear forwards` }
                   : i > idx
                     ? { width: 0 }
                     : undefined
@@ -326,9 +363,50 @@ export function StoryViewer({
       */}
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full items-center justify-center px-4">
-          {item.urls.length > 0 ? (
+          {url && playing ? (
+            /*
+              视频：自己播，播完自己翻页。
+
+              playsInline 不能少 —— 没有它 iPhone 会把视频抢去全屏播，
+              而那一层盖住了进度条、关掉按钮和「删掉」，退出来就是退出
+              整个播放器。
+
+              autoPlay 在手机上只有静音时一定成功。这里不写 muted，
+              而是在 onPlay 失败时退回静音（下面那段）：能出声就出声，
+              出不了声也别停在第一帧不动。
+            */
+            <video
+              key={url}
+              src={url}
+              autoPlay
+              playsInline
+              controls={false}
+              className="max-h-full max-w-full rounded-card object-contain"
+              onLoadedMetadata={(e) => {
+                const secs = e.currentTarget.duration
+                /* 时长可能是 NaN 或者 Infinity（某些流式 mp4），那就退回五秒 */
+                setClipMs(Number.isFinite(secs) && secs > 0 ? secs * 1000 : STEP_MS)
+                const p = e.currentTarget.play()
+                /*
+                 * 带声音播不了就静音再试一次。不管的话 promise 被拒，
+                 * 画面停在第一帧 —— 看起来和「这条坏了」一模一样。
+                 */
+                void p?.catch(() => {
+                  e.currentTarget.muted = true
+                  void e.currentTarget.play().catch(() => {})
+                })
+              }}
+              /* 播完立刻翻页，不等计时器 —— 那两个数差几十毫秒 */
+              onEnded={() => next()}
+              /*
+               * 放不出来（格式不认、文件没了）就当它是一条空的，往下走。
+               * 不管的话这一条会永远停在那儿：没有计时器，也没有 ended。
+               */
+              onError={() => setClipMs(STEP_MS)}
+            />
+          ) : url ? (
             <img
-              src={item.urls[0]}
+              src={url}
               alt=""
               className="max-h-full max-w-full rounded-card object-contain"
             />

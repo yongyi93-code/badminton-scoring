@@ -1,7 +1,8 @@
 import { pick } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
-import { photoPath, shrinkImage } from '@/lib/photo'
+import { shrinkImage } from '@/lib/photo'
 import { silencedText } from '@/lib/ban'
+import { MAX_VIDEOS, checkMedia, isVideoType, mediaPath } from '@/lib/media'
 
 /* ------------------------------------------------------------------ *
  * 朋友圈
@@ -153,7 +154,7 @@ const COLS = 'id, author, body, photos, created_at, hidden_at, visibility, expir
  * 在按下「发」之前判 —— 压几张手机原图要好几秒，而那几秒之后再说
  * 「不行」，人已经等过了。头像那边（checkFile）是同一条道理。
  */
-export function checkDraft(d: { body: string; count: number }): string | null {
+export function checkDraft(d: { body: string; count: number; videos?: number }): string | null {
   const body = d.body.trim()
   if (!body && d.count === 0) {
     return pick('写点什么，或者放一张照片', 'Write something, or add a photo')
@@ -163,6 +164,16 @@ export function checkDraft(d: { body: string; count: number }): string | null {
   }
   if (d.count > MAX_PHOTOS) {
     return pick(`最多 ${MAX_PHOTOS} 张`, `${MAX_PHOTOS} photos max`)
+  }
+  /*
+   * 一条只放一段视频。
+   *
+   * 这一条是**按流量算出来的**，不是设计洁癖：九张图压完是两兆，
+   * 九段视频是一百八十兆，而球群里每个人点开都要下一遍
+   * （数字见 lib/media.ts 开头）。
+   */
+  if ((d.videos ?? 0) > MAX_VIDEOS) {
+    return pick('一条里只能放一段视频', 'Only one video per post')
   }
   return null
 }
@@ -227,7 +238,11 @@ export async function createPost(draft: {
   story?: boolean
 }): Promise<PostResult> {
   if (!supabase) return { ok: false, error: pick('没连上云端', 'Not connected') }
-  const bad = checkDraft({ body: draft.body, count: draft.files.length })
+  const bad = checkDraft({
+    body: draft.body,
+    count: draft.files.length,
+    videos: draft.files.filter((f) => isVideoType(f.type)).length,
+  })
   if (bad) return { ok: false, error: bad }
 
   const { data: auth } = await supabase.auth.getSession()
@@ -236,23 +251,39 @@ export async function createPost(draft: {
 
   const paths: string[] = []
   for (const f of draft.files) {
-    let small: Blob
-    try {
-      small = await shrinkImage(f, { box: POST_BOX, square: false })
-    } catch (e) {
-      await cleanUp(paths)
-      return { ok: false, error: e instanceof Error ? e.message : String(e) }
-    }
-    if (small.size > POST_MAX_BYTES) {
-      await cleanUp(paths)
-      return {
-        ok: false,
-        error: pick('有一张压不下来，换一张', 'One photo would not compress — swap it out'),
+    /*
+     * 视频原样传，图片压完再传。
+     *
+     * 视频这一路**没有压这一步** —— 浏览器里重新编码一段视频要照着
+     * 原速播一遍，为一个发 Story 的动作等十几秒不划算（整段理由写在
+     * lib/media.ts 开头）。所以这一路只剩一道判断：太大了就不发。
+     */
+    let blob: Blob
+    if (isVideoType(f.type)) {
+      const tooBig = checkMedia(f)
+      if (tooBig) {
+        await cleanUp(paths)
+        return { ok: false, error: tooBig }
+      }
+      blob = f
+    } else {
+      try {
+        blob = await shrinkImage(f, { box: POST_BOX, square: false })
+      } catch (e) {
+        await cleanUp(paths)
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
+      if (blob.size > POST_MAX_BYTES) {
+        await cleanUp(paths)
+        return {
+          ok: false,
+          error: pick('有一张压不下来，换一张', 'One photo would not compress — swap it out'),
+        }
       }
     }
-    const path = photoPath(uid, small.type)
-    const up = await supabase.storage.from('moments').upload(path, small, {
-      contentType: small.type,
+    const path = mediaPath(uid, blob.type)
+    const up = await supabase.storage.from('moments').upload(path, blob, {
+      contentType: blob.type,
       cacheControl: '31536000',
     })
     if (up.error) {

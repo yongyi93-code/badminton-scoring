@@ -9,6 +9,7 @@ import { StoryRow, StoryViewer, tellers } from '@/components/Stories'
 import { useMyBan } from '@/components/BanNotice'
 import { nameOf } from '@/lib/profile'
 import { deletePost, fetchMoments, type FeedItem } from '@/lib/moments'
+import { MEDIA_ACCEPT } from '@/lib/media'
 import { useT } from '@/lib/i18n'
 
 /* ------------------------------------------------------------------ *
@@ -112,24 +113,29 @@ export function StoryStrip() {
   }
 
   /*
-   * 点「＋」= **直接开相册**，和 Instagram 一样。
+   * 点「＋」= **直接开相机**，和 Instagram 一样。这一下只做一件事。
    *
-   * 原来点进去先看到的是一个空文本框，要再点一下「加照片」才轮到
-   * 相册 —— 可是发 Story 十次有九次是为了发一张照片，那一下点击
-   * 纯粹是挡在中间的。
+   * -------------------------------------------------------------------
+   * 上一版这里同时把弹层也打开了，那是错的
    *
-   * 两件事必须在**同一个点击事件里**做完：
+   * 当时的想法是「相册是系统盖上来的一层，取消掉就正好露出这张纸」，
+   * 省掉一次判断。但人看到的是：点一下「＋」，底下先窜出一张纸，
+   * 上面再盖一个相机 —— 取消相机之后还得再关一次那张纸。
+   * IG 上点一下就是相机，没有别的东西。
    *
-   *   1. input.click() —— Safari 只认用户手势那一下。放到弹层打开
-   *      之后的 effect 里会被静悄悄挡掉，表现是「点了没反应」。
-   *   2. 同时把弹层也打开 —— 相册是系统盖上来的一层，取消掉之后
-   *      露出来的就是这张纸。这样**不用去判断人有没有取消**
-   *      （iOS 上取消根本不发事件，判不出来），而且想发一条纯文字的
-   *      Story 时，取消相册就正好落在文本框前面。
+   * 现在弹层等**拍完了**才开（在下面那个 onChange 里）。取消相机
+   * 就什么都不会发生 —— 这正是人期待的：他取消了。
+   *
+   * input.click() 还是必须留在这个点击事件里：Safari 只认用户手势
+   * 那一下，放到 effect 里会被静悄悄挡掉，表现是「点了没反应」。
+   * 而这一版它是这个函数里唯一的一句，不会再被别的事情带偏。
+   *
+   * 代价说清楚：从这个入口发不了**纯文字**的 Story 了（不拍就没有
+   * 下一步）。那条路还在朋友圈那边 —— 发动态的时候把「留多久」
+   * 点成「24 小时后消失」，一样是一条 Story。
    */
   const newStory = () => {
     setPicked([])
-    setComposing(true)
     picker.current?.click()
   }
 
@@ -149,12 +155,19 @@ export function StoryStrip() {
       {/*
         这个 input 摆在 StoryStrip 里而不是弹层里，就为了上面那条：
         点下去的那一刻弹层还没挂出来，而手势不等人。
+
+        capture 是「直接开相机」那一下的全部机密：带上它，手机不再弹
+        「照片图库 / 拍照 / 选取文件」那个框，直接就是取景器。
+        accept 里同时写了 video/*，所以取景器上有「照片 / 视频」两档 ——
+        少了那一半，相机只拍得了照片，录不了像。
+
+        没有 multiple：相机一次就出一个文件，写了也是白写。
       */}
       <input
         ref={picker}
         type="file"
-        accept="image/*"
-        multiple
+        accept={MEDIA_ACCEPT}
+        capture="environment"
         className="hidden"
         onChange={(e) => {
           /*
@@ -164,7 +177,15 @@ export function StoryStrip() {
            */
           const files = e.target.files ? [...e.target.files] : []
           e.target.value = ''
-          if (files.length) setPicked(files)
+          /*
+           * 拍到了才开那张纸。取消相机不发这个事件，所以「取消了什么
+           * 都不发生」是白拿的 —— 不用去判断人有没有取消（iOS 上也
+           * 根本判不出来）。
+           */
+          if (files.length) {
+            setPicked(files)
+            setComposing(true)
+          }
         }}
       />
 
