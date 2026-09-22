@@ -161,8 +161,11 @@ describe('和云端对齐', () => {
     host_name: '阿伟',
   })
 
+  /* 「这台手机现在替 ABC123 这个群说话」—— 撤行只在这个范围里发生 */
+  const here = { scope: 'ABC123' }
+
   it('云端没有的要写上去', () => {
-    const { upsert, remove } = openDiff([mk('a')], [])
+    const { upsert, remove } = openDiff([mk('a')], [], here)
     expect(upsert.map((r) => r.session_id)).toEqual(['a'])
     expect(remove).toEqual([])
   })
@@ -175,25 +178,25 @@ describe('和云端对齐', () => {
    * 网络请求，在球馆的 4G 上尤其。
    */
   it('内容没变就不写', () => {
-    const { upsert, remove } = openDiff([mk('a')], [mk('a')])
+    const { upsert, remove } = openDiff([mk('a')], [mk('a')], here)
     expect(upsert).toEqual([])
     expect(remove).toEqual([])
   })
 
   it('人数变了要写', () => {
-    const { upsert } = openDiff([mk('a', 6)], [mk('a', 4)])
+    const { upsert } = openDiff([mk('a', 6)], [mk('a', 4)], here)
     expect(upsert.map((r) => r.joined)).toEqual([6])
   })
 
   /* 打完了、或者改成私人局了 —— 都表现为「本机不想公开它了」 */
   it('本机不要了就从云端撤掉', () => {
-    const { upsert, remove } = openDiff([], [mk('a')])
+    const { upsert, remove } = openDiff([], [mk('a')], here)
     expect(upsert).toEqual([])
     expect(remove).toEqual(['a'])
   })
 
   it('一边加一边撤，互不影响', () => {
-    const { upsert, remove } = openDiff([mk('b')], [mk('a')])
+    const { upsert, remove } = openDiff([mk('b')], [mk('a')], here)
     expect(upsert.map((r) => r.session_id)).toEqual(['b'])
     expect(remove).toEqual(['a'])
   })
@@ -205,7 +208,45 @@ describe('和云端对齐', () => {
    */
   it('云端多一个 updated_at 不算变化', () => {
     const cloud = { ...mk('a'), updated_at: '2026-09-22T12:00:00Z' } as OpenRow
-    expect(openDiff([mk('a')], [cloud]).upsert).toEqual([])
+    expect(openDiff([mk('a')], [cloud], here).upsert).toEqual([])
+  })
+
+  /* ---------------------------------------------------------------- *
+   * 换群不许把上一个群的局弄没了
+   *
+   * 这一段是线上撞出来的那条。换群的时候 useApp 会把 sessions 和
+   * meId 一起清空，于是 `want` 是空的；而 `have` 是按 host_uid 拉的，
+   * **跨球群**。没有 scope 这一层的话，「我现在一场都看不到」会被
+   * 当成「这些全该撤掉」—— A 群里正开着的局，切到 B 群就没了。
+   * ---------------------------------------------------------------- */
+  describe('换群', () => {
+    const other = (id: string): OpenRow => ({ ...mk(id), club_code: 'XYZ789' })
+
+    it('别的群那几行，动都不许动', () => {
+      const { upsert, remove } = openDiff([], [other('a')], { scope: 'ABC123' })
+      expect(upsert).toEqual([])
+      expect(remove).toEqual([])
+    })
+
+    it('撤自己群的，同时留住别的群的', () => {
+      const { remove } = openDiff([], [mk('a'), other('b')], { scope: 'ABC123' })
+      expect(remove).toEqual(['a'])
+    })
+
+    /*
+     * 还不知道自己在哪个群（刚登录、数据没拉下来）——「不知道」不等于
+     * 「该撤掉」。宁可让一行多挂一会儿，也不能误删正开着的局。
+     */
+    it('不知道在哪个群就一行都不撤', () => {
+      const { remove } = openDiff([], [mk('a'), other('b')], { scope: null })
+      expect(remove).toEqual([])
+    })
+
+    /* 撤不撤归 scope 管，写不写不归 —— 要写的那几行本来就带着当前群的码 */
+    it('scope 是空的照样写得进去', () => {
+      const { upsert } = openDiff([mk('a')], [], { scope: null })
+      expect(upsert.map((r) => r.session_id)).toEqual(['a'])
+    })
   })
 })
 

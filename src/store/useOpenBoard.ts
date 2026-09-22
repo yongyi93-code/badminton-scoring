@@ -38,25 +38,40 @@ export const useOpenBoard = create<State>((set, get) => ({
 export const refreshOpenBoard = () => useOpenBoard.getState().load(true)
 
 /**
- * 我这台手机现在**应该**公开哪几场。
+ * 我这台手机现在**应该**公开哪几场，以及它这一刻替哪个球群说话。
  *
  * 只认自己开的局：`createdBy` 是那一场的球员 id，而我是哪个球员由
  * `meId` 说了算。没认领过球员身份的设备（meId 是空的）一场都不发布 ——
  * 那时候分不清哪一场是「我开的」。
+ *
+ * -------------------------------------------------------------------
+ * 返回 null = 「这一刻什么都别动」
+ *
+ * 没登录、没认领身份、还不知道在哪个群 —— 这三种情况下这台手机
+ * **什么都不知道**，而「不知道」不等于「该撤掉」。以前这里返回空数组，
+ * 于是换群那一瞬间（useApp 会把 sessions 和 meId 一起清空）云端那几行
+ * 被当成多余的全删了：A 群里正开着的局，切到 B 群就从公开列表上没了。
+ *
+ * scope 也是这么来的：撤行只在当前球群码底下发生，别的群那几行不归
+ * 这一刻的这台手机管。
  */
-function mine(): OpenRow[] {
+function mine(): { want: OpenRow[]; scope: string | null } | null {
   const { sessions, matches, players, meId, clubs, clubId } = useApp.getState()
   const uid = socialState().meUid
-  if (!uid || !meId) return []
+  if (!uid || !meId) return null
 
   const code = clubs.find((c) => c.id === clubId)?.code ?? null
+  if (!code) return null
+
   const myName = players.find((p) => p.id === meId)?.name ?? null
   const now = Date.now()
 
-  return sessions
+  const want = sessions
     .filter((s) => s.createdBy === meId)
     .filter((s) => shouldPublish(s, { lastActivity: lastActivityAt(s, matches), now }))
     .map((s) => openRow(s, { hostUid: uid, clubCode: code, hostName: myName }))
+
+  return { want, scope: code }
 }
 
 /**
@@ -80,6 +95,7 @@ export function useOpenBoardSync(): void {
   const sessions = useApp((s) => s.sessions)
   const matches = useApp((s) => s.matches)
   const meId = useApp((s) => s.meId)
+  const clubId = useApp((s) => s.clubId)
   const load = useOpenBoard((s) => s.load)
 
   useEffect(() => {
@@ -88,7 +104,10 @@ export function useOpenBoardSync(): void {
 
   useEffect(() => {
     const id = setTimeout(() => {
-      void syncOpenSessions(mine()).then((r) => {
+      const now = mine()
+      /* 还不知道自己是谁、在哪个群 —— 这一轮什么都别动（理由见 mine） */
+      if (!now) return
+      void syncOpenSessions(now.want, now.scope).then((r) => {
         /*
          * 发布不成功不吭声（球照打、分照记，只是别人看不到这一场），
          * 但要在控制台留一句 —— 不然线上出了事没有任何线索。
@@ -99,5 +118,5 @@ export function useOpenBoardSync(): void {
       })
     }, 3000)
     return () => clearTimeout(id)
-  }, [sessions, matches, meId])
+  }, [sessions, matches, meId, clubId])
 }

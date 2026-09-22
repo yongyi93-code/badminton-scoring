@@ -69,13 +69,21 @@ export async function fetchMyOpenSessions(): Promise<OpenRow[]> {
  *
  * 发布不成功不该挡住任何事：球照打、分照记，只是别人在列表上看不到
  * 这一场。所以这里不抛错，只把结果返回去 —— 界面要不要提一句由它定。
+ *
+ * -------------------------------------------------------------------
+ * scope = 这台手机现在在哪个球群
+ *
+ * `fetchMyOpenSessions` 拉的是**我发布过的全部**，不分球群；而 `want`
+ * 只算得出**当前球群**那几场。撤行必须限制在 scope 底下，不然换个群
+ * 就会把上一个群里正开着的局撤掉（理由写在 openDiff 上）。
  */
 export async function syncOpenSessions(
   want: OpenRow[],
+  scope: string | null,
 ): Promise<{ ok: boolean; upserted: number; removed: number; error?: string }> {
   if (!supabase) return { ok: true, upserted: 0, removed: 0 }
   const have = await fetchMyOpenSessions()
-  const { upsert, remove } = openDiff(want, have)
+  const { upsert, remove } = openDiff(want, have, { scope })
   if (upsert.length === 0 && remove.length === 0) {
     return { ok: true, upserted: 0, removed: 0 }
   }

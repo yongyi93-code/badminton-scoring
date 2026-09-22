@@ -112,10 +112,30 @@ export function openRow(
  *
  * **只认自己开的局**：别人开的局不归这台手机管，混进来会变成两台
  * 手机互相覆盖对方的行。
+ *
+ * -------------------------------------------------------------------
+ * scope：这台手机**现在有资格替哪个球群说话**
+ *
+ * 这一条是线上撞出来的。换群的时候 useApp 会把 sessions 和 meId
+ * 一起清空（换群 = 换一整份数据），于是 `want` 变成空的 ——
+ * 而云端那份 `have` 是**跨球群的**（按 host_uid 拉，不按球群）。
+ * 没有 scope 的话，「我现在一场都看不到」会被当成「这些全该撤掉」，
+ * 结果是：切到 B 群，A 群里正开着的那场局从公开列表上消失了。
+ * 用户有两个群，一切过去就中招（1 → 0）。
+ *
+ * 所以撤行只在 scope 这个球群码底下发生。别的球群那几行不归这一刻
+ * 的这台手机管 —— **看不见的东西不许删**。
+ *
+ * scope 是 null 就一行都不撤（还不知道自己在哪个群，比如刚登录、
+ * 数据还没拉下来）。那时候宁可让一行多挂一会儿，也不能误删。
+ *
+ * 代价说清楚：在 A 群开的局，如果是在 B 群里结束的，那一行要等你
+ * 切回 A 群才撤得掉。多挂一场过期的局，比把正开着的局弄没了轻得多。
  */
 export function openDiff(
   want: OpenRow[],
   have: OpenRow[],
+  opts: { scope: string | null },
 ): { upsert: OpenRow[]; remove: string[] } {
   const byId = new Map(have.map((r) => [r.session_id, r]))
   const upsert = want.filter((w) => {
@@ -123,7 +143,13 @@ export function openDiff(
     return !old || !sameRow(old, w)
   })
   const wanted = new Set(want.map((w) => w.session_id))
-  const remove = have.filter((h) => !wanted.has(h.session_id)).map((h) => h.session_id)
+  const remove =
+    opts.scope === null
+      ? []
+      : have
+          .filter((h) => h.club_code === opts.scope)
+          .filter((h) => !wanted.has(h.session_id))
+          .map((h) => h.session_id)
   return { upsert, remove }
 }
 
