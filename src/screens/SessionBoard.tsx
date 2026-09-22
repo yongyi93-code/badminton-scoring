@@ -1752,8 +1752,16 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
         不做成只有开局的人能改 —— 到了球馆现场，谁手边有手机谁就该能调，
         为这个加一层权限只会在最忙的时候挡住人。
       */}
-      <Sheet open={capOpen} onClose={() => setCapOpen(false)} title={t('谁能进', 'Who can join')}>
+      {/*
+        标题是「这一场的设置」，而外面那个按钮写的是「谁能进」。
+
+        两个不一样是故意的：人是**为了改人数或者审批**才点进来的，
+        按钮上写别的没人找得到；可这张纸里现在还装着「谁看得见」，
+        拿其中一个问题去当另一个问题的标题，比不一致更糟。
+      */}
+      <Sheet open={capOpen} onClose={() => setCapOpen(false)} title={t('这一场的设置', 'Session settings')}>
         <div className="space-y-4">
+          <p className="text-label font-medium">{t('谁能进', 'Who can join')}</p>
           {/*
             要不要我点头。开局之后随时改得动 ——
             人一多起来才想起要挑人，是很常见的。
@@ -1808,6 +1816,57 @@ export function SessionBoard({ sessionId }: { sessionId: string }) {
               'Nobody can join once it is full. Set it to 0 for no limit. Lowering it never removes anyone already in — it just stops new people joining.',
             )}
           </p>
+
+          {/* ---------------------------------------------------------- *
+            谁看得见（030）。
+
+            开局那一屏也有这个开关，但那时候人多半还没想好 ——
+            「要不要让陌生人看到」是**开起来之后**才会冒出来的问题
+            （来了几个不认识的，或者反过来：没人来，想多叫几个）。
+            所以这儿必须也能改，而且改了要立刻算数。
+
+            摆在「谁能进」下面，和开局那一屏一个顺序：先决定谁进得来，
+            再决定谁看得见。
+          * ---------------------------------------------------------- */}
+          <div className="border-line border-t pt-4">
+            <p className="mb-2 text-label font-medium">{t('谁看得见', 'Who can see it')}</p>
+          </div>
+          <Toggle
+            checked={session.private === true}
+            onChange={(v) => updateSession(sessionId, { private: v || undefined })}
+            label={t('私人局，不公开', 'Private — keep it off the board')}
+          />
+          <p className="text-ink-500 text-caption">
+            {session.private
+              ? t(
+                  '只有这个球群里的人看得到。别人在「公开」那一栏翻不到它。',
+                  'Only people in this club can see it. It does not show up under “Open”.',
+                )
+              : t(
+                  '装了 App 的人都能在「公开」那一栏看到这一场：球馆、时间、还差几个、你的名字。比分和名单不会出去。',
+                  'Anyone with the app sees it under “Open”: venue, time, spots left, your name. Scores and the player list never leave the club.',
+                )}
+          </p>
+          {/*
+            这两句说的是**改了之后会怎样**，而且第二句是真正要紧的那一句。
+
+            公开一场局 = 把这个球群的邀请码给了看得到它的人（030 里
+            那一行上带着码，不然「我要来」点不动）。所以「收回来」只
+            收得回那张卡片，收不回已经看到的人 —— 说成「改私人就没事了」
+            是在留后路，而人是按字面意思信的。
+          */}
+          <p className="text-ink-500 text-caption">
+            {session.private
+              ? t(
+                  '关掉这个开关，大概几秒之后它就出现在公开列表上。',
+                  'Turn this off and it appears on the open board within a few seconds.',
+                )
+              : t(
+                  '打开这个开关，大概几秒之后它就从公开列表上撤下来 —— 但之前看到过的人已经拿到了进群的码，撤回不会把他们请出去。',
+                  'Turn this on and it comes off the board within a few seconds — but anyone who already saw it has the club code, and taking it down does not remove them.',
+                )}
+          </p>
+
           <Button block variant="soft" onClick={() => setCapOpen(false)}>
             {t('好了', 'Done')}
           </Button>

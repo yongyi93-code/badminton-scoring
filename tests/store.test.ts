@@ -917,3 +917,56 @@ describe('私人局不发布', () => {
     expect(shouldPublish(roundTripped, fresh)).toBe(false)
   })
 })
+
+/* ------------------------------------------------------------------ *
+ * 开局之后再改「私人局」
+ *
+ * 开局那一屏有这个开关，但「要不要让陌生人看到」多半是**开起来之后**
+ * 才冒出来的问题。所以球局看板上也能改（SessionBoard 的「这一场的设置」），
+ * 而这一段钉的是改完之后**那一行真的会动**。
+ *
+ * 不钉的话，最可能出的事是：开关拨得动、界面也跟着变，可云端那张
+ * 公开列表上那一行一直挂着 —— 人以为自己收回来了，其实没有。
+ * ------------------------------------------------------------------ */
+describe('开局之后改私人局', () => {
+  const now = Date.parse('2026-09-22T20:00:00Z')
+  const fresh = { lastActivity: now - 60_000, now }
+
+  it('本来公开的，改成私人就不发布了', () => {
+    const s = newSession(draft())
+    expect(shouldPublish(s, fresh)).toBe(true)
+
+    useApp.getState().updateSession(s.id, { private: true })
+    const after = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(shouldPublish(after, fresh)).toBe(false)
+  })
+
+  /* 反过来也要通：想多叫几个人的时候把它放出去 */
+  it('本来私人的，关掉就发布了', () => {
+    const s = newSession(draft({ private: true }))
+    expect(shouldPublish(s, fresh)).toBe(false)
+
+    /* 界面传的是 `v || undefined`，关掉时给的是 undefined 不是 false */
+    useApp.getState().updateSession(s.id, { private: undefined })
+    const after = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(after.private).toBeUndefined()
+    expect(shouldPublish(after, fresh)).toBe(true)
+  })
+
+  /*
+   * 改这一样不许碰别的。
+   *
+   * updateSession 是个 patch，写错成整体覆盖的话，改一下「私人」
+   * 会把名单、审批、人数上限一起抹掉 —— 而那要到有人发现自己不在
+   * 名单里了才暴露。
+   */
+  it('只改这一样，别的一样不动', () => {
+    const s = newSession(draft({ playerIds: ['p1', 'p2'], maxPlayers: 8, approval: true }))
+    useApp.getState().updateSession(s.id, { private: true })
+    const after = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(after.playerIds).toEqual(['p1', 'p2'])
+    expect(after.maxPlayers).toBe(8)
+    expect(after.approval).toBe(true)
+    expect(after.private).toBe(true)
+  })
+})
