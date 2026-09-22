@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useApp, avatarOf, activeSessionOf, lastActivityAt } from '@/store/useApp'
 import type { SessionDraft } from '@/store/useApp'
+import { shouldPublish } from '@/lib/openBoard'
+import type { Session } from '@/types'
 
 /** 一份能用的开局草稿，只写这一条测试关心的那几项 */
 const draft = (patch: Partial<SessionDraft> = {}): SessionDraft => ({
@@ -837,5 +839,81 @@ describe('一局最后一次有动静', () => {
     expect(last).toBeGreaterThanOrEqual(cutoff)
     // 而按开局时间算的话，早就被判成散了
     expect(T0).toBeLessThan(cutoff)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 私人局：勾了就不该出现在全 App 那张公开列表上
+ *
+ * 这一段钉的是**整条链**，不是某一个函数：开局那一屏那个开关
+ * （SessionSetup 里的 isPrivate）→ 草稿上的 private → 存进 store 的
+ * Session.private → shouldPublish 的答案。
+ *
+ * 分开测的话，每一节都绿，而链子在任何一个接头断掉都表现成同一件事：
+ * **一场本想只给自己人看的局出现在了所有人的列表上**。那是这个功能
+ * 里唯一一种赔不起的错 —— 公开出去就收不回来了（别人已经看到了）。
+ * ------------------------------------------------------------------ */
+describe('私人局不发布', () => {
+  const now = Date.parse('2026-09-22T20:00:00Z')
+  /* 「刚刚还有人在打」的那个样子。私人那一条要单独扛得住，所以其余两条都给成「该发布」 */
+  const fresh = { lastActivity: now - 60_000, now }
+
+  it('勾了「私人局」的，一场都不发布', () => {
+    /* SessionSetup 传的正是这个形状：private: isPrivate || undefined */
+    const s = newSession(draft({ private: true }))
+    expect(s.private).toBe(true)
+    expect(shouldPublish(s, fresh)).toBe(false)
+  })
+
+  /*
+   * 没勾的时候传的是 undefined，不是 false —— 那是 `isPrivate || undefined`
+   * 的结果。这一条钉住「字段不在」和「字段是 false」在这里是同一个意思，
+   * 不然改成 `?? false` 之类的写法会让默认值悄悄翻面。
+   */
+  it('没勾的照常发布，而且字段根本不写进去', () => {
+    const s = newSession(draft({ private: undefined }))
+    expect(s.private).toBeUndefined()
+    expect(shouldPublish(s, fresh)).toBe(true)
+  })
+
+  /* 老球局（这个字段出现之前开的）也是公开 —— 和上面那条是同一件事 */
+  it('压根没提过这个字段的，当公开', () => {
+    const s = newSession(draft())
+    expect('private' in s ? s.private : undefined).toBeUndefined()
+    expect(shouldPublish(s, fresh)).toBe(true)
+  })
+
+  /*
+   * 私人 + 已结束 + 早就没动静，三条都不满足也还是不发布 ——
+   * 这条防的是「三个条件写成 or」那种改法：那样任何一条成立就发布，
+   * 而私人局会跟着漏出去。
+   */
+  it('私人这一条单独就够把它挡下来', () => {
+    const s = newSession(draft({ private: true }))
+    /* 其余两条全是「该发布」的样子 */
+    expect(s.status).toBe('active')
+    expect(shouldPublish(s, { lastActivity: now, now })).toBe(false)
+  })
+
+  /* 结束了的局也不发布，私人不私人都一样 */
+  it('结束了就不发布', () => {
+    const s = newSession(draft())
+    useApp.getState().endSession(s.id)
+    const ended = useApp.getState().sessions.find((x) => x.id === s.id)!
+    expect(shouldPublish(ended, fresh)).toBe(false)
+  })
+
+  /*
+   * 私人这件事**同步之后还得是私人**。
+   *
+   * 球局是整个对象存进云端那张 records 表的 JSONB 里的，所以理论上
+   * 每个字段都在。但「理论上都在」正是最该验一次的那种话：漏掉这一个
+   * 字段的后果是，换一台手机登录之后那场私人局被当成公开的发出去。
+   */
+  it('转成同步用的那份再读回来，还是私人的', () => {
+    const s = newSession(draft({ private: true }))
+    const roundTripped = JSON.parse(JSON.stringify(s)) as Session
+    expect(roundTripped.private).toBe(true)
+    expect(shouldPublish(roundTripped, fresh)).toBe(false)
   })
 })
