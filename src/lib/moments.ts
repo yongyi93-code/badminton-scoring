@@ -2,7 +2,7 @@ import { pick } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
 import { shrinkImage } from '@/lib/photo'
 import { silencedText } from '@/lib/ban'
-import { MAX_VIDEOS, checkMedia, isVideoType, mediaPath } from '@/lib/media'
+import { MAX_VIDEOS, baseType, checkMedia, isVideoType, mediaPath } from '@/lib/media'
 
 /* ------------------------------------------------------------------ *
  * 朋友圈
@@ -281,9 +281,16 @@ export async function createPost(draft: {
         }
       }
     }
-    const path = mediaPath(uid, blob.type)
+    /*
+     * contentType 要**切干净**再传。自己录的那个相机吐出来的是
+     * `video/webm;codecs=vp8,opus`，而桶上那张白名单是一个字都不差地
+     * 比对的 —— 带着 codecs 那一串会被拒，报一句 "mime type not
+     * supported"，而文件本身完全没问题。
+     */
+    const type = baseType(blob.type)
+    const path = mediaPath(uid, type)
     const up = await supabase.storage.from('moments').upload(path, blob, {
-      contentType: blob.type,
+      contentType: type,
       cacheControl: '31536000',
     })
     if (up.error) {

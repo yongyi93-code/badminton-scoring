@@ -5,6 +5,7 @@ import { useSocial, friendUids } from '@/store/useSocial'
 import { feedChanged, useFeed } from '@/store/useFeed'
 import { Toast } from '@/components/ui'
 import { PostSheet } from '@/components/PostSheet'
+import { Camera } from '@/components/Camera'
 import { StoryRow, StoryViewer, tellers } from '@/components/Stories'
 import { useMyBan } from '@/components/BanNotice'
 import { nameOf } from '@/lib/profile'
@@ -50,6 +51,8 @@ export function StoryStrip() {
   const [stories, setStories] = useState<FeedItem[]>([])
   const [watching, setWatching] = useState<number | null>(null)
   const [composing, setComposing] = useState(false)
+  /** 相机开着没有。点「＋」开它，拍完或者取消就收 */
+  const [shooting, setShooting] = useState(false)
   /** 点「＋」那一下就选好的照片，跟着弹层一起递进去 */
   const [picked, setPicked] = useState<File[]>([])
   const [note, setNote] = useState<string | null>(null)
@@ -113,30 +116,45 @@ export function StoryStrip() {
   }
 
   /*
-   * 点「＋」= **直接开相机**，和 Instagram 一样。这一下只做一件事。
+   * 点「＋」= **开我们自己那个相机**（components/Camera）。
    *
    * -------------------------------------------------------------------
-   * 上一版这里同时把弹层也打开了，那是错的
+   * 为什么不是系统那个 input capture
    *
-   * 当时的想法是「相册是系统盖上来的一层，取消掉就正好露出这张纸」，
-   * 省掉一次判断。但人看到的是：点一下「＋」，底下先窜出一张纸，
-   * 上面再盖一个相机 —— 取消相机之后还得再关一次那张纸。
-   * IG 上点一下就是相机，没有别的东西。
+   * 上一版用的是 `<input type="file" capture>`。iOS 上它直接开取景器，
+   * 可是 **Android Chrome 只有 accept 是单一一类时才认** —— 我们
+   * accept 里图片和视频都要，Chrome 不知道该开照相还是摄像，于是
+   * 当没看见，退回相册。用户报的正是这个：「点加后直接出album，
+   * 没有跳出camera」。
    *
-   * 现在弹层等**拍完了**才开（在下面那个 onChange 里）。取消相机
-   * 就什么都不会发生 —— 这正是人期待的：他取消了。
+   * accept 二选一的话要么拍不了照、要么录不了像，所以只剩自己做。
    *
-   * input.click() 还是必须留在这个点击事件里：Safari 只认用户手势
-   * 那一下，放到 effect 里会被静悄悄挡掉，表现是「点了没反应」。
-   * 而这一版它是这个函数里唯一的一句，不会再被别的事情带偏。
+   * -------------------------------------------------------------------
+   * 相机开不起来就回相册
    *
-   * 代价说清楚：从这个入口发不了**纯文字**的 Story 了（不拍就没有
-   * 下一步）。那条路还在朋友圈那边 —— 发动态的时候把「留多久」
-   * 点成「24 小时后消失」，一样是一条 Story。
+   * 没给权限、没有摄像头、浏览器太老 —— Camera 会调 onAlbum，
+   * 由这里去开那个**不带 capture** 的 input。相机是更好的那条路，
+   * 不是唯一那条路。
+   *
+   * 代价还是那条：从这个入口发不了纯文字的 Story。那条路在朋友圈那边
+   * （发动态时把「留多久」点成「24 小时后消失」）。
    */
   const newStory = () => {
     setPicked([])
+    setShooting(true)
+  }
+
+  /* 相机让位给相册：先把相机收了，再开那个系统框 */
+  const toAlbum = () => {
+    setShooting(false)
     picker.current?.click()
+  }
+
+  /* 拍好了：收起相机，把那一个文件递给弹层 */
+  const shot = (f: File) => {
+    setShooting(false)
+    setPicked([f])
+    setComposing(true)
   }
 
   const canPost = Boolean(meUid) && !myBan
@@ -152,22 +170,19 @@ export function StoryStrip() {
         onNew={newStory}
       />
 
+      <Camera open={shooting} onClose={() => setShooting(false)} onShot={shot} onAlbum={toAlbum} />
+
       {/*
-        这个 input 摆在 StoryStrip 里而不是弹层里，就为了上面那条：
-        点下去的那一刻弹层还没挂出来，而手势不等人。
+        这一个是**相册**那条路：相机开不起来，或者人自己点了「相册」。
 
-        capture 是「直接开相机」那一下的全部机密：带上它，手机不再弹
-        「照片图库 / 拍照 / 选取文件」那个框，直接就是取景器。
-        accept 里同时写了 video/*，所以取景器上有「照片 / 视频」两档 ——
-        少了那一半，相机只拍得了照片，录不了像。
-
-        没有 multiple：相机一次就出一个文件，写了也是白写。
+        没有 capture —— 上一版加了它，结果 Android Chrome 因为 accept
+        里有两类而整个忽略，反倒变成「点了直接出相册」。现在相机由
+        我们自己那个组件管，这个 input 只干它本来该干的事。
       */}
       <input
         ref={picker}
         type="file"
         accept={MEDIA_ACCEPT}
-        capture="environment"
         className="hidden"
         onChange={(e) => {
           /*
@@ -178,7 +193,7 @@ export function StoryStrip() {
           const files = e.target.files ? [...e.target.files] : []
           e.target.value = ''
           /*
-           * 拍到了才开那张纸。取消相机不发这个事件，所以「取消了什么
+           * 挑了才开那张纸。取消相册不发这个事件，所以「取消了什么
            * 都不发生」是白拿的 —— 不用去判断人有没有取消（iOS 上也
            * 根本判不出来）。
            */

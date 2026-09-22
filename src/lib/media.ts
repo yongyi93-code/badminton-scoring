@@ -49,9 +49,26 @@ export const MAX_VIDEOS = 1
 /** 相机/相册那个框接受什么。图片和视频都要，不然 iOS 上录不了 */
 export const MEDIA_ACCEPT = 'image/*,video/*'
 
+/**
+ * 把 `video/webm;codecs=vp8,opus` 切成 `video/webm`。
+ *
+ * 自己录的那个相机（lib/camera.ts）吐出来的 type 就带着这一串参数，
+ * 而下面每一处都要拿它去**严格比对**：
+ *
+ *   · 传上去的 contentType —— 桶上那张白名单是一个字都不能差的，
+ *     带着 codecs 会被拒，报一句没头没脑的 "mime type not supported"
+ *   · 算扩展名 —— 认不出来就当 jpg，于是一段视频画进 <img> 里裂掉
+ *   · 判能不能发 —— 同上
+ *
+ * 所以只留一份，三处都过它。
+ */
+export function baseType(type: string): string {
+  return type.split(';')[0].trim().toLowerCase()
+}
+
 /** 这个 MIME 是不是视频 */
 export function isVideoType(type: string): boolean {
-  return type.startsWith('video/')
+  return baseType(type).startsWith('video/')
 }
 
 /**
@@ -75,10 +92,11 @@ export function isVideo(pathOrUrl: string): boolean {
  * 被当成图片画进 <img> 里 —— 一个裂图，而文件其实好好的。
  */
 export function mediaExt(type: string): string {
-  if (type === 'video/mp4') return 'mp4'
-  if (type === 'video/quicktime') return 'mov'
-  if (type === 'video/webm') return 'webm'
-  if (type === 'image/webp') return 'webp'
+  const t = baseType(type)
+  if (t === 'video/mp4') return 'mp4'
+  if (t === 'video/quicktime') return 'mov'
+  if (t === 'video/webm') return 'webm'
+  if (t === 'image/webp') return 'webp'
   return 'jpg'
 }
 
@@ -99,7 +117,7 @@ export function mediaPath(uid: string, type: string): string {
 export function checkMedia(f: { type: string; size: number }): string | null {
   if (!isVideoType(f.type)) return checkFile(f)
 
-  if (!VIDEO_TYPES.includes(f.type)) {
+  if (!VIDEO_TYPES.includes(baseType(f.type))) {
     return pick('这种视频格式发不了（能发 MP4、MOV）', 'That video format is not supported (MP4, MOV)')
   }
   if (f.size > VIDEO_MAX_BYTES) {
