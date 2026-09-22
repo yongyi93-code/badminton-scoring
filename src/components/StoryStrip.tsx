@@ -11,6 +11,8 @@ import { useMyBan } from '@/components/BanNotice'
 import { nameOf } from '@/lib/profile'
 import { deletePost, fetchMoments, type FeedItem } from '@/lib/moments'
 import { MEDIA_ACCEPT } from '@/lib/media'
+import { allSeen } from '@/lib/seen'
+import { useSeen } from '@/store/useSeen'
 import { useT } from '@/lib/i18n'
 
 /* ------------------------------------------------------------------ *
@@ -47,6 +49,9 @@ export function StoryStrip() {
   const { ban: myBan } = useMyBan()
   /* 别处发了或删了一条也要跟着刷 —— 那一条可能正好该出现在这一排 */
   const bump = useFeed((s) => s.n)
+  /* 看过哪几条。全 App 共用一份 —— 这一排同时挂在首页和朋友圈 */
+  const seen = useSeen((s) => s.seen)
+  const markSeen = useSeen((s) => s.mark)
 
   const [stories, setStories] = useState<FeedItem[]>([])
   const [watching, setWatching] = useState<number | null>(null)
@@ -97,6 +102,20 @@ export function StoryStrip() {
   }
 
   const rings = tellers(stories, meUid, who)
+
+  /*
+   * 哪几个人的圈该是灰的：他那几条**都看过了**才算。
+   *
+   * 他今晚发了三条你只看了一条，圈还该亮着 —— 圈说的是「还有没看过
+   * 的」，不是「你来过没有」。
+   *
+   * 这里只算不写。写是在全屏那边（onSeen），因为那才是真的看到了的
+   * 时刻；在这儿写等于「圈出现在屏幕上就算看过」。
+   */
+  const seenUids = useMemo(
+    () => new Set(rings.filter((r) => allSeen(r.items, seen)).map((r) => r.uid)),
+    [rings, seen],
+  )
 
   const remove = async (item: FeedItem) => {
     const r = await deletePost(item)
@@ -166,6 +185,7 @@ export function StoryStrip() {
         tellers={rings}
         meUid={meUid}
         canPost={canPost}
+        seenUids={seenUids}
         onOpen={setWatching}
         onNew={newStory}
       />
@@ -220,6 +240,7 @@ export function StoryStrip() {
           meUid={meUid}
           onClose={() => setWatching(null)}
           onDelete={(item) => void remove(item)}
+          onSeen={markSeen}
         />
       )}
 

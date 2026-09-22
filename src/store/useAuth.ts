@@ -6,6 +6,7 @@ import { flushNow, startSync, stopSync } from '@/lib/sync'
 import { startSocial, stopSocial } from '@/store/useSocial'
 import { clearSignCache } from '@/lib/moments'
 import { useApp } from '@/store/useApp'
+import { useSeen } from '@/store/useSeen'
 
 /* ------------------------------------------------------------------ *
  * 登录状态
@@ -221,6 +222,11 @@ export async function signOut(): Promise<{ ok: true } | { ok: false; error: stri
    * 他不该还能打开上一个人好友的照片。
    */
   clearSignCache()
+  /*
+   * 「看过哪几条 Story」也清掉 —— 同一条理由的另一半：换一个人登录
+   * 这台手机，他看到的不该是一排已经变灰的圈，那是上一个人看的。
+   */
+  useSeen.getState().reset()
   await supabase?.auth.signOut()
   return { ok: true }
 }

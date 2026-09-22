@@ -124,6 +124,7 @@ export function StoryRow({
   tellers: rows,
   meUid,
   canPost,
+  seenUids,
   onOpen,
   onNew,
 }: {
@@ -131,6 +132,17 @@ export function StoryRow({
   meUid: string | null
   /** 被禁言的人不给「发一条」那一格 */
   canPost: boolean
+  /**
+   * 这几个人的那几条**都看过了**。
+   *
+   * 看过的圈是灰的，没看过的是绿的 —— 和 Instagram 一样，也是唯一
+   * 说得通的：那一圈绿边说的是「这里有你还没看过的东西」，
+   * 一直亮着的话它什么都不说了。
+   *
+   * 传进来而不是在这儿读：这个组件只管画，看过没看过归外面管
+   * （store/useSeen）。这样它也测得动。
+   */
+  seenUids?: Set<string>
   onOpen: (i: number) => void
   onNew: () => void
 }) {
@@ -159,6 +171,7 @@ export function StoryRow({
         )}
         {rows.map((r, i) => {
           const isMe = r.uid === meUid
+          const seen = seenUids?.has(r.uid) ?? false
           return (
             /*
               外面这一层是 div 不是 button：自己那一格上要再挂一个
@@ -168,10 +181,19 @@ export function StoryRow({
             <div key={r.uid} className="relative w-[72px] shrink-0">
               <button onClick={() => onOpen(i)} className="w-full text-center">
                 {/*
-                  那一圈绿边是这一排唯一的信息：它说「这里有还没消失的东西」。
-                  所以边要粗、要是品牌色，而不是一条淡淡的灰线。
+                  那一圈边是这一排唯一的信息：它说「这里有你**还没看过**的
+                  东西」。所以没看过的时候要粗、要是品牌色。
+
+                  看完了变灰，不是整圈拿掉：拿掉的话那一格会缩一圈，
+                  整排跟着抖一下 —— 而那一下抖动发生在人刚看完退出来的
+                  时候，看着像出了什么错。灰边占一样的地方，只是不再喊人。
                 */}
-                <span className="border-brand-500 inline-flex rounded-full border-2 p-0.5">
+                <span
+                  className={cx(
+                    'inline-flex rounded-full border-2 p-0.5',
+                    seen ? 'border-line' : 'border-brand-500',
+                  )}
+                >
                   <PhotoAvatar url={r.photo} name={r.name} avatar={r.avatar} size="lg" />
                 </span>
                 <span className="mt-1 block truncate text-caption">
@@ -215,6 +237,7 @@ export function StoryViewer({
   meUid,
   onClose,
   onDelete,
+  onSeen,
 }: {
   tellers: Teller[]
   /** 从第几个人开始。点哪个圈就是哪个 */
@@ -222,6 +245,8 @@ export function StoryViewer({
   meUid: string | null
   onClose: () => void
   onDelete: (item: FeedItem) => void
+  /** 这一条露过脸了。那一排圈圈靠它变灰 */
+  onSeen?: (id: string) => void
 }) {
   const t = useT()
   const [person, setPerson] = useState(start)
@@ -245,6 +270,21 @@ export function StoryViewer({
   useEffect(() => {
     setClipMs(null)
   }, [person, idx])
+
+  /*
+   * 看到哪条就记哪条 —— 那一排圈圈靠它变灰。
+   *
+   * 记在「显示出来」这一刻，不是「看完」那一刻：跳着翻过去的也算看过，
+   * 和 Instagram 一样。等看完才记的话，手快连点几下翻过去的那几条
+   * 会一直留着，于是圈永远灭不掉。
+   *
+   * 跟的是 item?.id 而不是 item：每渲染一次那个对象都是新的，
+   * 跟对象的话这个 effect 每次都跑，而 mark 里那句「记过就不记」
+   * 才是最后拦住死循环的那一道。
+   */
+  useEffect(() => {
+    if (item) onSeen?.(item.id)
+  }, [item?.id, onSeen])
 
   /*
    * 视频十秒还没报出时长就别等了，按五秒走。

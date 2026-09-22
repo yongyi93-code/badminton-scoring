@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { flushNow, stopSync } from '@/lib/sync'
 import { clearSignCache } from '@/lib/moments'
 import { useApp } from '@/store/useApp'
+import { useSeen } from '@/store/useSeen'
 
 /* ------------------------------------------------------------------ *
  * 注销账号
@@ -92,6 +93,8 @@ export async function deleteMyAccount(opts: DeleteOptions): Promise<DeleteResult
   useApp.getState().resetAll()
   /* 签好的那些照片链接也要清 —— 和 signOut 同一条理由 */
   clearSignCache()
+  /* 看过哪几条 Story 也清 —— 和 signOut 同一条理由 */
+  useSeen.getState().reset()
   await supabase.auth.signOut().catch(() => {})
 
   return { ok: true }
