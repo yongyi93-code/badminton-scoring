@@ -106,26 +106,48 @@ export function Roster() {
     return g > 0 ? t(`打过 ${g} 场`, `${g} matches played`) : t('还没打过球', 'No matches yet')
   }
 
+  /*
+   * 不是管理员就整屏不给看。
+   *
+   * 入口那边已经藏了（screens/Me），这儿是第二道：只藏入口的话，
+   * 从别处跳进来照样看得到，而「藏起来了」和「真的进不去」是两件事。
+   *
+   * 说清楚这是一道什么门：这一屏上的东西（名字、打过几场）别处本来
+   * 也看得到 —— 排名那一栏、每一场球局的名单、开局选人都列着同样的人。
+   * 所以它挡的是「整个群的名册摊成一屏」，**不是保密**。
+   * 真正决定谁看得到这些人的是「谁进得来这个群」。
+   */
+  if (!isAdmin) {
+    return (
+      <Screen>
+        <TopBar title={t('球群成员', 'Club roster')} onBack={back} />
+        <Body>
+          <EmptyState
+            icon="🔒"
+            title={t('这一屏只有管理员看得到', 'Admins only')}
+            hint={t(
+              '谁在这个群里、谁不打了，由管理员管。要找人的话，开局选人那一屏和排名里都列着还在打的人。',
+              'Who is in this club and who stopped is managed by admins. To find someone, the player picker and the rankings both list everyone still playing.',
+            )}
+          />
+        </Body>
+      </Screen>
+    )
+  }
+
   return (
     <Screen>
       <TopBar title={t('球群成员', 'Club roster')} onBack={back} />
       <Body>
         {/*
-          这一屏谁都看得见 ——「谁还在打」是球群里每个人都该知道的事。
-          能动手的只有管理员，所以说明也跟着换：对管理员说「你能做什么」，
-          对别人说「这是谁在管」。给所有人看同一句「可以收起来」，
-          而按钮根本不在，是在描述一个不存在的界面。
+          走到这儿的一定是管理员（上面整屏挡过了），所以这段话只说
+          「你能做什么」，不用再分身份。
         */}
         <p className="text-ink-500 text-caption">
-          {isAdmin
-            ? t(
-                '不打了的人可以收起来 —— 他就不再出现在选人、排行榜和好友搜索里。他打过的比赛一场都不会少，因为那些同时也是别人的战绩。随时放得回来。',
-                'Put away anyone who stopped playing — they disappear from pickers, leaderboards and friend search. Every match they played stays, because those are other people’s records too. You can bring them back any time.',
-              )
-            : t(
-                '这个群里谁还在打。不打了的人由管理员收起来 —— 收起来的人不再出现在选人和排行榜里，但他打过的比赛一场都不会少。',
-                'Who is still playing in this club. An admin can put away anyone who stopped — they drop out of pickers and leaderboards, but every match they played stays.',
-              )}
+          {t(
+            '不打了的人可以收起来 —— 他就不再出现在选人、排行榜和好友搜索里。他打过的比赛一场都不会少，因为那些同时也是别人的战绩。随时放得回来。',
+            'Put away anyone who stopped playing — they disappear from pickers, leaderboards and friend search. Every match they played stays, because those are other people’s records too. You can bring them back any time.',
+          )}
         </p>
 
         <SectionTitle>{t(`在打（${active.length} 人）`, `Playing (${active.length})`)}</SectionTitle>
@@ -137,19 +159,12 @@ export function Roster() {
               meta={rowOf(p.id)}
               onClick={() => push({ name: 'profile', playerId: p.id })}
               right={
-                /*
-                  不是管理员就不摆这个按钮。
-                  摆着再在点开之后说「你不行」，是白让人点一次 ——
-                  而那一屏还得解释一遍他本来就没资格做的事。
-                */
-                isAdmin ? (
-                  <button
-                    onClick={() => setPicking(p.id)}
-                    className="text-ink-500 active:text-danger-600 shrink-0 px-2 py-2 text-caption"
-                  >
-                    {t('收起来', 'Put away')}
-                  </button>
-                ) : undefined
+                <button
+                  onClick={() => setPicking(p.id)}
+                  className="text-ink-500 active:text-danger-600 shrink-0 px-2 py-2 text-caption"
+                >
+                  {t('收起来', 'Put away')}
+                </button>
               }
             />
           ))}
@@ -174,15 +189,12 @@ export function Roster() {
                   meta={rowOf(p.id)}
                   onClick={() => push({ name: 'profile', playerId: p.id })}
                   right={
-                    /* 放回来也归管理员：它是「收起来」的反面，同一件事 */
-                    isAdmin ? (
-                      <button
-                        onClick={() => restore(p.id)}
-                        className="text-brand-600 shrink-0 px-2 py-2 text-caption"
-                      >
-                        {t('放回来', 'Bring back')}
-                      </button>
-                    ) : undefined
+                    <button
+                      onClick={() => restore(p.id)}
+                      className="text-brand-600 shrink-0 px-2 py-2 text-caption"
+                    >
+                      {t('放回来', 'Bring back')}
+                    </button>
                   }
                 />
               ))}
@@ -238,6 +250,12 @@ export function Roster() {
                 <>
                   <div className="border-warning-600/30 bg-warning-50 rounded-card border p-3.5">
                     <p className="text-ink-700 text-caption">
+                      {/*
+                        'not-admin' 这一支现在走不到（整屏已经挡过了）。
+                        留着是因为那个判断是 archiveBlocker 的合同，
+                        哪天这一屏又对所有人开放，少了它就是个默默失效
+                        的门 —— 而那种失效没人会发现。
+                      */}
                       {bad === 'not-admin'
                         ? t(
                             '这件事归管理员。收起一个人等于把他从这个群的每一个名单里拿掉，而他不会收到任何通知 —— 所以不该是谁都按得动的。找管理员说一声。',

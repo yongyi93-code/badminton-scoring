@@ -777,14 +777,23 @@ export function Me() {
                 />
               )}
               {/*
-                球群成员。谁都看得见 —— 「谁还在打」是这个球群里每个人
-                的事，不是管理员的事。真正的门在数据库那边（同群才改得动）。
+                球群成员：只有管理员看得见。
+
+                这一屏上的东西（名字、打过几场）别处本来也看得到 ——
+                排名那一栏、每一场球局的名单、开局选人都列着同样的人。
+                所以这一道**不是保密**，是不让「整个群的名册」成为
+                随手一点就摊开的一屏。真正决定谁看得到这些的是
+                「谁进得来这个群」，那件事在 ROADMAP 第五节。
+
+                入口和屏本身都要挡：只藏入口的话，从别处跳进去照样看得到。
               */}
-              <MenuRow
-                title={t('球群成员', 'Club roster')}
-                hint={t('不打了的人可以收起来', 'Put away anyone who stopped playing')}
-                onClick={() => push({ name: 'roster' })}
-              />
+              {social.isAdmin && (
+                <MenuRow
+                  title={t('球群成员', 'Club roster')}
+                  hint={t('不打了的人可以收起来', 'Put away anyone who stopped playing')}
+                  onClick={() => push({ name: 'roster' })}
+                />
+              )}
               {/*
                 管理员名单。只有 owner 看得见 —— 普通管理员看见一个
                 改不动的入口，只会以为是坏了。
