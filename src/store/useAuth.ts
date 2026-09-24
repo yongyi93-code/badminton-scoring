@@ -117,6 +117,16 @@ export const currentEmail = (): string | null =>
   current.session?.user.email ?? null
 
 
+/**
+ * 邮件里那个链接跳回哪儿。注册验证和重设密码共用一句。
+ *
+ * origin + pathname 正好是 GitHub Pages 那个子路径的样子。
+ * 两处各写各的话，迟早有一处忘了改 —— 而忘了的那一处表现成
+ * 「点了链接跳到一个不存在的地址」，发件人自己永远撞不到
+ * （他那台电脑上 localhost 是通的）。
+ */
+const authRedirect = () => `${window.location.origin}${window.location.pathname}`
+
 /** 云端没接上时统一给这句，省得每个入口各写一遍 */
 const noCloud = () =>
   pick('还没接云端', 'Cloud sync is not set up')
@@ -144,6 +154,18 @@ export async function signUp(email: string, password: string): Promise<AuthResul
   const { data, error } = await supabase.auth.signUp({
     email: email.trim(),
     password,
+    /*
+     * 验证邮件里那个链接跳回哪儿。
+     *
+     * 不给的话用的是后台那个 Site URL —— 而它默认是 localhost，
+     * 于是别人点开验证链接死在一个只有我这台电脑才有的地址上。
+     * 和 sendPasswordReset 同一条道理，那边一直有这一句，
+     * 这边漏了；漏着没出事只是因为**以前根本没真发过验证邮件**。
+     *
+     * 后台 URL Configuration 的 Redirect URLs 里也得有这个地址，
+     * 否则 Supabase 会拒绝跳转 —— 那一条只能在后台配。
+     */
+    options: { emailRedirectTo: authRedirect() },
   })
   if (error) return { ok: false, error: readableError(error.message) }
   return signUpOutcome(Boolean(data.session), email.trim())
@@ -218,8 +240,9 @@ export async function signOut(): Promise<{ ok: true } | { ok: false; error: stri
  */
 export async function sendPasswordReset(email: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: noCloud() }
-  const redirectTo = `${window.location.origin}${window.location.pathname}`
-  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: authRedirect(),
+  })
   return error ? { ok: false, error: readableError(error.message) } : { ok: true }
 }
 
