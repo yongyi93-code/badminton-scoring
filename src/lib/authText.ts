@@ -96,3 +96,41 @@ export function readableError(message: string): string {
 export function signUpOutcome(hasSession: boolean, email: string): AuthResult {
   return hasSession ? { ok: true } : { ok: true, confirm: email }
 }
+
+/* ------------------------------------------------------------------ *
+ * 改密码
+ * ------------------------------------------------------------------ */
+
+/** 密码最短多少位。和注册那一屏、和 Supabase 后台那个数是同一个 */
+export const PASSWORD_MIN = 6
+
+/**
+ * 这三个格子填得对不对。不对就给一句人话。
+ *
+ * 在发请求之前判一遍：改密码要先拿旧密码去验一次身份（一个来回），
+ * 让人等完那一下才说「两次输的不一样」，是最没必要的一种等待。
+ *
+ * 顺序有讲究，从「最可能填错」排到「最不可能」：空着 → 太短 →
+ * 两次不一致 → 和旧的一样。反过来的话，一个什么都没填的人先被告知
+ * 「新密码和现在的一样」，那句话毫无意义。
+ */
+export function checkPasswordChange(d: {
+  current: string
+  next: string
+  again: string
+}): string | null {
+  if (!d.current) return pick('先填现在的密码', 'Enter your current password first')
+  if (d.next.length < PASSWORD_MIN) {
+    return pick(`新密码至少 ${PASSWORD_MIN} 位`, `New password needs ${PASSWORD_MIN}+ characters`)
+  }
+  /*
+   * 两次不一致要挡死。
+   *
+   * 这是这一屏唯一能把人锁在自己账号外面的错误：改成了一个他以为的
+   * 密码，而真正生效的是打错的那个 —— 下次登录才发现，那时候已经
+   * 想不起自己打错了什么。
+   */
+  if (d.next !== d.again) return pick('两次输的新密码不一样', 'The two new passwords do not match')
+  if (d.next === d.current) return pick('新密码和现在的一样', 'That is already your password')
+  return null
+}

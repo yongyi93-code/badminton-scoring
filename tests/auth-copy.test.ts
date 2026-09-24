@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readableError, signUpOutcome } from '@/lib/authText'
+import { PASSWORD_MIN, checkPasswordChange, readableError, signUpOutcome } from '@/lib/authText'
 
 /* ------------------------------------------------------------------ *
  * 注册登录这一屏上说的话
@@ -77,5 +77,65 @@ describe('注册之后该往哪走', () => {
   it('把邮箱带出来', () => {
     const r = signUpOutcome(false, '  Yy@Example.com ')
     expect(r.ok && r.confirm).toBe('  Yy@Example.com ')
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 改密码那三个格子
+ *
+ * 这一屏有一个能真正伤到人的错误：**打错了自己不知道**。改成了一个
+ * 他以为的密码，下次登录才发现进不去，而那时候已经想不起打错了什么。
+ * 「两次要一样」那一条就是为这个存在的，不是形式。
+ * ------------------------------------------------------------------ */
+describe('改密码填得对不对', () => {
+  const ok = { current: '旧密码', next: 'newpass1', again: 'newpass1' }
+
+  it('填齐了、够长、两次一样，就放行', () => {
+    expect(checkPasswordChange(ok)).toBeNull()
+  })
+
+  it('没填现在的密码', () => {
+    expect(checkPasswordChange({ ...ok, current: '' })).toBeTruthy()
+  })
+
+  it('新密码太短', () => {
+    expect(checkPasswordChange({ ...ok, next: 'a'.repeat(PASSWORD_MIN - 1), again: 'a'.repeat(PASSWORD_MIN - 1) })).toBeTruthy()
+    /* 正好够长要放行 —— 差一位就拦是这一类判断最常见的错 */
+    const just = 'a'.repeat(PASSWORD_MIN)
+    expect(checkPasswordChange({ current: 'x', next: just, again: just })).toBeNull()
+  })
+
+  /* 整块的重点 */
+  it('两次输的不一样 —— 这一条拦的是「把自己锁在外面」', () => {
+    expect(checkPasswordChange({ ...ok, again: 'newpass2' })).toBeTruthy()
+  })
+
+  it('新的和旧的一样', () => {
+    expect(checkPasswordChange({ current: 'samepass', next: 'samepass', again: 'samepass' })).toBeTruthy()
+  })
+
+  /*
+   * 顺序：什么都没填的人不该先被告知「新密码和现在的一样」——
+   * 那句话在那个当口毫无意义。
+   */
+  it('全空的时候先说「填现在的密码」', () => {
+    const msg = checkPasswordChange({ current: '', next: '', again: '' })
+    expect(msg).toContain('现在的密码')
+  })
+
+  /* 和这个文件开头那一条同一个规矩：界面上不许出现黑话 */
+  it('每一句都不带黑话', () => {
+    const all = [
+      checkPasswordChange({ current: '', next: '', again: '' }),
+      checkPasswordChange({ ...ok, next: 'ab', again: 'ab' }),
+      checkPasswordChange({ ...ok, again: '别的' }),
+      checkPasswordChange({ current: 'same12', next: 'same12', again: 'same12' }),
+    ]
+    for (const m of all) {
+      expect(m).toBeTruthy()
+      for (const 词 of ['supabase', 'password should', 'auth', 'error']) {
+        expect(m!.toLowerCase()).not.toContain(词)
+      }
+    }
   })
 })

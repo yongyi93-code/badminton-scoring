@@ -272,6 +272,59 @@ export async function setNewPassword(password: string): Promise<AuthResult> {
   return { ok: true }
 }
 
+/**
+ * 登录着的人改密码。
+ *
+ * -------------------------------------------------------------------
+ * 为什么要先拿旧密码验一次
+ *
+ * Supabase 的 updateUser 不一定要求旧密码 —— 后台那个「Require
+ * current password when updating」默认是关的。也就是说，**捡到一台
+ * 没锁屏的手机就能把人家密码改掉**，然后原主人再也登不进自己的账号。
+ *
+ * 所以这一层自己验：先拿旧密码登一次，登得上才改。这样不管后台那个
+ * 开关是开是关，行为都一样 —— 安全这件事不该取决于另一个系统里一个
+ * 没人记得的勾。
+ *
+ * 那一次登录会换一个新会话，但还是同一个人，界面上看不出来。
+ *
+ * -------------------------------------------------------------------
+ * 别的设备不会被踢下线
+ *
+ * 改完密码，另一台手机上已经登录的那个会话照样有效（Supabase 默认
+ * 不吊销）。界面上写清楚了这一点 —— 以为改密码就等于把别人踢出去，
+ * 是一个会让人放心得太早的误会。
+ */
+export async function changePassword(
+  currentPassword: string,
+  next: string,
+): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+  const email = current.session?.user.email
+  if (!email) return { ok: false, error: pick('先登录', 'Sign in first') }
+
+  const { error: wrong } = await supabase.auth.signInWithPassword({
+    email,
+    password: currentPassword,
+  })
+  if (wrong) {
+    /*
+     * 这一句要单独说，不能走 readableError。
+     *
+     * 那边把 invalid login credentials 翻成「邮箱或密码不对」——
+     * 在这一屏上邮箱压根没让人填，说它不对只会让人发懵。
+     */
+    if (/invalid login credentials/i.test(wrong.message)) {
+      return { ok: false, error: pick('现在这个密码不对', 'That is not your current password') }
+    }
+    return { ok: false, error: readableError(wrong.message) }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: next })
+  if (error) return { ok: false, error: readableError(error.message) }
+  return { ok: true }
+}
+
 /** 放弃重设（比如链接过期了想重新来过） */
 export function cancelRecovery(): void {
   set({ ...current, recovering: false })

@@ -46,6 +46,7 @@ import { ClubSheet } from '@/components/Club'
 import { FeedbackSheet } from '@/components/FeedbackSheet'
 import { DeleteAccountSheet } from '@/components/DeleteAccount'
 import { PhotoSheet } from '@/components/Photo'
+import { PasswordSheet } from '@/components/PasswordSheet'
 import { BanNotice, useMyBan } from '@/components/BanNotice'
 import { useInstallHow } from '@/lib/install'
 
@@ -504,6 +505,7 @@ export function Me() {
   const [cloudOpen, setCloudOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [photoOpen, setPhotoOpen] = useState(false)
+  const [pwOpen, setPwOpen] = useState(false)
   const [clubOpen, setClubOpen] = useState(false)
   const clubs = useApp((s) => s.clubs)
   const clubId = useApp((s) => s.clubId)
@@ -1052,6 +1054,17 @@ export function Me() {
                   onClick={() => setPhotoOpen(true)}
                 />
               )}
+              {/*
+                改密码。摆在「我的名片」和「注销账号」中间 ——
+                这一组从轻到重排：看看自己是谁 → 改个密码 → 删掉账号。
+              */}
+              {session && (
+                <MenuRow
+                  title={t('改密码', 'Change password')}
+                  hint={t('要先填现在的密码', 'You will need your current one')}
+                  onClick={() => setPwOpen(true)}
+                />
+              )}
               {session && (
                 <MenuRow
                   title={t('注销账号', 'Delete account')}
@@ -1369,6 +1382,7 @@ export function Me() {
 
       <CloudSheet open={cloudOpen} onClose={() => setCloudOpen(false)} />
       <DeleteAccountSheet open={deleteOpen} onClose={() => setDeleteOpen(false)} />
+      <PasswordSheet open={pwOpen} onClose={() => setPwOpen(false)} />
       <PhotoSheet open={photoOpen} onClose={() => setPhotoOpen(false)} />
 
       <ClubSheet open={clubOpen} onClose={() => setClubOpen(false)} />
