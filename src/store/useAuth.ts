@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { pick } from '@/lib/i18n'
-import { arrivedFromAuthLink, supabase } from '@/lib/supabase'
+import { arrivedFromRecovery, supabase } from '@/lib/supabase'
 import { flushNow, startSync, stopSync } from '@/lib/sync'
 import { startSocial, stopSocial } from '@/store/useSocial'
 import { clearSignCache } from '@/lib/moments'
@@ -41,13 +41,24 @@ export type AuthState = {
 let current: AuthState = {
   session: supabase ? undefined : null,
   /*
-   * 从邮件链接进来的，先当成在重设密码。
+   * 从**重设密码**那种邮件链接进来的，先当成在重设密码。
    *
    * 不等 PASSWORD_RECOVERY 事件才置位：那个事件在 supabase 解析完
    * URL 之后才发，而解析是异步的 —— 中间那几十毫秒界面已经画完了，
    * 画的是「已登录」的样子，重设密码那一屏根本没出现过。
+   *
+   * -------------------------------------------------------------------
+   * 这里原来认的是 arrivedFromAuthLink，那是**任何**邮件回调（线上撞过）
+   *
+   * 以前只有忘记密码一种邮件，两者恰好等价。接了真的发信服务、开了
+   * 邮箱验证之后就多了一种 —— 于是新用户点完验证链接跳回来，看到的是
+   * 「设一个新密码」。他刚注册完，没有旧密码可重设，只会以为自己
+   * 弄错了什么。
+   *
+   * 现在只认 type=recovery。PKCE 那条路（?code=）两种长得一样，
+   * 分辨不了，交给下面那个 PASSWORD_RECOVERY 事件兜底。
    */
-  recovering: supabase !== null && arrivedFromAuthLink,
+  recovering: supabase !== null && arrivedFromRecovery,
 }
 const listeners = new Set<() => void>()
 

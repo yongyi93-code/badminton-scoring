@@ -209,6 +209,8 @@ vi.mock('@/lib/supabase', () => {
     cloudReady: true,
     /* 测试里永远不是从邮件链接进来的 */
     arrivedFromAuthLink: false,
+    /* useAuth 开机时读它决定「是不是刚从重设密码的邮件回来」 */
+    arrivedFromRecovery: false,
     /*
      * 配了默认球群。这一条必须导出：sync.ts 从这个模块拿它，
      * mock 里漏掉的话它在测试里永远是 undefined，

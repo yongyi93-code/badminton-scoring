@@ -60,9 +60,45 @@ export function looksLikeAuthCallback(href: string): boolean {
   }
 }
 
-/** 记下来给界面用：这次打开是不是从「忘记密码」邮件点回来的 */
+/**
+ * 这次打开是不是**重设密码**那一种回调。
+ *
+ * -------------------------------------------------------------------
+ * 为什么不能拿 looksLikeAuthCallback 当这个用（线上撞过）
+ *
+ * 那个认的是「任何从邮件回来的链接」。以前只有忘记密码一种，两者
+ * 恰好等价；接了真的发信服务、开了邮箱验证之后就多了一种 ——
+ * 于是**新用户点验证邮箱的链接，回来看到的是「设个新密码」**。
+ * 他刚注册完，根本没有旧密码可重设，只会以为自己弄错了什么。
+ *
+ * 分辨靠 `type=recovery`：Supabase 的验证端点跳回来时会带上它，
+ * 注册验证那一种带的是 `type=signup`。
+ *
+ * **PKCE 那条路（?code=）分辨不了** —— 两种回调长得一模一样，
+ * 类型只有在换完 code 之后才知道。那一种交给 PASSWORD_RECOVERY
+ * 事件兜底（store/useAuth 里那一句），代价是重设密码那一屏会晚
+ * 几十毫秒出现。晚一点点，好过把新用户拦在一个他答不上来的问题前面。
+ */
+export function looksLikeRecovery(href: string): boolean {
+  try {
+    const url = new URL(href)
+    /* hash 和 query 都要看：不同版本的 Supabase 放的位置不一样 */
+    return (
+      /(^|[#&])type=recovery(&|$)/.test(url.hash) ||
+      url.searchParams.get('type') === 'recovery'
+    )
+  } catch {
+    return false
+  }
+}
+
+/** 记下来给界面用：这次打开是不是从邮件链接点回来的（哪一种都算） */
 export const arrivedFromAuthLink =
   typeof window !== 'undefined' && looksLikeAuthCallback(window.location.href)
+
+/** 同上，但只认「重设密码」那一种 */
+export const arrivedFromRecovery =
+  typeof window !== 'undefined' && looksLikeRecovery(window.location.href)
 
 /** 配齐了才建客户端；缺一个就当没有云端 */
 export const supabase: SupabaseClient | null =
