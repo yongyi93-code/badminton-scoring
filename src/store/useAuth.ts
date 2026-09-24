@@ -6,6 +6,9 @@ import { flushNow, startSync, stopSync } from '@/lib/sync'
 import { startSocial, stopSocial } from '@/store/useSocial'
 import { clearSignCache } from '@/lib/moments'
 import { useApp } from '@/store/useApp'
+/* 那几句话和那两条岔路在 lib 里 —— 理由见那个文件开头 */
+import { readableError, signUpOutcome, type AuthResult } from '@/lib/authText'
+export { readableError, signUpOutcome, type AuthResult }
 import { useSeen } from '@/store/useSeen'
 
 /* ------------------------------------------------------------------ *
@@ -113,47 +116,10 @@ export function useAuth() {
 export const currentEmail = (): string | null =>
   current.session?.user.email ?? null
 
-/**
- * 把 Supabase 的报错翻译成人话。
- *
- * 原样把英文错误抛给用户是最省事也最没用的做法 —— 「Invalid login
- * credentials」对着一个只想记分的人说不出任何有用的信息。
- * 认不出来的才退回原文，至少还能搜。
- */
-function readableError(message: string): string {
-  const m = message.toLowerCase()
-  if (m.includes('invalid login credentials')) {
-    return pick('邮箱或密码不对', 'Wrong email or password')
-  }
-  if (m.includes('user already registered') || m.includes('already been registered')) {
-    return pick('这个邮箱已经注册过了，直接登录就行', 'That email is already registered — just sign in')
-  }
-  if (m.includes('password should be at least')) {
-    return pick('密码太短了，至少 6 位', 'Password is too short — at least 6 characters')
-  }
-  if (m.includes('unable to validate email') || m.includes('invalid email')) {
-    return pick('邮箱格式不对', 'That email does not look right')
-  }
-  if (m.includes('email not confirmed')) {
-    return pick(
-      '这个邮箱还没验证。去 Supabase 后台把 Confirm email 关掉，或者点邮件里的链接',
-      'Email not confirmed. Turn off "Confirm email" in Supabase, or click the link in the email',
-    )
-  }
-  if (m.includes('rate limit') || m.includes('too many requests')) {
-    return pick('太频繁了，等一会儿再试', 'Too many attempts — wait a bit')
-  }
-  if (m.includes('failed to fetch') || m.includes('network')) {
-    return pick('连不上服务器，检查一下网络', 'Cannot reach the server — check your connection')
-  }
-  return message
-}
 
 /** 云端没接上时统一给这句，省得每个入口各写一遍 */
 const noCloud = () =>
   pick('还没接云端', 'Cloud sync is not set up')
-
-export type AuthResult = { ok: true } | { ok: false; error: string }
 
 export async function signIn(email: string, password: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: noCloud() }
@@ -161,7 +127,16 @@ export async function signIn(email: string, password: string): Promise<AuthResul
     email: email.trim(),
     password,
   })
-  return error ? { ok: false, error: readableError(error.message) } : { ok: true }
+  if (!error) return { ok: true }
+  return {
+    ok: false,
+    error: readableError(error.message),
+    /*
+     * 认的是原始那句英文，不是翻译过的 —— 翻译改一个字这里就失效，
+     * 而失效的样子是「重发」按钮悄悄不出现了，没人会发现。
+     */
+    unconfirmed: /email not confirmed/i.test(error.message),
+  }
 }
 
 export async function signUp(email: string, password: string): Promise<AuthResult> {
@@ -171,20 +146,20 @@ export async function signUp(email: string, password: string): Promise<AuthResul
     password,
   })
   if (error) return { ok: false, error: readableError(error.message) }
-  /*
-   * 后台还开着 Confirm email 时，signUp 会成功但不给 session ——
-   * 界面上得说清楚，否则用户看到「成功」却没登录进去，一头雾水。
-   */
-  if (!data.session) {
-    return {
-      ok: false,
-      error: pick(
-        '注册成功了，但这个项目还要求验证邮箱。去收件箱点一下链接，或者在 Supabase 后台把 Confirm email 关掉',
-        'Signed up, but this project still requires email confirmation. Click the link in your inbox, or turn off "Confirm email" in Supabase',
-      ),
-    }
-  }
-  return { ok: true }
+  return signUpOutcome(Boolean(data.session), email.trim())
+}
+
+
+/**
+ * 把验证邮件再发一遍。
+ *
+ * 这是这一整块里最常按的那个按钮：邮件进垃圾箱、发信被限流、
+ * 邮箱地址打错了 —— 三种都表现成「我没收到」。
+ */
+export async function resendConfirm(email: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+  const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() })
+  return error ? { ok: false, error: readableError(error.message) } : { ok: true }
 }
 
 /**

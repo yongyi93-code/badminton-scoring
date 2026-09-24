@@ -29,7 +29,7 @@ import { venueLabel } from '@/lib/venues'
 import { BUILD_ID, buildStamp, forceUpdate } from '@/lib/update'
 import { useTheme } from '@/store/useTheme'
 import { cloudReady, defaultClubCode } from '@/lib/supabase'
-import { sendPasswordReset, signIn, signOut, signUp, useAuth } from '@/store/useAuth'
+import { resendConfirm, sendPasswordReset, signIn, signOut, signUp, useAuth } from '@/store/useAuth'
 import {
   disablePush,
   enablePush,
@@ -69,6 +69,14 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [mode, setMode] = useState<'in' | 'up' | 'forgot'>('in')
   /** 重设邮件发出去之后显示的那句话 */
   const [sent, setSent] = useState<string | null>(null)
+  /**
+   * 卡在「去邮箱点一下链接」这一步的那个地址。
+   *
+   * 有值的时候底下会多一个「重发」按钮 —— 那是这一整块里最常按的
+   * 那个键：进了垃圾箱、发信被限流、邮箱打错了，三种都表现成
+   * 「我没收到」。
+   */
+  const [pending, setPending] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -78,6 +86,7 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
     setBusy(true)
     setError(null)
     setSent(null)
+    setPending(null)
 
     if (mode === 'forgot') {
       const res = await sendPasswordReset(email)
@@ -100,7 +109,44 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
     setBusy(false)
     if (res.ok) {
       setPassword('')
+      /*
+       * 注册成功但还要验证邮箱：**不关弹层**。
+       *
+       * 关掉的话人只看到弹层消失、却没登录进去，下一秒他会再点一次
+       * 「注册」，然后撞上「这个邮箱已经注册过了」—— 彻底卡在门口。
+       * 留在这儿，把那句话和「重发」按钮一起摆在他眼前。
+       */
+      if (res.confirm) {
+        setPending(res.confirm)
+        setSent(
+          t(
+            `注册好了。我们往 ${res.confirm} 发了一封验证邮件 —— 点开里面那个链接就能用了。找不到就翻一下垃圾邮件。`,
+            `You are signed up. We sent a verification email to ${res.confirm} — open the link in it and you are in. Check your spam folder if it is not there.`,
+          ),
+        )
+        return
+      }
       onClose()
+      return
+    }
+    setError(res.error)
+    /* 登录被挡是因为没验证邮箱 —— 顺手把「重发」摆出来 */
+    if (res.unconfirmed) setPending(email.trim())
+  }
+
+  const resend = async () => {
+    if (!pending) return
+    setBusy(true)
+    setError(null)
+    const res = await resendConfirm(pending)
+    setBusy(false)
+    if (res.ok) {
+      setSent(
+        t(
+          `又发了一封到 ${pending}。还是没有的话，多半是邮箱地址打错了 —— 换一个再注册一次。`,
+          `Sent another one to ${pending}. Still nothing? The address is probably wrong — sign up again with a different one.`,
+        ),
+      )
     } else {
       setError(res.error)
     }
@@ -131,6 +177,8 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
               setMode(v)
               setError(null)
               setSent(null)
+              /* 换一边就把「重发」收起来：它认的是上一次填的那个邮箱 */
+              setPending(null)
             }}
             options={[
               { value: 'in', label: t('登录', 'Sign in') },
@@ -180,6 +228,19 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         {error && <p className="text-danger-600 text-label">{error}</p>}
         {sent && <p className="text-brand-600 text-label">{sent}</p>}
+
+        {/*
+          「重发」。摆在提示底下、主按钮上面 —— 卡在这一步的人下一个
+          动作十有八九就是它，不该让他去别处找。
+
+          写成 soft 不是 primary：主按钮还是「注册 / 登录」，
+          重发是补救，不是这一屏要人做的事。
+        */}
+        {pending && (
+          <Button variant="soft" block disabled={busy} onClick={() => void resend()}>
+            {t('没收到？再发一封', 'Did not get it? Send again')}
+          </Button>
+        )}
 
         <Button
           variant="primary"
