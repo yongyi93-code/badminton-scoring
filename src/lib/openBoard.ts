@@ -195,3 +195,17 @@ export function spotsLeftOn(row: OpenRow): number | null {
   if (row.max_players == null) return null
   return Math.max(0, row.max_players - row.joined)
 }
+
+/**
+ * 公开列表上**别人**的那几行。
+ *
+ * 自己球群的局要滤掉：它们已经在「按日期」那一栏里了，而且那一栏上
+ * 能直接点进去。两处都显示的话，人会以为是两场不同的局。
+ *
+ * 单拎出来是因为有两处要用同一个答案：那一栏画什么，以及**那一栏
+ * 该不该出现**。两处各写各的话，会出现「栏在、点进去是空的」
+ * 或者反过来「有局却没入口」。
+ */
+export function othersOnly(rows: OpenRow[], mineIds: Set<string>): OpenRow[] {
+  return rows.filter((r) => !mineIds.has(r.session_id))
+}

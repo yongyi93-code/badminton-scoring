@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   STALE_MS,
   openDiff,
+  othersOnly,
   openRow,
   shouldPublish,
   sortOpen,
@@ -300,5 +301,49 @@ describe('怎么排、还差几个', () => {
   it('还差几个就说几个', () => {
     const half = { ...at('2026-09-22', '20:00'), joined: 4, max_players: 8 }
     expect(spotsLeftOn(half)).toBe(4)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 「公开」那一栏上只放**别人**的局
+ *
+ * 自己群的已经在「按日期」里了，而且那一栏上能直接点进去。两处都显示
+ * 的话，人会以为是两场不同的局。
+ *
+ * 同一个答案有两处要用：那一栏画什么，以及**那一栏该不该出现**
+ * （只有一个球群在用的时候它永远是空的，那就不该占一个位置）。
+ * 两处各写各的话，会出现「栏在、点进去是空的」或者反过来「有局却
+ * 没入口」—— 所以只留这一份。
+ * ------------------------------------------------------------------ */
+describe('哪几行是别人的', () => {
+  const row = (id: string): OpenRow => ({
+    session_id: id,
+    host_uid: 'u',
+    club_code: 'ABC123',
+    venue: 'v',
+    state: null,
+    date: '2026-09-24',
+    time: null,
+    courts: 1,
+    joined: 2,
+    max_players: null,
+    host_name: null,
+  })
+
+  it('自己群里那几场滤掉', () => {
+    const out = othersOnly([row('a'), row('b')], new Set(['a']))
+    expect(out.map((r) => r.session_id)).toEqual(['b'])
+  })
+
+  it('全是自己的就一行不剩 —— 那一栏也就不该出现', () => {
+    expect(othersOnly([row('a')], new Set(['a']))).toEqual([])
+  })
+
+  it('一个都不是自己的就全留', () => {
+    expect(othersOnly([row('a'), row('b')], new Set()).length).toBe(2)
+  })
+
+  it('本来就没有行', () => {
+    expect(othersOnly([], new Set(['a']))).toEqual([])
   })
 })

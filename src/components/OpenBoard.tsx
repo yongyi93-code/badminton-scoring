@@ -4,7 +4,7 @@ import { useApp } from '@/store/useApp'
 import { useOpenBoard } from '@/store/useOpenBoard'
 import { Card, EmptyState, Pill, Segmented, cx, inputClass } from '@/components/ui'
 import { formatDate, formatTime } from '@/lib/format'
-import { spotsLeftOn, type OpenRow } from '@/lib/openBoard'
+import { othersOnly, spotsLeftOn, type OpenRow } from '@/lib/openBoard'
 import { STATES, stateName } from '@/lib/region'
 import { inviteUrl } from '@/lib/invite'
 import { useLang } from '@/lib/i18n'
@@ -51,8 +51,7 @@ export function OpenBoard() {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return rows
-      .filter((r) => !mineIds.has(r.session_id))
+    return othersOnly(rows, mineIds)
       .filter((r) => state === 'all' || r.state === state)
       .filter((r) => !q || r.venue.toLowerCase().includes(q))
   }, [rows, mineIds, state, query])

@@ -4,6 +4,8 @@ import { activeSessionOf, useApp } from '@/store/useApp'
 import { useNav } from '@/store/useNav'
 import { Body, Button, Card, EmptyState, Pill, Screen, Segmented, cx } from '@/components/ui'
 import { OpenBoard } from '@/components/OpenBoard'
+import { useOpenBoard } from '@/store/useOpenBoard'
+import { othersOnly } from '@/lib/openBoard'
 import {
   formatDate,
   formatMonth,
@@ -37,6 +39,32 @@ export function Sessions() {
   /** 我现在在哪一场里。在的话就开不了新的（见 store 的 createSession） */
   const inSession = useMemo(() => activeSessionOf(sessions, meId), [sessions, meId])
   const [filter, setFilter] = useState<Filter>('byDate')
+  /* ---------------------------------------------------------------- *
+   * 「公开」那一栏：没有别人的局就不出现
+   *
+   * 那一栏显示的是**别的球群**的局（自己群的已经在「按日期」里了，
+   * 重复显示会让人以为是两场）。所以只有一个球群在用的时候，它永远
+   * 是空的 —— 一个点进去总是空的栏目不是功能，是让人白点一次。
+   *
+   * 不是删掉：真有别的群开局了它自己回来。删掉的话，等真有人用了，
+   * 陌生人的局就没地方看了。
+   *
+   * 判断用的是和那一栏里**同一个** othersOnly —— 两处各写各的话，
+   * 会出现「栏在、点进去是空的」或者反过来「有局却没入口」。
+   * ---------------------------------------------------------------- */
+  const openRows = useOpenBoard((s) => s.rows)
+  const mineIds = useMemo(() => new Set(sessions.map((x) => x.id)), [sessions])
+  const hasOpen = useMemo(
+    () => othersOnly(openRows, mineIds).length > 0,
+    [openRows, mineIds],
+  )
+  /*
+   * 那一栏消失的时候，停在它上面的人要落回「按日期」。
+   *
+   * 算出来而不是去改 filter：改 state 的话，最后一场别人的局结束的
+   * 那一瞬间会先画一屏空的再跳走。
+   */
+  const shown: Filter = filter === 'open' && !hasOpen ? 'byDate' : filter
   /*
    * 历史看谁的。
    *
@@ -184,10 +212,10 @@ export function Sessions() {
 
       <Body>
         <Segmented
-          value={filter}
+          value={shown}
           onChange={setFilter}
           options={[
-            { value: 'byDate', label: t('按日期', 'By date') },
+            { value: 'byDate' as const, label: t('按日期', 'By date') },
             /*
              * 「公开」= 全 App 的局，不只是自己球群的。
              *
@@ -195,14 +223,14 @@ export function Sessions() {
              * 「打过的」—— 中间这一栏是唯一一处能看到陌生人的地方，
              * 而找局的人多半是先看自己群有没有，没有才往外找。
              */
-            { value: 'open', label: t('公开', 'Open') },
-            { value: 'past', label: `${t('历史', 'History')} (${past.length})` },
+            ...(hasOpen ? [{ value: 'open' as const, label: t('公开', 'Open') }] : []),
+            { value: 'past' as const, label: `${t('历史', 'History')} (${past.length})` },
           ]}
         />
 
-        {filter === 'open' ? (
+        {shown === 'open' ? (
           <OpenBoard />
-        ) : filter === 'byDate' ? (
+        ) : shown === 'byDate' ? (
           <>
             {/*
               一周七天摆一排，点哪天看哪天。
