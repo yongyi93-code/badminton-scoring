@@ -64,9 +64,11 @@ describe('分成两堆', () => {
 })
 
 describe('什么时候收不了', () => {
-  const ctx = (meId: string | null, onCourt: string[] = []) => ({
+  /* 默认是管理员 —— 原有那几条问的是「这个人能不能收」，不是「你有没有资格」 */
+  const ctx = (meId: string | null, onCourt: string[] = [], isAdmin = true) => ({
     meId,
     onCourt: new Set(onCourt),
+    isAdmin,
   })
 
   it('一般情况收得了', () => {
@@ -102,5 +104,36 @@ describe('什么时候收不了', () => {
   /* 没认领球员身份的设备上 meId 是空的，那时谁都不是「自己」 */
   it('没选过「我是谁」的时候不会把别人当成自己', () => {
     expect(archiveBlocker(player('p1', '阿伟'), ctx(null))).toBeNull()
+  })
+
+  /* ---------------------------------------------------------------- *
+   * 收人归管理员
+   *
+   * 收起一个人 = 把他从这个群的每一个名单里拿掉，而他不会收到任何
+   * 通知。原来群里十几个人谁都按得动，谁手滑都能让另一个人消失。
+   *
+   * **这一道拦的是手滑，不是坏人**：同群的人本来就能改彼此的比分
+   * （006），改过的客户端照样收得动。真要拦死得收紧整张 records 的
+   * 写入，不是这一个字段。
+   * ---------------------------------------------------------------- */
+  it('不是管理员，一个都收不了', () => {
+    expect(archiveBlocker(player('p1', '阿伟'), ctx('p9', [], false))).toBe('not-admin')
+  })
+
+  /*
+   * 顺序：先问「你有没有资格」，再问「这个人能不能收」。
+   *
+   * 反过来的话，一个根本没资格的人会先被告知「他还在场上」——
+   * 那句话对他毫无意义，而且泄露了一件他不该从这儿知道的事。
+   */
+  it('没资格的时候不去说别的理由', () => {
+    /* 又是自己、又在场上，但先说的还是「你不是管理员」 */
+    expect(archiveBlocker(player('p1', '我'), ctx('p1', ['p1'], false))).toBe('not-admin')
+  })
+
+  it('是管理员的话，原来那几条照旧', () => {
+    expect(archiveBlocker(player('p1', '我'), ctx('p1', [], true))).toBe('self')
+    expect(archiveBlocker(player('p1', '阿伟'), ctx('p9', ['p1'], true))).toBe('on-court')
+    expect(archiveBlocker(player('p1', '阿伟'), ctx('p9', [], true))).toBeNull()
   })
 })
