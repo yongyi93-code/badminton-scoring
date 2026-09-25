@@ -24,6 +24,9 @@ import { Appeals } from '@/screens/Appeals'
 import { Admins } from '@/screens/Admins'
 import { Roster } from '@/screens/Roster'
 import { Legal } from '@/screens/Legal'
+import { Tournaments } from '@/screens/Tournaments'
+import { TournamentSetup } from '@/screens/TournamentSetup'
+import { Bracket } from '@/screens/Bracket'
 import { setRoute } from '@/lib/errorlog'
 import { TabBar } from '@/components/TabBar'
 import { ProgressProvider } from '@/store/progress'
@@ -178,6 +181,12 @@ function screenFor(route: ReturnType<typeof useRoute>) {
       return <Admins />
     case 'roster':
       return <Roster />
+    case 'tournaments':
+      return <Tournaments />
+    case 'tournamentSetup':
+      return <TournamentSetup />
+    case 'bracket':
+      return <Bracket tournamentId={route.tournamentId} />
     case 'legal':
       return <Legal tab={route.tab} />
   }

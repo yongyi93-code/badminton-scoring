@@ -297,6 +297,31 @@ export function roundName(round: number, totalRounds: number, zh: boolean): stri
   return zh ? `${players} 强` : `Round of ${players}`
 }
 
+/**
+ * 这一格永远不会有人吗。
+ *
+ * 「两边都还是 null」有两种完全不同的意思，而画表时它们长得一样：
+ *
+ *   等上一轮打完   —— 人会来，只是还没打到
+ *   这一格根本不存在 —— 人数远少于表大小时的那些空枝（11 个人摆 16 人表，
+ *                      半决赛有一半是空的）
+ *
+ * 分不清的话，整张表上会摆着一堆「空」，而其中一半其实是决赛 ——
+ * 办比赛的人会以为自己排错了。
+ *
+ * 判断很直接：这一格罩着第一轮的哪几场，那几场里有没有人。
+ * 一个人都没有，它就是空枝。
+ */
+export function isDead(matches: BracketMatch[], round: number, index: number): boolean {
+  const span = 2 ** round
+  const first = matches.filter((m) => m.round === 0)
+  for (let k = index * span; k < (index + 1) * span; k++) {
+    const m = first.find((x) => x.index === k)
+    if (m && (m.a || m.b)) return false
+  }
+  return true
+}
+
 /** 冠军。决赛没打完就是 null */
 export function champion(matches: BracketMatch[]): string | null {
   const last = Math.max(...matches.map((m) => m.round))

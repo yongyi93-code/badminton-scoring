@@ -79,6 +79,16 @@ export type Route =
    * 在路由上摆一道门只是自欺。
    */
   | { name: 'roster' }
+  /*
+   * 比赛（单淘汰赛表）。
+   *
+   * 和球局那一套是分开的两件事：球局是自己群里今晚打球，比赛是对外办的
+   * 公开赛，来的人多半不在这个球群里、连 App 都没装。所以它不挂在球局
+   * 那条路径下面，也不认球群。
+   */
+  | { name: 'tournaments' }
+  | { name: 'tournamentSetup' }
+  | { name: 'bracket'; tournamentId: string }
   /** 隐私政策 / 服务条款。谁都看得到，不用登录 */
   | { name: 'legal'; tab?: 'privacy' | 'terms' }
 

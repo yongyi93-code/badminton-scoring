@@ -4,6 +4,7 @@ import {
   champion,
   drawSize,
   firstRound,
+  isDead,
   placeRanked,
   rankEntrants,
   roundCount,
@@ -313,5 +314,70 @@ describe('一格上写什么', () => {
   it('空格写「轮空」', () => {
     expect(slotLabel(null, true)).toBe('轮空')
     expect(slotLabel(undefined, false)).toBe('Bye')
+  })
+})
+
+describe('空枝和「还没打到」是两件事', () => {
+  /*
+   * 11 个人摆 16 人表：半决赛那两格现在也是空的，但人会来。
+   * 5 个人摆 8 人表：半决赛有一格是**永远不会有人**的。
+   *
+   * 画表时这两种都是「a 和 b 都还是 null」，长得一模一样 ——
+   * 分不清就会在决赛那一格上写「空」。
+   */
+  const make = (n: number, size: number) => {
+    const people: Entrant[] = Array.from({ length: n }, (_, i) => ({
+      id: `p${i}`,
+      names: [`p${i}`],
+      seed: i + 1,
+    }))
+    return buildBracket(placeRanked(rankEntrants(people, 'seeded'), size))
+  }
+
+  it('人满的表，一格都不是空枝', () => {
+    const m = make(8, 8)
+    expect(m.filter((x) => isDead(m, x.round, x.index))).toHaveLength(0)
+  })
+
+  it('5 个人摆 8 人表：一场空枝都没有 —— 轮空是散开的', () => {
+    /*
+     * 这一条是我先写错、被测试纠正过来的：本来以为「人不满就会有空枝」。
+     * 不会。seedOrder 把第 r 名和第 (size+1-r) 名配在一起，5 个人的时候
+     * 空出来的是第 6、7、8 名，它们配的是第 3、2、1 名 —— 全是轮空，
+     * 没有哪一场是两边都没人。
+     *
+     * 人数超过表的一半，就一个空枝都不会有。
+     */
+    const m = make(5, 8)
+    expect(m.filter((x) => isDead(m, x.round, x.index))).toHaveLength(0)
+  })
+
+  it('3 个人硬摆 8 人表：真的有空枝了', () => {
+    /* 人数不到表的一半，才会出现「两边都没人」的那种场次 */
+    const m = make(3, 8)
+    const dead = m.filter((x) => x.round === 0 && isDead(m, x.round, x.index))
+    expect(dead).toHaveLength(1)
+    expect(dead[0].a).toBeNull()
+    expect(dead[0].b).toBeNull()
+  })
+
+  it('半决赛那一格，上游全空才算空枝', () => {
+    const m = make(3, 8)
+    const semis = m.filter((x) => x.round === 1)
+    /* 两场半决赛，一场上游有人（不算空枝），另一场上游一半是空枝但另一半有人 */
+    expect(semis.every((x) => !isDead(m, x.round, x.index))).toBe(true)
+  })
+
+  it('决赛永远不是空枝 —— 只要场上有人', () => {
+    for (const [n, size] of [[2, 2], [3, 4], [5, 8], [11, 16], [23, 32]] as const) {
+      const m = make(n, size)
+      const last = Math.max(...m.map((x) => x.round))
+      expect(isDead(m, last, 0)).toBe(false)
+    }
+  })
+
+  it('一个人都没有的表，整张都是空枝', () => {
+    const m = buildBracket([null, null, null, null])
+    expect(m.every((x) => isDead(m, x.round, x.index))).toBe(true)
   })
 })

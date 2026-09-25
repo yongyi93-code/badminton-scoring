@@ -825,6 +825,26 @@ export function Me() {
               )}
             </div>
 
+            {/*
+              比赛（淘汰赛表）。
+              摆在战绩上面，因为它是「我要去做一件事」，而战绩是
+              「我回头看一眼」—— 前者有时限，后者什么时候看都行。
+
+              入口给所有人，不只管理员：办比赛的不一定是球群管理员，
+              而且这一套东西根本不碰球群的数据。
+            */}
+            <SectionTitle>{t('比赛', 'Tournaments')}</SectionTitle>
+            <div className="border-line rounded-card overflow-hidden border">
+              <MenuRow
+                title={t('淘汰赛赛表', 'Knockout brackets')}
+                hint={t(
+                  '填名单就自动抽签排表，单打双打都行',
+                  'Type the entries, it draws the bracket — singles or doubles',
+                )}
+                onClick={() => push({ name: 'tournaments' })}
+              />
+            </div>
+
             <SectionTitle>{t('我的战绩', 'My record')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">
               <MenuRow
