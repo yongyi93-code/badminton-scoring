@@ -41,6 +41,7 @@ import {
   type PlayerStats,
   type Session,
 } from '@/types'
+import type { AvatarProfile } from '@/lib/avatar'
 
 /* ------------------------------------------------------------------ *
  * 战绩分享图（离屏渲染后截成 PNG）
@@ -54,6 +55,7 @@ function ShareCard({
   matchCount,
   perPerson,
   venueKing,
+  avatarsById,
   innerRef,
 }: {
   session: Session
@@ -64,6 +66,17 @@ function ShareCard({
   perPerson: number
   /** 这个球馆的累计第一，发到群里让人知道该挑战谁 */
   venueKing: { name: string; winRate: number; games: number } | null
+  /**
+   * 每个人的换装角色。
+   *
+   * 不传的话 Avatar 只剩「照片 → 名字首字」两级，而这个球群里绝大多数
+   * 人没有照片 —— 于是发到群里的那张卡上全是字母色块，而他们在 App 里
+   * 看到的是自己的角色。同一个人在两处长得不一样，最先被怀疑的是
+   * 「这 App 是不是认错人了」。
+   *
+   * 别的每一处（本群排名、球馆榜、球员卡）都传了这一份，只有这张卡漏了。
+   */
+  avatarsById: Map<string, AvatarProfile>
   innerRef: React.Ref<HTMLDivElement>
 }) {
   const t = useT()
@@ -179,7 +192,12 @@ function ShareCard({
               <span className="w-5 text-center text-sm font-bold text-ink-500">
                 {i + 1}
               </span>
-              <Avatar name={names.get(s.playerId)?.name ?? '?'} playerId={s.playerId} size="sm" />
+              <Avatar
+                name={names.get(s.playerId)?.name ?? '?'}
+                avatar={avatarsById.get(s.playerId)}
+                playerId={s.playerId}
+                size="sm"
+              />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">
                 {names.get(s.playerId)?.name}
               </span>
@@ -738,7 +756,12 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
                         : 'border-line bg-surface text-ink-700',
                     )}
                   >
-                    <Avatar name={names.get(id)?.name ?? '?'} playerId={id} size="sm" />
+                    <Avatar
+                      name={names.get(id)?.name ?? '?'}
+                      avatar={avatarsById.get(id)}
+                      playerId={id}
+                      size="sm"
+                    />
                     {names.get(id)?.name ?? '?'}
                     {paid && <span>✓</span>}
                   </button>
@@ -828,6 +851,7 @@ export function SessionSummary({ sessionId }: { sessionId: string }) {
         matchCount={done.length}
         perPerson={fee.perPerson}
         venueKing={venueKing}
+        avatarsById={avatarsById}
         innerRef={shareRef}
       />
     </Screen>
