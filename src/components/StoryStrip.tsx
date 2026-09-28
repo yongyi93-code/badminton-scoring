@@ -6,6 +6,7 @@ import { feedChanged, useFeed } from '@/store/useFeed'
 import { Toast } from '@/components/ui'
 import { PostSheet } from '@/components/PostSheet'
 import { Camera } from '@/components/Camera'
+import { StoryEditor } from '@/components/StoryEditor'
 import { StoryRow, StoryViewer, tellers } from '@/components/Stories'
 import { useMyBan } from '@/components/BanNotice'
 import { nameOf } from '@/lib/profile'
@@ -58,6 +59,8 @@ export function StoryStrip() {
   const [composing, setComposing] = useState(false)
   /** 相机开着没有。点「＋」开它，拍完或者取消就收 */
   const [shooting, setShooting] = useState(false)
+  /** 拍到/挑到的那一张，正在修图那一屏上。null = 没在修 */
+  const [editing, setEditing] = useState<File | null>(null)
   /** 点「＋」那一下就选好的照片，跟着弹层一起递进去 */
   const [picked, setPicked] = useState<File[]>([])
   const [note, setNote] = useState<string | null>(null)
@@ -169,9 +172,26 @@ export function StoryStrip() {
     picker.current?.click()
   }
 
-  /* 拍好了：收起相机，把那一个文件递给弹层 */
+  /*
+   * 拍好了：收起相机，先进修图那一屏。
+   *
+   * 不直接进发布弹层 —— 拍完立刻要调色、要写字是这类功能的常态
+   * （IG、微信、小红书全是「拍 → 改 → 发」三步）。直接跳到发布，
+   * 人就只能发原图，想改只能删了重拍。
+   */
   const shot = (f: File) => {
     setShooting(false)
+    setEditing(f)
+  }
+
+  /*
+   * 改完了（或者什么都没改）：这才进发布弹层。
+   *
+   * 「返回」回的是相机，不是直接关掉 —— 人按返回多半是想重拍，
+   * 而不是想放弃这条 Story。
+   */
+  const editDone = (f: File) => {
+    setEditing(null)
     setPicked([f])
     setComposing(true)
   }
@@ -191,6 +211,20 @@ export function StoryStrip() {
       />
 
       <Camera open={shooting} onClose={() => setShooting(false)} onShot={shot} onAlbum={toAlbum} />
+
+      {/*
+        修图那一屏。只在「一个文件」的时候出现 —— 相册可以一次选好几张，
+        一张张改过去是另一套流程（要有「第 2 张，共 5 张」那种进度），
+        这一版不做，多选的直接进发布。
+      */}
+      <StoryEditor
+        file={editing}
+        onCancel={() => {
+          setEditing(null)
+          setShooting(true)
+        }}
+        onDone={editDone}
+      />
 
       {/*
         这一个是**相册**那条路：相机开不起来，或者人自己点了「相册」。
@@ -217,7 +251,10 @@ export function StoryStrip() {
            * 都不发生」是白拿的 —— 不用去判断人有没有取消（iOS 上也
            * 根本判不出来）。
            */
-          if (files.length) {
+          if (files.length === 1) {
+            /* 从相册挑了一张：跟拍的那条路一样，先进修图 */
+            setEditing(files[0])
+          } else if (files.length) {
             setPicked(files)
             setComposing(true)
           }
