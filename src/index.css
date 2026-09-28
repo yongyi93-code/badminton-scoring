@@ -78,6 +78,33 @@
   --t-male: #1670a8;
   --t-female: #c04a80;
 
+  /* ------------------------------------------------------------------ *
+   * 菜单图标的底色
+   *
+   * 「我的」那一屏原来是一整列纯文字，扫下去分不出哪行是哪行 ——
+   * 人找一个入口得一行行读。这几组颜色是给每行左边那个小图标块用的：
+   * 眼睛认颜色比认字快得多，第二次进来就是「点那个橙的」。
+   *
+   * 每组两个值，成对用：tint 是那一小块的底，tint-ink 是压在上面的
+   * 线条。分开定而不是拿一个色去调透明度，是因为深色模式下底要压暗、
+   * 线条却要提亮，一个值做不到两件事。
+   *
+   * 克制在六个：再多就不是「按颜色找」，是花。而颜色都往这套绿里
+   * 收了收，不然整屏像糖果盒 —— 这个 App 的底子是深绿的球场。
+   * ------------------------------------------------------------------ */
+  --t-tile-green: #d9efe3;
+  --t-tile-green-ink: #0a6c49;
+  --t-tile-blue: #dceaf7;
+  --t-tile-blue-ink: #1d6ea4;
+  --t-tile-violet: #e6e2f6;
+  --t-tile-violet-ink: #6a52b5;
+  --t-tile-amber: #fbeed6;
+  --t-tile-amber-ink: #99661a;
+  --t-tile-rose: #f9dfe3;
+  --t-tile-rose-ink: #b04455;
+  --t-tile-slate: #e2e9e6;
+  --t-tile-slate-ink: #4f6a5d;
+
   --t-scrim: rgb(8 36 24 / 0.45);
   --t-shadow-card: 0 6px 20px rgb(8 36 24 / 0.07);
   --t-shadow-pop: 0 12px 32px rgb(8 36 24 / 0.16);
@@ -122,6 +149,20 @@
   --t-warning-50: #3a2a12;
   --t-danger-600: #f4909a;
   --t-danger-50: #3b1a20;
+
+  /* 深色下底压暗、线条提亮 —— 见上面那段为什么要分两个值 */
+  --t-tile-green: #123b2c;
+  --t-tile-green-ink: #5fdca6;
+  --t-tile-blue: #13303f;
+  --t-tile-blue-ink: #6fc0ea;
+  --t-tile-violet: #262247;
+  --t-tile-violet-ink: #b0a0ef;
+  --t-tile-amber: #3a2c12;
+  --t-tile-amber-ink: #eab861;
+  --t-tile-rose: #3b1f24;
+  --t-tile-rose-ink: #f095a2;
+  --t-tile-slate: #22352d;
+  --t-tile-slate-ink: #9ab5a7;
 
   /* 深色下实心底提亮，字反过来压深色 —— 白字压亮绿只有 2:1，读不了 */
   --t-brand-solid: #34c98b;
@@ -181,6 +222,19 @@
   --color-on-brand: var(--t-on-brand);
   --color-danger-solid: var(--t-danger-solid);
   --color-on-danger: var(--t-on-danger);
+
+  --color-tile-green: var(--t-tile-green);
+  --color-tile-green-ink: var(--t-tile-green-ink);
+  --color-tile-blue: var(--t-tile-blue);
+  --color-tile-blue-ink: var(--t-tile-blue-ink);
+  --color-tile-violet: var(--t-tile-violet);
+  --color-tile-violet-ink: var(--t-tile-violet-ink);
+  --color-tile-amber: var(--t-tile-amber);
+  --color-tile-amber-ink: var(--t-tile-amber-ink);
+  --color-tile-rose: var(--t-tile-rose);
+  --color-tile-rose-ink: var(--t-tile-rose-ink);
+  --color-tile-slate: var(--t-tile-slate);
+  --color-tile-slate-ink: var(--t-tile-slate-ink);
 
   --color-team-a: var(--t-team-a);
   --color-team-b: var(--t-team-b);

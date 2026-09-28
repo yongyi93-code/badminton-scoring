@@ -16,8 +16,33 @@ import {
   Segmented,
   Sheet,
   Toast,
+  cx,
   inputClass,
 } from '@/components/ui'
+import {
+  IconAppeal,
+  IconBell,
+  IconCalendar,
+  IconCard,
+  IconChart,
+  IconChat,
+  IconCloudAlert,
+  IconDoc,
+  IconFlag,
+  IconFriends,
+  IconInbox,
+  IconGlobe,
+  IconInstall,
+  IconKey,
+  IconLock,
+  IconMoments,
+  IconMoon,
+  IconRoster,
+  IconShield,
+  IconShuttle,
+  IconTrash,
+  IconTrophy,
+} from '@/components/icons'
 import { Avatar } from '@/components/PlayerBits'
 import { RankChip } from '@/components/RankMedal'
 import { AvatarView } from '@/components/Avatar'
@@ -445,14 +470,53 @@ function CloudSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   )
 }
 
+/* 图标块的六种底色。成对取，见 index.css 里那一段 */
+const TILES = {
+  green: 'bg-tile-green text-tile-green-ink',
+  blue: 'bg-tile-blue text-tile-blue-ink',
+  violet: 'bg-tile-violet text-tile-violet-ink',
+  amber: 'bg-tile-amber text-tile-amber-ink',
+  rose: 'bg-tile-rose text-tile-rose-ink',
+  slate: 'bg-tile-slate text-tile-slate-ink',
+} as const
+
+type Tile = keyof typeof TILES
+
+/**
+ * 菜单里的一行。
+ *
+ * -------------------------------------------------------------------
+ * 每行左边一个图标
+ *
+ * 原来这一屏是一整列纯文字，二十行长得一模一样，找入口只能一行行读。
+ * 加了图标之后，第二次进来找的是「那个橙色的奖杯」——
+ * 认图形和颜色比认字快得多，这也是微信、Telegram、Line 这些
+ * 设置页全都这么排的原因。
+ *
+ * -------------------------------------------------------------------
+ * 副标题只留「现在怎么样」，不留「这是什么」
+ *
+ * 原来几乎每一行底下都挂一句解释，结果一行有两行高，一屏塞不下几条，
+ * 而那些解释看过一次就不必再看了 —— 它们天天占着地方，
+ * 却只在第一次有用。
+ *
+ * 所以留下来的只有会变的那种：几条没读、都处理完了、同步出问题了、
+ * 登录用的哪个邮箱。这些是**状态**，每次进来都得看一眼。
+ * 剩下的解释交给图标和标题。
+ */
 function MenuRow({
+  icon,
+  tile = 'slate',
   title,
   hint,
   right,
   onClick,
   danger,
 }: {
+  icon?: ReactNode
+  tile?: Tile
   title: string
+  /** 只写会变的状态，别写「这是什么」—— 见上面那段 */
   hint?: string
   right?: ReactNode
   onClick?: () => void
@@ -462,9 +526,20 @@ function MenuRow({
   return (
     <Tag
       onClick={onClick}
-      className="border-line bg-surface flex w-full items-center gap-3 border-b px-4 py-3.5 text-left last:border-b-0 active:bg-fill"
+      className="border-line bg-surface flex w-full items-center gap-3 border-b px-4 py-2.5 text-left last:border-b-0 active:bg-fill"
     >
-      <span className="min-w-0 flex-1">
+      {icon && (
+        <span
+          className={cx(
+            'flex size-8 shrink-0 items-center justify-center rounded-[10px]',
+            /* 危险的那几行（注销账号）不按分类给色，一律红 —— 那是警告，不是分类 */
+            danger ? TILES.rose : TILES[tile],
+          )}
+        >
+          {icon}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 py-1">
         <span className={danger ? 'text-danger-600 block' : 'block'}>{title}</span>
         {hint && <span className="text-ink-500 mt-0.5 block text-caption">{hint}</span>}
       </span>
@@ -719,12 +794,10 @@ export function Me() {
             <SectionTitle>{t('好友', 'Friends')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">
               <MenuRow
+                icon={<IconFriends />}
+                tile="blue"
                 title={t('好友与私聊', 'Friends and chat')}
-                hint={
-                  badge > 0
-                    ? t(`${badge} 条新的`, `${badge} new`)
-                    : t('加了好友才能私聊', 'Chat opens once you are friends')
-                }
+                hint={badge > 0 ? t(`${badge} 条新的`, `${badge} new`) : undefined}
                 right={
                   badge > 0 ? (
                     <span className="bg-brand-solid text-on-brand tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption">
@@ -737,117 +810,119 @@ export function Me() {
               {/*
                 朋友圈。摆在「好友与私聊」下面，因为它是好友的事 ——
                 只有好友看得到，同一个球群但没加好友的人也看不到。
+                这一句留着：它是「谁看得见我发的东西」，看一百次也还是要紧。
               */}
               <MenuRow
+                icon={<IconMoments />}
+                tile="violet"
                 title={t('朋友圈', 'Moments')}
                 hint={t('只有好友看得到', 'Friends only')}
                 onClick={() => push({ name: 'moments' })}
               />
-              {/*
-                举报队列。只有管理员看得见这一行 —— 别人看见一个
-                点不进去的入口，只会以为自己被降级了。
-                真正把门的是数据库那边的策略，不是这个判断。
-              */}
-              {social.isAdmin && (
-                <MenuRow
-                  title={t('申诉', 'Appeals')}
-                  hint={t(
-                    '被封的人写的话。没人看的申诉比没有申诉更伤人',
-                    'What suspended people wrote. An unread appeal hurts more than none',
-                  )}
-                  onClick={() => push({ name: 'appeals' })}
-                />
-              )}
-              {social.isAdmin && (
-                <MenuRow
-                  title={t('举报队列', 'Reports')}
-                  hint={
-                    openReports > 0
-                      ? t(`${openReports} 条等你看`, `${openReports} waiting for you`)
-                      : t('都处理完了', 'All clear')
-                  }
-                  right={
-                    openReports > 0 ? (
-                      <span className="bg-danger-600 tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption text-white">
-                        {openReports > 99 ? '99+' : openReports}
-                      </span>
-                    ) : undefined
-                  }
-                  onClick={() => push({ name: 'reports' })}
-                />
-              )}
-              {/*
-                球群成员：只有管理员看得见。
-
-                这一屏上的东西（名字、打过几场）别处本来也看得到 ——
-                排名那一栏、每一场球局的名单、开局选人都列着同样的人。
-                所以这一道**不是保密**，是不让「整个群的名册」成为
-                随手一点就摊开的一屏。真正决定谁看得到这些的是
-                「谁进得来这个群」，那件事在 ROADMAP 第五节。
-
-                入口和屏本身都要挡：只藏入口的话，从别处跳进去照样看得到。
-              */}
-              {social.isAdmin && (
-                <MenuRow
-                  title={t('球群成员', 'Club roster')}
-                  hint={t('不打了的人可以收起来', 'Put away anyone who stopped playing')}
-                  onClick={() => push({ name: 'roster' })}
-                />
-              )}
-              {/*
-                管理员名单。只有 owner 看得见 —— 普通管理员看见一个
-                改不动的入口，只会以为是坏了。
-              */}
-              {social.isOwner && (
-                <MenuRow
-                  title={t('管理员', 'Admins')}
-                  hint={t('谁能看举报和反馈', 'Who can see reports and feedback')}
-                  onClick={() => push({ name: 'admins' })}
-                />
-              )}
-              {social.isAdmin && (
-                <MenuRow
-                  title={t('反馈与报错', 'Feedback and crashes')}
-                  hint={
-                    openFeedback > 0
-                      ? t(`${openFeedback} 条没看`, `${openFeedback} unread`)
-                      : t('都看完了', 'All caught up')
-                  }
-                  right={
-                    openFeedback > 0 ? (
-                      <span className="bg-brand-solid text-on-brand tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption">
-                        {openFeedback > 99 ? '99+' : openFeedback}
-                      </span>
-                    ) : undefined
-                  }
-                  onClick={() => push({ name: 'feedback' })}
-                />
-              )}
             </div>
 
-            {/*
-              比赛（淘汰赛表）。
-              摆在战绩上面，因为它是「我要去做一件事」，而战绩是
-              「我回头看一眼」—— 前者有时限，后者什么时候看都行。
+            {/* ---------------------------------------------------------- *
+              管理那几行，从「好友」里拆出来单独一组。
 
-              入口给所有人，不只管理员：办比赛的不一定是球群管理员，
+              原来它们跟好友、朋友圈挤在同一张卡里，一连七行 ——
+              而这两拨事根本不是一回事：一边是「我跟球友」，
+              一边是「我替这个群收拾东西」。混在一起的结果是，
+              普通人每次都要从一堆管理入口里找自己的朋友圈。
+
+              整组只有管理员看得见。真正把门的是数据库那边的策略，
+              不是这个判断 —— 这里只管别让人看见点不动的东西。
+            * ---------------------------------------------------------- */}
+            {social.isAdmin && (
+              <>
+                <SectionTitle>{t('管理', 'Admin')}</SectionTitle>
+                <div className="border-line rounded-card overflow-hidden border">
+                  <MenuRow
+                    icon={<IconAppeal />}
+                    tile="rose"
+                    title={t('申诉', 'Appeals')}
+                    onClick={() => push({ name: 'appeals' })}
+                  />
+                  <MenuRow
+                    icon={<IconFlag />}
+                    tile="rose"
+                    title={t('举报队列', 'Reports')}
+                    hint={
+                      openReports > 0
+                        ? t(`${openReports} 条等你看`, `${openReports} waiting for you`)
+                        : t('都处理完了', 'All clear')
+                    }
+                    right={
+                      openReports > 0 ? (
+                        <span className="bg-danger-600 tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption text-white">
+                          {openReports > 99 ? '99+' : openReports}
+                        </span>
+                      ) : undefined
+                    }
+                    onClick={() => push({ name: 'reports' })}
+                  />
+                  {/*
+                    球群成员。
+
+                    这一屏上的东西（名字、打过几场）别处本来也看得到 ——
+                    所以这一道不是保密，是不让「整个群的名册」成为
+                    随手一点就摊开的一屏。入口和屏本身都挡：只藏入口的话，
+                    从别处跳进去照样看得到。
+                  */}
+                  <MenuRow
+                    icon={<IconRoster />}
+                    tile="slate"
+                    title={t('球群成员', 'Club roster')}
+                    onClick={() => push({ name: 'roster' })}
+                  />
+                  {/* 管理员名单只有 owner 看得见 —— 普通管理员看见一个改不动的入口，只会以为是坏了 */}
+                  {social.isOwner && (
+                    <MenuRow
+                      icon={<IconShield />}
+                      tile="violet"
+                      title={t('管理员', 'Admins')}
+                      onClick={() => push({ name: 'admins' })}
+                    />
+                  )}
+                  <MenuRow
+                    icon={<IconInbox />}
+                    tile="amber"
+                    title={t('反馈与报错', 'Feedback and crashes')}
+                    hint={
+                      openFeedback > 0
+                        ? t(`${openFeedback} 条没看`, `${openFeedback} unread`)
+                        : t('都看完了', 'All caught up')
+                    }
+                    right={
+                      openFeedback > 0 ? (
+                        <span className="bg-brand-solid text-on-brand tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption">
+                          {openFeedback > 99 ? '99+' : openFeedback}
+                        </span>
+                      ) : undefined
+                    }
+                    onClick={() => push({ name: 'feedback' })}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* ---------------------------------------------------------- *
+              比赛和战绩摆在一起：两样都是「我打得怎么样」。
+              比赛在上，因为它有时限（今天要办的），战绩什么时候看都行。
+
+              比赛入口给所有人，不只管理员：办比赛的不一定是球群管理员，
               而且这一套东西根本不碰球群的数据。
-            */}
-            <SectionTitle>{t('比赛', 'Tournaments')}</SectionTitle>
+            * ---------------------------------------------------------- */}
+            <SectionTitle>{t('比赛与战绩', 'Play')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">
               <MenuRow
+                icon={<IconTrophy />}
+                tile="amber"
                 title={t('淘汰赛赛表', 'Knockout brackets')}
-                hint={t(
-                  '填名单就自动抽签排表，单打双打都行',
-                  'Type the entries, it draws the bracket — singles or doubles',
-                )}
                 onClick={() => push({ name: 'tournaments' })}
               />
-            </div>
-
-            <SectionTitle>{t('我的战绩', 'My record')}</SectionTitle>
-            <div className="border-line rounded-card overflow-hidden border">
               <MenuRow
+                icon={<IconChart />}
+                tile="green"
                 title={t('完整战绩与对手分析', 'Full record and head-to-heads')}
                 hint={t(
                   `${stats.games} 场 · ${stats.wins} 胜 ${stats.losses} 负`,
@@ -864,6 +939,8 @@ export function Me() {
                   {recent.map((s) => (
                     <MenuRow
                       key={s.id}
+                      icon={<IconCalendar />}
+                      tile={s.status === 'active' ? 'green' : 'slate'}
                       title={venueLabel(s.venue)}
                       hint={`${formatDate(s.date)} · ${
                         s.status === 'active' ? t('进行中', 'Live') : t('已结束', 'Finished')
@@ -982,6 +1059,8 @@ export function Me() {
             <SectionTitle>{t('球群', 'Club')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">
               <MenuRow
+                icon={<IconShuttle />}
+                tile="green"
                 title={club.name}
                 hint={t(
                   `邀请码 ${club.code} · 点这里发给球友`,
@@ -1003,12 +1082,14 @@ export function Me() {
         */}
         {cloudReady && (
           <>
-            <SectionTitle>{t('登录', 'Sign in')}</SectionTitle>
+            <SectionTitle>{t('账号', 'Account')}</SectionTitle>
             <div className="border-line rounded-card overflow-hidden border">
               {session === undefined ? (
                 <MenuRow title={t('正在检查登录状态…', 'Checking sign-in…')} />
               ) : session ? (
                 <MenuRow
+                  icon={<IconKey />}
+                  tile="green"
                   title={t('已登录', 'Signed in')}
                   hint={session.user.email ?? undefined}
                   right={
@@ -1039,10 +1120,12 @@ export function Me() {
                 />
               ) : (
                 <MenuRow
+                  icon={<IconKey />}
+                  tile="green"
                   title={t('登录', 'Sign in')}
                   hint={t(
-                    '登录之后，数据就能备份到云端、换手机也拿得回来',
-                    'Sign in to back your data up and get it back on another phone',
+                    '换手机也拿得回来',
+                    'Get your data back on another phone',
                   )}
                   onClick={() => setAuthOpen(true)}
                 />
@@ -1059,6 +1142,8 @@ export function Me() {
               */}
               {session && needsAttention && (
                 <MenuRow
+                  icon={<IconCloudAlert />}
+                  tile="amber"
                   title={t('同步遇到问题', 'Sync needs attention')}
                   hint={syncHint}
                   onClick={() => setCloudOpen(true)}
@@ -1075,11 +1160,9 @@ export function Me() {
               */}
               {session && (
                 <MenuRow
+                  icon={<IconCard />}
+                  tile="blue"
                   title={t('我的名片', 'My card')}
-                  hint={t(
-                    '照片，和别的球群的好友看到的名字',
-                    'Your photo, and the name friends in other clubs see',
-                  )}
                   onClick={() => setPhotoOpen(true)}
                 />
               )}
@@ -1089,13 +1172,17 @@ export function Me() {
               */}
               {session && (
                 <MenuRow
+                  icon={<IconLock />}
+                  tile="slate"
                   title={t('改密码', 'Change password')}
-                  hint={t('要先填现在的密码', 'You will need your current one')}
                   onClick={() => setPwOpen(true)}
                 />
               )}
+              {/* 图标走红色：这一行是警告，不是分类 */}
               {session && (
                 <MenuRow
+                  icon={<IconTrash />}
+                  danger
                   title={t('注销账号', 'Delete account')}
                   hint={t('永久删除，没法撤销', 'Permanent, cannot be undone')}
                   onClick={() => setDeleteOpen(true)}
@@ -1119,8 +1206,9 @@ export function Me() {
         <SectionTitle>{t('设置', 'Settings')}</SectionTitle>
         <div className="border-line rounded-card overflow-hidden border">
           <MenuRow
+            icon={<IconGlobe />}
+            tile="blue"
             title={t('语言', 'Language')}
-            hint={LANG_LABELS[lang]}
             right={
               <div className="flex gap-1">
                 {(['zh', 'en'] as Lang[]).map((l) => (
@@ -1142,6 +1230,8 @@ export function Me() {
           */}
           {pushConfigured() && (
             <MenuRow
+              icon={<IconBell />}
+              tile="amber"
               title={t('开局提醒', 'Session alerts')}
               hint={
                 pushNote ??
@@ -1210,8 +1300,9 @@ export function Me() {
             />
           )}
           <MenuRow
+            icon={<IconMoon />}
+            tile="violet"
             title={t('深色模式', 'Dark mode')}
-            hint={theme === 'dark' ? t('现在是深色', 'Currently dark') : t('现在是浅色', 'Currently light')}
             right={
               <Button
                 size="sm"
@@ -1228,11 +1319,9 @@ export function Me() {
           */}
           {installHow !== null && (
             <MenuRow
+              icon={<IconInstall />}
+              tile="green"
               title={t('装到手机上', 'Put RALLY on your phone')}
-              hint={t(
-                '桌面一个图标点开就用，还能收开局提醒',
-                'One tap from your home screen, and you get session alerts',
-              )}
               onClick={() => setInstallOpen(true)}
             />
           )}
@@ -1249,11 +1338,10 @@ export function Me() {
         <div className="border-line rounded-card overflow-hidden border">
           {session && (
             <MenuRow
+              icon={<IconChat />}
+              tile="blue"
               title={t('说点什么', 'Tell us')}
-              hint={t(
-                '出问题了、想要个功能，都可以说',
-                'Something broken, or something you wish it did',
-              )}
+              hint={t('出问题了、想要个功能', 'Something broken, or something you wish it did')}
               onClick={() => setFeedbackOpen(true)}
             />
           )}
@@ -1262,8 +1350,9 @@ export function Me() {
             想先看看你拿他的数据干什么，这很合理。
           */}
           <MenuRow
+            icon={<IconDoc />}
+            tile="slate"
             title={t('隐私政策与服务条款', 'Privacy and Terms')}
-            hint={t('收了什么、谁看得到、存多久', 'What is collected, who sees it, how long it is kept')}
             onClick={() => push({ name: 'legal' })}
           />
         </div>
