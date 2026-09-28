@@ -10,7 +10,6 @@ import {
   Button,
   Card,
   Field,
-  Pill,
   Screen,
   SectionTitle,
   Segmented,
@@ -706,58 +705,90 @@ export function Me() {
 
         {me && progress && stats ? (
           <>
-            <Card>
-              <div className="flex items-center gap-4">
-                <Avatar name={me.name} avatar={avatar} playerId={me.id} size="lg" />
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-h2">{me.name}</h2>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <RankChip level={progress.level} />
-                    <span className="tnum text-ink-500 text-caption">
-                      MMR {progress.mmr}
-                    </span>
-                    {streak && (
-                      <Pill tone={stats.streak > 0 ? 'success' : 'danger'}>{streak}</Pill>
-                    )}
+            {/* ---------------------------------------------------------- *
+              名片那一张。
+
+              原来是两张白卡：上面一张头像加三个数字，下面一张换装角色。
+              两张都是白底白框，跟底下那一长串菜单一个质感 —— 整屏没有
+              一处是「这是你」，从上到下一样平。
+
+              改成一张，顶上压一条球场绿。社交 App 的个人页几乎都这么做
+              （Instagram、Strava、Discord 都是一条色带加一个压在上面的
+              头像）：那条色带不是装饰，它是这一屏唯一的「主角在这里」。
+
+              用 court 这个色而不是别的：它在这套配色里就是「那片真的场地」，
+              深浅两套主题都是同一个深绿，压白字 7.9:1。整个 App 也就
+              记分板和这里敢铺这么大一块。
+
+              换装角色并进来当同一张卡的下半截 —— 它是这个 App 唯一的
+              养成线，值当挨着名字，而不是另起一张卡排在下面。
+            * ---------------------------------------------------------- */}
+            <div className="border-line rounded-card shadow-card overflow-hidden border">
+              <div className="bg-court text-on-court px-4 pt-4 pb-3">
+                <div className="flex items-center gap-3.5">
+                  {/*
+                    头像外面套一圈半透明白。
+                    深绿底上不套的话，深色的头像照片会跟底糊在一起，
+                    看不出边 —— 那一圈就是把人从背景里「抠」出来。
+                  */}
+                  <span className="shrink-0 rounded-full p-[3px] ring-2 ring-white/25">
+                    <Avatar name={me.name} avatar={avatar} playerId={me.id} size="lg" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-h2">{me.name}</h2>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <RankChip level={progress.level} onDark />
+                      <span className="tnum rounded-full bg-white/16 px-2 py-0.5 text-xs">
+                        MMR {progress.mmr}
+                      </span>
+                      {streak && (
+                        <span className="rounded-full bg-white/16 px-2 py-0.5 text-xs">
+                          {streak}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/*
+                    深绿上不能用 tertiary：那个是 brand-600 的字，
+                    深绿压深绿等于没有。这里自己写一个半透明白的。
+                  */}
+                  <button
+                    onClick={() => {
+                      setSelfName(me.name)
+                      setSelfGender(me.gender)
+                      setPicking(true)
+                    }}
+                    className="shrink-0 self-start rounded-full bg-white/16 px-3 py-1 text-caption active:bg-white/28"
+                  >
+                    {t('改名字', 'Edit')}
+                  </button>
+                </div>
+
+                <div className="mt-3.5 grid grid-cols-3 gap-2 border-t border-white/18 pt-3 text-center">
+                  <div>
+                    <p className="tnum text-h2">{thisMonth.games}</p>
+                    <p className="text-caption text-white/70">{t('本月场次', 'This month')}</p>
+                  </div>
+                  <div>
+                    <p className="tnum text-h2">{thisMonth.wins}</p>
+                    <p className="text-caption text-white/70">{t('本月胜场', 'Wins')}</p>
+                  </div>
+                  <div>
+                    <p className="tnum text-h2">{percent(stats.winRate)}</p>
+                    <p className="text-caption text-white/70">{t('总胜率', 'Win rate')}</p>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="tertiary"
-                  onClick={() => {
-                    setSelfName(me.name)
-                    setSelfGender(me.gender)
-                    setPicking(true)
-                  }}
-                >
-                  {t('改名字', 'Edit')}
-                </Button>
               </div>
 
-              <div className="border-line mt-4 grid grid-cols-3 gap-2 border-t pt-3 text-center">
-                <div>
-                  <p className="tnum text-h2">{thisMonth.games}</p>
-                  <p className="text-ink-500 text-caption">{t('本月场次', 'This month')}</p>
-                </div>
-                <div>
-                  <p className="tnum text-h2">{thisMonth.wins}</p>
-                  <p className="text-ink-500 text-caption">{t('本月胜场', 'Wins')}</p>
-                </div>
-                <div>
-                  <p className="tnum text-h2">{percent(stats.winRate)}</p>
-                  <p className="text-ink-500 text-caption">{t('总胜率', 'Win rate')}</p>
-                </div>
-              </div>
-            </Card>
-
-            {/*
-              角色换装。规格里整份都没提这一块，但它是 App 里唯一的养成线 ——
-              赢球赚金币、金币换装备、装备穿在身上给别人看。
-              没有入口等于把它删掉，所以放在「我的」第一屏。
-            */}
-            <Card onClick={() => push({ name: 'avatar', playerId: me.id })}>
-              <div className="flex items-center gap-4">
-                <span className="bg-fill size-16 shrink-0 overflow-hidden rounded-2xl">
+              {/*
+                角色换装。规格里整份都没提这一块，但它是 App 里唯一的
+                养成线 —— 赢球赚金币、金币换装备、装备穿在身上给别人看。
+              */}
+              <button
+                onClick={() => push({ name: 'avatar', playerId: me.id })}
+                className="bg-surface active:bg-fill flex w-full items-center gap-3.5 px-4 py-3 text-left"
+              >
+                <span className="bg-fill size-14 shrink-0 overflow-hidden rounded-2xl">
                   {avatar ? (
                     <AvatarView
                       sex={avatar.sex}
@@ -777,13 +808,13 @@ export function Me() {
                   <span className="block text-title">{t('我的 Avatar', 'My Avatar')}</span>
                   <span className="text-ink-500 mt-0.5 block text-label">
                     {avatar
-                      ? t(`身上行头 ${progress.coins} 金币可花`, `${progress.coins} coins to spend`)
+                      ? t(`${progress.coins} 金币可花`, `${progress.coins} coins to spend`)
                       : t('还没建角色，去挑一个', 'No character yet — pick one')}
                   </span>
                 </span>
                 {ARROW}
-              </div>
-            </Card>
+              </button>
+            </div>
 
             {/*
               好友和私聊。放在战绩上面，因为它是唯一一处「别人在等我」——

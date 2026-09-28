@@ -142,15 +142,31 @@ export function RankMedal({
 }
 
 /** 名字旁边的小徽章 + 段位名，列表里用 */
-export function RankChip({ level }: { level: LevelInfo }) {
+export function RankChip({ level, onDark }: { level: LevelInfo; onDark?: boolean }) {
+  /*
+   * 压在深色底上时不能用段位色。
+   *
+   * 段位色本来是给浅底用的（10% 当底、原色当字），摆到深绿上
+   * 那层 10% 就糊成一块脏绿，字也读不出来 —— 低段位那几个本来就深。
+   * 所以深底上底和字都走半透明白，颜色交给徽章本身：
+   * 那枚徽章是彩色 SVG，压在深绿上反而更跳。
+   */
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs"
-      style={{
-        borderColor: `${level.tier.color}66`,
-        backgroundColor: `${level.tier.color}1a`,
-        color: level.tier.color,
-      }}
+      style={
+        onDark
+          ? {
+              borderColor: 'rgb(255 255 255 / 0.28)',
+              backgroundColor: 'rgb(255 255 255 / 0.16)',
+              color: '#ffffff',
+            }
+          : {
+              borderColor: `${level.tier.color}66`,
+              backgroundColor: `${level.tier.color}1a`,
+              color: level.tier.color,
+            }
+      }
     >
       <RankMedal level={level} className="size-4" compact />
       {level.display}
