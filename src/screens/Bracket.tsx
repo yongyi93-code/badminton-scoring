@@ -51,6 +51,7 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
   const t = useT()
   const zh = lang() === 'zh'
   const back = useNav((s) => s.back)
+  const push = useNav((s) => s.push)
   const tour = useTournament((s) => s.list.find((x) => x.id === tournamentId))
   const score = useTournament((s) => s.score)
 
@@ -208,10 +209,20 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
           </div>
         </div>
 
+        {/*
+          回去改名单。
+
+          抽完签才发现名字打错了、有人临时退赛、有人补上 —— 这些在
+          球馆里是常事，而原来抽完就定死了，只能删掉整场重来一遍。
+        */}
+        <Button block onClick={() => push({ name: 'tournamentSetup', tournamentId: tour.id })}>
+          {t('改名单', 'Edit entries')}
+        </Button>
+
         <p className="text-ink-500 text-caption">
           {t(
-            '点一场比赛填比分。上游改了结果，后面几轮会跟着重算 —— 那几场原来的比分也就作废了。',
-            'Tap a match to enter the score. Changing an earlier result re-flows the rounds after it, and clears the scores that no longer apply.',
+            '点一场比赛填比分。上游改了结果，后面几轮会跟着重算 —— 那几场原来的比分也就作废了。改名字不会动到赛表，加人删人才会重排。',
+            'Tap a match to enter the score. Changing an earlier result re-flows the rounds after it, and clears the scores that no longer apply. Fixing a name leaves the bracket alone; adding or removing entries redraws it.',
           )}
         </p>
       </Body>

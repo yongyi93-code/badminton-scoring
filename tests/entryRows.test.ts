@@ -21,7 +21,7 @@ import {
  * 所以这里不测「行数对不对」，测那句话本身。
  * ------------------------------------------------------------------ */
 
-const row = (a = '', b = '', seed = ''): EntryRow => ({ a, b, seed })
+const row = (a = '', b = '', seed = ''): EntryRow => ({ ...emptyRow(), a, b, seed })
 const start = () => [emptyRow()]
 
 describe('空行', () => {
@@ -154,5 +154,20 @@ describe('算人数', () => {
 
   it('只填了种子号、没填名字 —— 不算一队', () => {
     expect(filledRows([row('', '', '1')], true)).toHaveLength(0)
+  })
+})
+
+describe('每一行的身份', () => {
+  it('新生的行各有各的 id', () => {
+    const a = emptyRow()
+    const b = emptyRow()
+    expect(a.id).toBeTruthy()
+    expect(a.id).not.toBe(b.id)
+  })
+
+  it('改名字不动 id —— 赛表认的是 id，名字只是贴上去的标签', () => {
+    const r = row('阿伟')
+    const renamed = { ...r, a: '阿明' }
+    expect(renamed.id).toBe(r.id)
   })
 })

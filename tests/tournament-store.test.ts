@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useTournament, entrantMap } from '../src/store/useTournament'
+import { useTournament, entrantMap, needsRedraw, playedCount } from '../src/store/useTournament'
 import { champion, type Entrant } from '../src/lib/bracket'
 
 /* ------------------------------------------------------------------ *
@@ -214,5 +214,160 @@ describe('entrantMap', () => {
     const map = entrantMap(t)
     expect(map.get('a')?.names).toEqual(['a甲', 'a乙'])
     expect(map.get('没这个人')).toBeUndefined()
+  })
+})
+
+describe('回去改名单', () => {
+  /*
+   * 这一条是用户提的：抽完签就改不了了。可球馆里最常见的三件事
+   * 恰恰都发生在抽完之后 —— 名字打错了、有人临时退赛、有人补上。
+   *
+   * 关键在于**改名字不该动到赛表**：为了一个错别字把打完的比分
+   * 全清掉，没人受得了。
+   */
+  const rename = (t: ReturnType<typeof store>['list'][number], id: string, name: string) =>
+    t.entrants.map((e) => (e.id === id ? { ...e, names: [name] } : e))
+
+  it('只改名字：赛表和比分一个都不动', () => {
+    const made = store().create(draft())
+    store().score(made.id, 0, 0, 21, 15)
+    const before = store().list[0]
+    const beforeMatches = before.matches
+
+    store().update(made.id, {
+      name: before.name,
+      date: before.date,
+      doubles: before.doubles,
+      mode: before.mode,
+      entrants: rename(before, 'a', '改过的名字'),
+    })
+
+    const after = store().list[0]
+    expect(after.matches).toEqual(beforeMatches)
+    expect(playedCount(after)).toBe(1)
+    /* 新名字是通过 entrants 查出来的，赛表上那一格自然就跟着变了 */
+    expect(entrantMap(after).get('a')?.names).toEqual(['改过的名字'])
+  })
+
+  it('加一个人：表重排，比分作废', () => {
+    const made = store().create(draft())
+    store().score(made.id, 0, 0, 21, 15)
+    const before = store().list[0]
+
+    store().update(made.id, {
+      name: before.name,
+      date: before.date,
+      doubles: before.doubles,
+      mode: before.mode,
+      entrants: [...before.entrants, team('e')],
+    })
+
+    const after = store().list[0]
+    expect(after.entrants).toHaveLength(5)
+    expect(after.size).toBe(8)
+    expect(playedCount(after)).toBe(0)
+  })
+
+  it('删一个人：表重排', () => {
+    const made = store().create(draft())
+    const before = store().list[0]
+    store().update(made.id, {
+      name: before.name,
+      date: before.date,
+      doubles: before.doubles,
+      mode: before.mode,
+      entrants: before.entrants.filter((e) => e.id !== 'd'),
+    })
+    const after = store().list[0]
+    expect(after.entrants.map((e) => e.id)).not.toContain('d')
+    expect(after.size).toBe(4)
+  })
+
+  it('比赛名字、日期照样改得动', () => {
+    const made = store().create(draft())
+    const before = store().list[0]
+    store().update(made.id, {
+      name: '  改过的比赛名  ',
+      date: '2026-12-01',
+      doubles: before.doubles,
+      mode: before.mode,
+      entrants: before.entrants,
+    })
+    const after = store().list[0]
+    expect(after.name).toBe('改过的比赛名')
+    expect(after.date).toBe('2026-12-01')
+  })
+
+  it('别的比赛不受影响', () => {
+    const one = store().create(draft({ name: 'A 赛' }))
+    store().create(draft({ name: 'B 赛' }))
+    const before = store().list.find((x) => x.id === one.id)!
+    store().update(one.id, {
+      name: '改了',
+      date: before.date,
+      doubles: before.doubles,
+      mode: before.mode,
+      entrants: before.entrants,
+    })
+    expect(store().list.find((x) => x.name === 'B 赛')).toBeTruthy()
+  })
+})
+
+describe('要不要重排', () => {
+  const es = (spec: [string, number?][]) =>
+    spec.map(([id, seed]) => ({ id, names: [id], ...(seed === undefined ? {} : { seed }) }))
+
+  const seeded = { mode: 'seeded' as const }
+
+  it('名字变了不用重排 —— needsRedraw 根本不看名字', () => {
+    const before = { ...seeded, entrants: es([['a', 1], ['b', 2]]) }
+    const after = {
+      ...seeded,
+      entrants: [
+        { id: 'a', names: ['完全不同的名字'], seed: 1 },
+        { id: 'b', names: ['也不一样'], seed: 2 },
+      ],
+    }
+    expect(needsRedraw(before, after)).toBe(false)
+  })
+
+  it('名单顺序挪一挪，不算变 —— 抽签结果不受顺序影响', () => {
+    const before = { ...seeded, entrants: es([['a', 1], ['b'], ['c']]) }
+    const after = { ...seeded, entrants: es([['c'], ['a', 1], ['b']]) }
+    expect(needsRedraw(before, after)).toBe(false)
+  })
+
+  it('加人要重排', () => {
+    expect(
+      needsRedraw(
+        { ...seeded, entrants: es([['a'], ['b']]) },
+        { ...seeded, entrants: es([['a'], ['b'], ['c']]) },
+      ),
+    ).toBe(true)
+  })
+
+  it('换人要重排（人数一样，但不是同一批人）', () => {
+    expect(
+      needsRedraw(
+        { ...seeded, entrants: es([['a'], ['b']]) },
+        { ...seeded, entrants: es([['a'], ['c']]) },
+      ),
+    ).toBe(true)
+  })
+
+  it('动了种子号要重排', () => {
+    expect(
+      needsRedraw(
+        { ...seeded, entrants: es([['a', 1], ['b', 2]]) },
+        { ...seeded, entrants: es([['a', 2], ['b', 1]]) },
+      ),
+    ).toBe(true)
+  })
+
+  it('换了排签方式要重排', () => {
+    const list = es([['a'], ['b']])
+    expect(
+      needsRedraw({ mode: 'seeded', entrants: list }, { mode: 'random', entrants: list }),
+    ).toBe(true)
   })
 })

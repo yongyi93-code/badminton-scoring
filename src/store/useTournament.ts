@@ -63,6 +63,13 @@ type State = {
     /** 手动排的时候直接给每一格是谁；其余两档不用给 */
     slots?: (Entrant | null)[]
   }) => Tournament
+  /**
+   * 改名单。改完可能要重排，也可能不用 —— 由 needsRedraw 说了算。
+   */
+  update: (
+    id: string,
+    draft: { name: string; date: string; doubles: boolean; entrants: Entrant[]; mode: DrawMode },
+  ) => void
   /** 重新抽一次签。整张表推倒重来 —— 所以界面上要问一句 */
   redraw: (id: string, mode: DrawMode) => void
   score: (id: string, round: number, index: number, a: number, b: number) => void
@@ -85,6 +92,40 @@ function slotsFor(
   return placeRanked(rankEntrants(entrants, mode === 'manual' ? 'seeded' : mode), size)
 }
 
+/**
+ * 改完名单，要不要把整张赛表推倒重排。
+ *
+ * 这是「能回去改」这件事的关键一问。绝大多数回头改都是**打错一个字**，
+ * 而为了一个错别字把已经打完的比分全清掉，没人受得了 —— 所以名字
+ * 单独拎出来：赛表上每一格记的是参赛者的 id，名字只是贴在上面的标签，
+ * 换个标签，表还是那张表。
+ *
+ * 真正动到表的只有三件事：谁在名单上（id 的集合）、谁是几号种子、
+ * 怎么排签。这三样有一样变了，抽出来的签就不是原来那副了，
+ * 只能重排。
+ *
+ * 比的是**集合**不是顺序：在名单里把两个人上下挪一挪，抽出来的
+ * 结果不受影响（种子看的是号，其余的本来就是随机填空），
+ * 没理由为这个把比分清掉。
+ */
+export function needsRedraw(
+  before: { entrants: Entrant[]; mode: DrawMode },
+  after: { entrants: Entrant[]; mode: DrawMode },
+): boolean {
+  if (before.mode !== after.mode) return true
+  if (before.entrants.length !== after.entrants.length) return true
+  const key = (list: Entrant[]) =>
+    list
+      .map((e) => `${e.id}:${e.seed ?? ''}`)
+      .sort()
+      .join('|')
+  return key(before.entrants) !== key(after.entrants)
+}
+
+/** 已经填了比分的场次数。重排之前要拿它问一句「这些都不要了？」 */
+export const playedCount = (t: Tournament): number =>
+  t.matches.filter((m) => m.scoreA !== undefined).length
+
 export const useTournament = create<State>()(
   persist(
     (set) => ({
@@ -105,6 +146,32 @@ export const useTournament = create<State>()(
         }
         set((s) => ({ list: [t, ...s.list] }))
         return t
+      },
+
+      update(id, draft) {
+        set((s) => ({
+          list: s.list.map((t) => {
+            if (t.id !== id) return t
+            const redraw = needsRedraw(t, { entrants: draft.entrants, mode: draft.mode })
+            const size = redraw ? drawSize(draft.entrants.length) : t.size
+            return {
+              ...t,
+              name: draft.name.trim(),
+              date: draft.date,
+              doubles: draft.doubles,
+              mode: draft.mode,
+              entrants: draft.entrants,
+              size,
+              /*
+               * 不用重排的时候，matches 原样留着 —— 比分、已经打上来的人，
+               * 一个都不动。新名字是通过 entrants 那份查出来的。
+               */
+              matches: redraw
+                ? buildBracket(slotsFor(draft.entrants, draft.mode, size))
+                : t.matches,
+            }
+          }),
+        }))
       },
 
       redraw(id, mode) {

@@ -87,7 +87,8 @@ export type Route =
    * 那条路径下面，也不认球群。
    */
   | { name: 'tournaments' }
-  | { name: 'tournamentSetup' }
+  /* 带 tournamentId = 回去改这一场的名单；不带 = 开一场新的 */
+  | { name: 'tournamentSetup'; tournamentId?: string }
   | { name: 'bracket'; tournamentId: string }
   /** 隐私政策 / 服务条款。谁都看得到，不用登录 */
   | { name: 'legal'; tab?: 'privacy' | 'terms' }

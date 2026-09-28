@@ -19,6 +19,13 @@
  * ------------------------------------------------------------------ */
 
 export type EntryRow = {
+  /**
+   * 这一行的身份，从生出来那一刻就定了，改名字不会变。
+   *
+   * 有了它，「把名字打错了回去改」才不用把整张赛表推倒重排：
+   * 赛表上每一格记的是这个 id，名字只是贴在上面的标签。
+   */
+  id: string
   /** 单打就这一个名字；双打是队员一 */
   a: string
   /** 双打的队员二。单打时一直是空的 */
@@ -27,7 +34,18 @@ export type EntryRow = {
   seed: string
 }
 
-export const emptyRow = (): EntryRow => ({ a: '', b: '', seed: '' })
+const newRowId = () =>
+  globalThis.crypto?.randomUUID?.() ??
+  `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+
+/**
+ * 一行新的。
+ *
+ * 每叫一次都是一个新 id —— 这一处是有意不纯的，因为「这一行是谁」
+ * 必须在它出现的那一刻就定下来，不能等到读的时候再算（那样每次
+ * 重绘都会换一个身份，改个名字就成了换个人）。
+ */
+export const emptyRow = (): EntryRow => ({ id: newRowId(), a: '', b: '', seed: '' })
 
 /** 这一行一个字都没有 —— 它不算一队 */
 export const isBlank = (r: EntryRow): boolean => !r.a && !r.b && !r.seed

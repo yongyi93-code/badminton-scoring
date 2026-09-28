@@ -184,7 +184,7 @@ function screenFor(route: ReturnType<typeof useRoute>) {
     case 'tournaments':
       return <Tournaments />
     case 'tournamentSetup':
-      return <TournamentSetup />
+      return <TournamentSetup tournamentId={route.tournamentId} />
     case 'bracket':
       return <Bracket tournamentId={route.tournamentId} />
     case 'legal':

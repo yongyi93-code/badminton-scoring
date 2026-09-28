@@ -13,7 +13,7 @@ import {
   cx,
   inputClass,
 } from '@/components/ui'
-import { useTournament } from '@/store/useTournament'
+import { needsRedraw, playedCount, useTournament } from '@/store/useTournament'
 import { drawSize, type DrawMode, type Entrant } from '@/lib/bracket'
 import {
   addRow,
@@ -46,17 +46,43 @@ import { todayISO } from '@/lib/format'
  * 事 —— 那时候再回头翻名单标种子，是把两件事搅在一起。
  * ------------------------------------------------------------------ */
 
-export function TournamentSetup() {
+export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
   const t = useT()
   const back = useNav((s) => s.back)
   const replace = useNav((s) => s.replace)
   const create = useTournament((s) => s.create)
+  const update = useTournament((s) => s.update)
+  /*
+   * 带了 tournamentId 就是「回去改」，不带就是「开一场新的」。
+   *
+   * 同一屏两种用法，因为要改的东西和当初要填的东西**是同一批**。
+   * 另做一个「编辑」屏的话，两边迟早会长得不一样 —— 而不一样的那处
+   * 正好是人回头要改的那处。
+   */
+  const editing = useTournament((s) =>
+    tournamentId ? s.list.find((x) => x.id === tournamentId) : undefined,
+  )
 
-  const [name, setName] = useState('')
-  const [date, setDate] = useState(todayISO())
-  const [doubles, setDoubles] = useState(true)
-  const [mode, setMode] = useState<Exclude<DrawMode, 'manual'>>('seeded')
-  const [rows, setRows] = useState<EntryRow[]>([emptyRow()])
+  const [name, setName] = useState(editing?.name ?? '')
+  const [date, setDate] = useState(editing?.date ?? todayISO())
+  const [doubles, setDoubles] = useState(editing?.doubles ?? true)
+  const [mode, setMode] = useState<Exclude<DrawMode, 'manual'>>(
+    editing && editing.mode !== 'manual' ? editing.mode : 'seeded',
+  )
+  const [rows, setRows] = useState<EntryRow[]>(() =>
+    editing
+      ? [
+          ...editing.entrants.map((e) => ({
+            /* id 原样带回来：只改名字的话，赛表和比分一个都不用动 */
+            id: e.id,
+            a: e.names[0] ?? '',
+            b: e.names[1] ?? '',
+            seed: e.seed ? String(e.seed) : '',
+          })),
+          emptyRow(),
+        ]
+      : [emptyRow()],
+  )
 
   /* 填了名字的那几行才算报名 */
   const filled = useMemo(() => filledRows(rows, doubles), [rows, doubles])
@@ -75,15 +101,27 @@ export function TournamentSetup() {
   const add = () => setRows(addRow)
   const drop = (i: number) => setRows((old) => dropRow(old, i))
 
-  const entrants: Entrant[] = filled.map((r, i) => {
+  const entrants: Entrant[] = filled.map((r) => {
     const names = [r.a.trim(), doubles ? r.b.trim() : ''].filter(Boolean)
     const seed = Number(r.seed)
     return {
-      id: `e${i}`,
+      /* 用行自己的 id，不用下标 —— 下标会随着删人整体前移，那等于集体换了身份 */
+      id: r.id,
       names: names.length ? names : [t('（没填名字）', '(no name)')],
       seed: Number.isInteger(seed) && seed > 0 ? seed : undefined,
     }
   })
+
+  /*
+   * 改完之后这张表还是不是原来那张。
+   *
+   * 只改了名字 → 不用重排，比分全留着。
+   * 加了人、删了人、动了种子、换了排签方式 → 抽出来的签就不是原来那副，
+   * 只能重排，已经填的比分跟着作废 —— 这句话要在按钮上说清楚，
+   * 不能等人点完了才发现。
+   */
+  const willRedraw = !!editing && needsRedraw(editing, { entrants, mode })
+  const losing = editing && willRedraw ? playedCount(editing) : 0
 
   /*
    * 两个人以上才排得出表。一个人的比赛不是比赛 ——
@@ -92,13 +130,21 @@ export function TournamentSetup() {
   const ready = filled.length >= 2 && name.trim().length > 0
 
   const start = () => {
+    if (editing) {
+      update(editing.id, { name, date, doubles, entrants, mode })
+      back()
+      return
+    }
     const made = create({ name, date, doubles, entrants, mode })
     replace({ name: 'bracket', tournamentId: made.id })
   }
 
   return (
     <Screen>
-      <TopBar title={t('开一场比赛', 'New tournament')} onBack={back} />
+      <TopBar
+        title={editing ? t('改名单', 'Edit entries') : t('开一场比赛', 'New tournament')}
+        onBack={back}
+      />
       <Body>
         <Field label={t('比赛名字', 'Name')}>
           <input
@@ -272,8 +318,23 @@ export function TournamentSetup() {
           </div>
         )}
 
+        {losing > 0 && (
+          <div className="border-danger-600/30 bg-danger-50 rounded-card border p-3.5">
+            <p className="text-danger-600 text-caption">
+              {t(
+                `名单动了，整张表要重排 —— 已经填的 ${losing} 场比分会没了。只改名字的话不会。`,
+                `The entries changed, so the bracket is redrawn — the ${losing} score${losing > 1 ? 's' : ''} already entered will be lost. Fixing a name alone does not do this.`,
+              )}
+            </p>
+          </div>
+        )}
+
         <Button block variant="primary" size="lg" disabled={!ready} onClick={start}>
-          {t('抽签，生成赛表', 'Draw and build the bracket')}
+          {editing
+            ? willRedraw
+              ? t('存下来，重新排签', 'Save and redraw')
+              : t('存下来', 'Save')
+            : t('抽签，生成赛表', 'Draw and build the bracket')}
         </Button>
         {!ready && (
           <p className="text-ink-500 text-caption">
