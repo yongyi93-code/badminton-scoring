@@ -15,6 +15,15 @@ import {
 } from '@/components/ui'
 import { useTournament } from '@/store/useTournament'
 import { drawSize, type DrawMode, type Entrant } from '@/lib/bracket'
+import {
+  addRow,
+  canRemove,
+  dropRow,
+  emptyRow,
+  ensureTail as ensureTailOf,
+  filledRows,
+  type EntryRow,
+} from '@/lib/entryRows'
 import { todayISO } from '@/lib/format'
 
 /* ------------------------------------------------------------------ *
@@ -47,32 +56,24 @@ export function TournamentSetup() {
   const [date, setDate] = useState(todayISO())
   const [doubles, setDoubles] = useState(true)
   const [mode, setMode] = useState<Exclude<DrawMode, 'manual'>>('seeded')
-  const [rows, setRows] = useState<{ a: string; b: string; seed: string }[]>([
-    { a: '', b: '', seed: '' },
-  ])
+  const [rows, setRows] = useState<EntryRow[]>([emptyRow()])
 
-  /* 填了名字的那几行才算报名。空行是给人继续打字用的，不该算进人数 */
-  const filled = useMemo(
-    () => rows.filter((r) => r.a.trim() || (doubles && r.b.trim())),
-    [rows, doubles],
-  )
+  /* 填了名字的那几行才算报名 */
+  const filled = useMemo(() => filledRows(rows, doubles), [rows, doubles])
   const size = drawSize(filled.length)
   const byes = Math.max(0, size - filled.length)
 
-  const setRow = (i: number, patch: Partial<{ a: string; b: string; seed: string }>) =>
+  const setRow = (i: number, patch: Partial<EntryRow>) =>
     setRows((old) => old.map((r, k) => (k === i ? { ...r, ...patch } : r)))
 
   /*
-   * 打到最后一行就自动多给一行。
-   *
-   * 报名是「一口气录二十个人」那种活，每录一个还要先点一下「加一行」
-   * 的话，二十次点击全是白费的。
+   * 加一行、删一行、自动续行的规矩都在 lib/entryRows 里，
+   * 连同那句要紧的话：**底下永远有一行空的等着填**。
+   * 搬出去是因为这块已经把人卡住过两次，而那句话在这一屏里测不动。
    */
-  const ensureTail = (i: number) =>
-    setRows((old) => (i === old.length - 1 ? [...old, { a: '', b: '', seed: '' }] : old))
-
-  const drop = (i: number) =>
-    setRows((old) => (old.length === 1 ? old : old.filter((_, k) => k !== i)))
+  const ensureTail = (i: number) => setRows((old) => ensureTailOf(old, i))
+  const add = () => setRows(addRow)
+  const drop = (i: number) => setRows((old) => dropRow(old, i))
 
   const entrants: Entrant[] = filled.map((r, i) => {
     const names = [r.a.trim(), doubles ? r.b.trim() : ''].filter(Boolean)
@@ -207,16 +208,46 @@ export function TournamentSetup() {
                     aria-label={t(`第 ${i + 1} 个的种子号`, `Seed for entry ${i + 1}`)}
                   />
                 </div>
-                <button
-                  onClick={() => drop(i)}
-                  aria-label={t('去掉这一个', 'Remove')}
-                  className="text-ink-500 active:text-danger-600 shrink-0 px-2 py-2.5 text-caption"
-                >
-                  ✕
-                </button>
+                {/*
+                  空行不给 ✕。
+
+                  空行本来就不算一队，删不删都一样；而它偏偏是最后那一行
+                  ——「自动多给的那一行」。把它删掉，人就再也加不了人了：
+                  自动续行只在「打到最后一行」时触发，而剩下的行全填满了，
+                  没有哪一下打字会再触发它。这个死角是真踩到的。
+
+                  现在就算删了也不要紧（下面有按钮），但一个删了等于给自己
+                  挖坑的按钮，本来就不该摆在那儿。
+                */}
+                {canRemove(rows, i) ? (
+                  <button
+                    onClick={() => drop(i)}
+                    aria-label={t('去掉这一个', 'Remove')}
+                    className="text-ink-500 active:text-danger-600 shrink-0 px-2 py-2.5 text-caption"
+                  >
+                    ✕
+                  </button>
+                ) : (
+                  <span className="shrink-0 px-2 py-2.5 text-caption" aria-hidden />
+                )}
               </div>
             ))}
           </div>
+
+          {/*
+            明摆着的「加一队」。
+
+            自动续行省事，可它是**看不见的**：人不知道有这回事，
+            也就没法指望它。真出了岔子（比如上面那个空行被删掉），
+            屏幕上就一个出口都没有了 —— 人盯着一张填满的名单，
+            没有任何东西告诉他还能再加。
+
+            所以这个按钮不是「也加一个吧」，它是那条正路；
+            自动续行只是替熟手省下点击。
+          */}
+          <Button block className="mt-2" onClick={add}>
+            {t(doubles ? '＋ 加一队' : '＋ 加一人', '+ Add entry')}
+          </Button>
         </div>
 
         {/*
