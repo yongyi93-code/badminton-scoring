@@ -5,6 +5,7 @@ import {
   drawSize,
   firstRound,
   isDead,
+  sideDead,
   placeRanked,
   rankEntrants,
   roundCount,
@@ -379,5 +380,66 @@ describe('空枝和「还没打到」是两件事', () => {
   it('一个人都没有的表，整张都是空枝', () => {
     const m = buildBracket([null, null, null, null])
     expect(m.every((x) => isDead(m, x.round, x.index))).toBe(true)
+  })
+})
+
+describe('空着的那一边：轮空，还是等上一轮', () => {
+  /*
+   * 这两种在数据上都是 null，可写在表上的字必须不一样。
+   *
+   * 写反了最难受的是决赛：一边站着刚打上来的人，另一边写着「轮空」——
+   * 看表的人会以为冠军已经出来了，不用打了。
+   */
+  const seeded = (n: number, size: number) => {
+    const people: Entrant[] = Array.from({ length: n }, (_, i) => ({
+      id: `p${i}`,
+      names: [`p${i}`],
+      seed: i + 1,
+    }))
+    return buildBracket(placeRanked(rankEntrants(people, 'seeded'), size))
+  }
+
+  it('第一轮空着的那一边，是真的轮空', () => {
+    const m = seeded(3, 4)
+    const bye = m.find((x) => x.round === 0 && (!x.a || !x.b))!
+    const emptySide = bye.a ? 'b' : 'a'
+    expect(sideDead(m, 0, bye.index, emptySide)).toBe(true)
+  })
+
+  it('第一轮有人的那一边，不是轮空', () => {
+    const m = seeded(3, 4)
+    const bye = m.find((x) => x.round === 0 && (!x.a || !x.b))!
+    const filledSide = bye.a ? 'a' : 'b'
+    expect(sideDead(m, 0, bye.index, filledSide)).toBe(false)
+  })
+
+  it('决赛：一边打上来了，另一边还在等 —— 不是轮空', () => {
+    /* 4 个人满表，打完一场半决赛，决赛另一边还没定 */
+    let m = seeded(4, 4)
+    m = setScore(m, 0, 0, 21, 15)
+    const final = m.find((x) => x.round === 1)!
+    expect(final.a).toBeTruthy()
+    expect(final.b).toBeNull()
+    expect(sideDead(m, 1, 0, 'b')).toBe(false)
+  })
+
+  it('对面那半张表一个人都没有 —— 那一边才是轮空，而且是对的那一边', () => {
+    /*
+     * 3 个人硬摆 8 人表。摆出来是这样：
+     *
+     *   第一轮 0：p0 轮空        第一轮 1：两边都没人（空枝）
+     *   第一轮 2：p1 轮空        第一轮 3：p2 轮空
+     *
+     * 所以半决赛第 0 场：上边是 p0 打上来的，下边永远不会有人 —— 轮空。
+     * 半决赛第 1 场：两边都会有人。
+     *
+     * 这里必须一边一边地钉死，不能只问「有没有哪一边是轮空」：
+     * 左右接反了照样「有一边是轮空」，而表上那两个字就写到了错的一行。
+     */
+    const m = seeded(3, 8)
+    expect(sideDead(m, 1, 0, 'a')).toBe(false)
+    expect(sideDead(m, 1, 0, 'b')).toBe(true)
+    expect(sideDead(m, 1, 1, 'a')).toBe(false)
+    expect(sideDead(m, 1, 1, 'b')).toBe(false)
   })
 })

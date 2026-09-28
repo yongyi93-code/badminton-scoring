@@ -18,6 +18,7 @@ import {
   roundCount,
   roundName,
   isDead,
+  sideDead,
   slotLabel,
   type BracketMatch,
   type Entrant,
@@ -191,6 +192,7 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
                         <div key={m.index} className="flex flex-1 items-center py-1">
                           <MatchCard
                             match={m}
+                            all={tour.matches}
                             byId={byId}
                             zh={zh}
                             dead={isDead(tour.matches, m.round, m.index)}
@@ -236,12 +238,15 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
 
 function MatchCard({
   match,
+  all,
   byId,
   zh,
   dead,
   onTap,
 }: {
   match: BracketMatch
+  /** 整张表。判断空着的那一边是轮空还是「等上一轮」要往上游看 */
+  all: BracketMatch[]
   byId: Map<string, Entrant>
   zh: boolean
   /** 这一格永远不会有人（空枝），不是「还没打到」。见 bracket.isDead */
@@ -277,8 +282,21 @@ function MatchCard({
    * 同一件事说两遍，而且把卡片撑高了一行。高度不齐会连累对齐
    * （见上面那段），所以这不只是啰嗦的问题。
    */
-  const row = (id: string | null, sc: number | undefined) => {
+  const row = (id: string | null, sc: number | undefined, side: 'a' | 'b') => {
     const won = !!id && match.winner === id
+    /*
+     * 空着的那一边有两种，写的字不一样：真的没人来（轮空），
+     * 还是上一轮还没打完（等上一轮）。写反了，决赛看起来像不用打了。
+     */
+    const label = id
+      ? slotLabel(byId.get(id), zh)
+      : sideDead(all, match.round, match.index, side)
+        ? zh
+          ? '轮空'
+          : 'Bye'
+        : zh
+          ? '等上一轮'
+          : 'TBD'
     return (
       <div className="flex h-5 items-center gap-2">
         <span
@@ -289,7 +307,7 @@ function MatchCard({
             done && !won && 'text-ink-500 line-through',
           )}
         >
-          {slotLabel(id ? byId.get(id) : null, zh)}
+          {label}
         </span>
         <span className={cx('text-caption tabular-nums', won ? 'text-ink-900' : 'text-ink-500')}>
           {sc ?? ''}
@@ -308,9 +326,9 @@ function MatchCard({
         done && 'border-brand-600/40',
       )}
     >
-      {row(match.a, match.scoreA)}
+      {row(match.a, match.scoreA, 'a')}
       <div className="bg-line h-px" />
-      {row(match.b, match.scoreB)}
+      {row(match.b, match.scoreB, 'b')}
     </button>
   )
 }
@@ -391,13 +409,16 @@ function ScoreRow({
   return (
     <div className="flex items-center gap-3">
       <span className="text-ink-900 min-w-0 flex-1 truncate text-[15px]">{label}</span>
-      <input
-        className={cx(inputClass, 'w-20 shrink-0 text-center')}
-        value={value}
-        inputMode="numeric"
-        aria-label={label}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 2))}
-      />
+      {/* 宽度写在外面这层，不写在 input 上 —— 理由见报名那一屏的种子框 */}
+      <div className="w-20 shrink-0">
+        <input
+          className={cx(inputClass, 'text-center')}
+          value={value}
+          inputMode="numeric"
+          aria-label={label}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 2))}
+        />
+      </div>
     </div>
   )
 }

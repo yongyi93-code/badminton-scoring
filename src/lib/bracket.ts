@@ -322,6 +322,30 @@ export function isDead(matches: BracketMatch[], round: number, index: number): b
   return true
 }
 
+/**
+ * 这一格的某一边，是「轮空」还是「等上一轮」。
+ *
+ * 和 isDead 同一件事，只是问得更细一格。整格都空的时候 isDead 就够了，
+ * 可**一边有人一边空**才是最常见的那种：决赛上站着一个已经打上来的人，
+ * 对面那一格还在等另一个半决赛打完。
+ *
+ * 那一边写「轮空」是错的 —— 它会让人以为决赛不用打了。
+ *
+ * 第一轮没有上游，空着就是真的轮空；往后每一边看它上游那一场。
+ */
+export function sideDead(
+  matches: BracketMatch[],
+  round: number,
+  index: number,
+  side: 'a' | 'b',
+): boolean {
+  if (round === 0) {
+    const m = matches.find((x) => x.round === 0 && x.index === index)
+    return !m?.[side]
+  }
+  return isDead(matches, round - 1, index * 2 + (side === 'a' ? 0 : 1))
+}
+
 /** 冠军。决赛没打完就是 null */
 export function champion(matches: BracketMatch[]): string | null {
   const last = Math.max(...matches.map((m) => m.round))

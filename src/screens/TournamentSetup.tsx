@@ -188,15 +188,25 @@ export function TournamentSetup() {
                 {/*
                   种子号。空着就不是种子 —— 绝大多数行都空着，
                   所以这个框窄，不抢名字的地方。
+
+                  宽度写在外面这层 div 上，不写在 input 上：inputClass
+                  里已经有 w-full，再往同一个 input 上加 w-16 是两条
+                  同权重的 width 规则打架，谁赢由样式表的先后决定 ——
+                  而 w-full 排在后面。实测这个框会撑成整行 350px 盖在
+                  名字框上，名字框被挤到 30px：人点下去其实点中的是种子框，
+                  敲进去的字被那个「只留数字」的过滤全吃掉，
+                  看起来就是「名字填下去没显示」。
                 */}
-                <input
-                  className={cx(inputClass, 'w-16 shrink-0 text-center')}
-                  value={r.seed}
-                  inputMode="numeric"
-                  onChange={(e) => setRow(i, { seed: e.target.value.replace(/\D/g, '') })}
-                  placeholder={t('种子', 'Seed')}
-                  aria-label={t(`第 ${i + 1} 个的种子号`, `Seed for entry ${i + 1}`)}
-                />
+                <div className="w-20 shrink-0">
+                  <input
+                    className={cx(inputClass, 'text-center')}
+                    value={r.seed}
+                    inputMode="numeric"
+                    onChange={(e) => setRow(i, { seed: e.target.value.replace(/\D/g, '') })}
+                    placeholder={t('种子', 'Seed')}
+                    aria-label={t(`第 ${i + 1} 个的种子号`, `Seed for entry ${i + 1}`)}
+                  />
+                </div>
                 <button
                   onClick={() => drop(i)}
                   aria-label={t('去掉这一个', 'Remove')}
@@ -225,7 +235,7 @@ export function TournamentSetup() {
               {byes > 0 &&
                 t(
                   `，${byes} 个轮空（优先给种子）`,
-                  `, ${byes} byes (given to the top seeds)`,
+                  `, ${byes} ${byes === 1 ? 'bye' : 'byes'} (given to the top seeds)`,
                 )}
             </p>
           </div>
