@@ -22,6 +22,7 @@ import {
   IconAppeal,
   IconBell,
   IconCalendar,
+  IconCamera,
   IconCard,
   IconChart,
   IconChat,
@@ -601,6 +602,14 @@ export function Me() {
   const needsAttention =
     sync.state === 'error' || (sync.state === 'idle' && sync.pending > 0)
   const { session } = useAuth()
+  /*
+   * 能不能换头像。
+   *
+   * 照片长在**账号**上（profiles 那张表按 uid），不在球员行上 ——
+   * 所以没接云端、或者没登录，换了也存不住。那两种情况下头像
+   * 不给点，角上那个相机点也不出现。
+   */
+  const canEditPhoto = cloudReady && !!session
   /** 登录账号 id。没登录就是 null，那时选人只是本机标记 */
   const uid = session?.user.id ?? null
 
@@ -726,14 +735,39 @@ export function Me() {
             <div className="border-line rounded-card shadow-card overflow-hidden border">
               <div className="bg-court text-on-court px-4 pt-4 pb-3">
                 <div className="flex items-center gap-3.5">
-                  {/*
-                    头像外面套一圈半透明白。
-                    深绿底上不套的话，深色的头像照片会跟底糊在一起，
-                    看不出边 —— 那一圈就是把人从背景里「抠」出来。
-                  */}
-                  <span className="shrink-0 rounded-full p-[3px] ring-2 ring-white/25">
-                    <Avatar name={me.name} avatar={avatar} playerId={me.id} size="lg" />
-                  </span>
+                  {/* -------------------------------------------------- *
+                    点头像就能换照片。
+
+                    换照片这件事原来只在「我的名片」里，藏在账号那一组
+                    往下翻好几屏 —— 而人要换头像时第一反应是**去点那张
+                    头像**，微信、IG、LINE 全是这个手势。
+
+                    光能点还不够：看不见的入口等于没有。所以角上压一个
+                    相机小圆点，那是「这里可以动」唯一的说法。
+
+                    没登录就不给点，也不给那个点 —— 照片是长在账号上的，
+                    没账号存不住。摆一个点下去只会说「先登录」的入口，
+                    比不摆更气人。
+
+                    外面那一圈半透明白是另一件事：深绿底上不套的话，
+                    深色的头像照片会跟底糊在一起，看不出边。
+                  * -------------------------------------------------- */}
+                  {canEditPhoto ? (
+                    <button
+                      onClick={() => setPhotoOpen(true)}
+                      aria-label={t('换头像', 'Change photo')}
+                      className="relative shrink-0 rounded-full p-[3px] ring-2 ring-white/25 active:ring-white/50"
+                    >
+                      <Avatar name={me.name} avatar={avatar} playerId={me.id} size="lg" />
+                      <span className="bg-accent text-on-accent ring-court absolute right-0 bottom-0 flex size-6 items-center justify-center rounded-full ring-2">
+                        <IconCamera className="size-3.5" />
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="shrink-0 rounded-full p-[3px] ring-2 ring-white/25">
+                      <Avatar name={me.name} avatar={avatar} playerId={me.id} size="lg" />
+                    </span>
+                  )}
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate text-h2">{me.name}</h2>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

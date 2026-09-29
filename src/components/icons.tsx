@@ -163,6 +163,19 @@ export const IconKey = (p: IconProps) => (
   </Svg>
 )
 
+/*
+ * 相机。压在头像角上那个小圆点。
+ *
+ * 画得比别的图标简单（一个机身、一个镜头、一块取景凸起），
+ * 因为它只有 14 像素高 —— 那个尺寸上多一根线就糊成一团。
+ */
+export const IconCamera = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.5 8.4a1.6 1.6 0 0 1 1.6-1.6h2.2l1.3-2.1h6.8l1.3 2.1h2.2a1.6 1.6 0 0 1 1.6 1.6v9.1a1.6 1.6 0 0 1-1.6 1.6H5.1a1.6 1.6 0 0 1-1.6-1.6V8.4Z" />
+    <circle cx="12" cy="12.6" r="3.4" />
+  </Svg>
+)
+
 /* 名片。我的名片 */
 export const IconCard = (p: IconProps) => (
   <Svg {...p}>
