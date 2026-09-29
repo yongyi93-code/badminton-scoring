@@ -374,15 +374,12 @@ export function StoryEditor({ file, onCancel, onDone }: Props) {
  * 发出去就是一张糊的。位置和字号靠 layout() 换算回原图坐标。
  * ------------------------------------------------------------------ */
 async function bake(file: File, filterId: string, layer: TextLayer | null): Promise<File> {
-  /*
-   * from-image：相册里的照片常带 EXIF 方向，不认它的话
-   * 竖着拍的会横躺过来 —— 而人在预览里看到的是正的（<img> 认 EXIF）。
-   */
-  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  const bitmap = await decode(file)
   try {
     const canvas = document.createElement('canvas')
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
+    /* <img> 的 width/height 会被 CSS 影响，naturalWidth 才是原图尺寸 */
+    canvas.width = 'naturalWidth' in bitmap ? bitmap.naturalWidth : bitmap.width
+    canvas.height = 'naturalHeight' in bitmap ? bitmap.naturalHeight : bitmap.height
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error(pick('这台设备画不了图', 'This device cannot draw images'))
 
@@ -420,7 +417,54 @@ async function bake(file: File, filterId: string, layer: TextLayer | null): Prom
     if (!blob) throw new Error(pick('这台设备导不出图', 'This device cannot export the image'))
     return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' })
   } finally {
-    bitmap.close()
+    /* <img> 那条路没有 close()，只有 ImageBitmap 有 */
+    if ('close' in bitmap) bitmap.close()
+  }
+}
+
+/**
+ * 解出这张图，三条路依次试。
+ *
+ * 1. `imageOrientation: 'from-image'` —— 相册里的照片常带 EXIF 方向，
+ *    不认它的话竖着拍的会横躺过来，而人在预览里看到的是正的
+ *    （<img> 一直都认 EXIF）。所以这是首选。
+ *
+ * 2. 不带那个选项再来一次 —— **Safari 认 createImageBitmap，
+ *    但那个选项袋是后来才支持的**。老一点的 iOS 上第一条会直接抛，
+ *    而抛出来的样子是「点了下一步，蹦一行红字」，人看到的就是
+ *    「这个编辑器用不了」。这一步宁可方向可能不对，也要出得了图。
+ *
+ * 3. 连 createImageBitmap 都没有，就走 <img> + objectURL 那条老路。
+ *
+ * 一条也走不通才算真的失败。这一段是照着「我没法在 iOS 上验」
+ * 写的：验不了的地方就别只留一条路。
+ */
+async function decode(file: File): Promise<ImageBitmap | HTMLImageElement> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(file, { imageOrientation: 'from-image' })
+    } catch {
+      try {
+        return await createImageBitmap(file)
+      } catch {
+        /* 掉到下面那条 */
+      }
+    }
+  }
+  const url = URL.createObjectURL(file)
+  try {
+    return await new Promise<HTMLImageElement>((res, rej) => {
+      const img = new Image()
+      img.onload = () => res(img)
+      img.onerror = () => rej(new Error(pick('这张图打不开', 'Could not open this image')))
+      img.src = url
+    })
+  } finally {
+    /*
+     * 撤得掉是因为 <img> 已经 onload 了 —— 画到画布上不再需要这个地址。
+     * 不撤的话每改一张图就在内存里留一整张。
+     */
+    URL.revokeObjectURL(url)
   }
 }
 
