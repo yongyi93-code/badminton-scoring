@@ -1,0 +1,146 @@
+/* ------------------------------------------------------------------ *
+ * 手机号
+ *
+ * 只管一件事：把人随手打的那一串，变成数据库和 WhatsApp 都认的
+ * 那一种写法（E.164，`+60123456789`）。
+ *
+ * -------------------------------------------------------------------
+ * 为什么非得统一不可
+ *
+ * 手机号在这里是**账号名**。同一个人今天打 `012-345 6789`、
+ * 明天打 `0123456789`、后天打 `+60 12 345 6789` —— 对他来说是同一个号，
+ * 对数据库来说是三个不同的字符串，于是他会注册出三个账号，
+ * 而战绩在第一个里。
+ *
+ * 这种错**不会报错**，只会让人莫名其妙地「登进去发现什么都没了」。
+ * 所以存之前一律过这一道，一种写法。
+ *
+ * -------------------------------------------------------------------
+ * 默认马来西亚，但不挡别人
+ *
+ * 球友绝大多数是本地的，让他们每次打 `+60` 是没必要的麻烦 ——
+ * 没有 `+` 就按马来西亚算。真有外国号的，自己打 `+` 开头就行。
+ * ------------------------------------------------------------------ */
+
+/** 这个 App 的默认国家：马来西亚 */
+export const DEFAULT_CC = '60'
+
+/**
+ * 人打的那一串 → `+60123456789`。认不出来就是 null。
+ *
+ * 认得出这些（都是同一个号）：
+ *
+ *   012-345 6789
+ *   012 345 6789
+ *   0123456789
+ *   123456789
+ *   60123456789
+ *   +60 12-345 6789
+ *
+ * 认不出的一律 null，而不是猜一个 —— 猜错的后果是他注册出一个
+ * 别人的号码，而那个人有一天真的来注册时会撞上「这个号已经有人了」。
+ */
+export function normalizePhone(input: string): string | null {
+  const raw = input.trim()
+  if (!raw) return null
+
+  /*
+   * 除了开头那个 +，只留数字。
+   *
+   * 括号、空格、横杠、点都是人写给自己看的分隔符。字母直接判死：
+   * 带字母多半是打错了窗口（把名字打进来了），而把字母悄悄删掉
+   * 会把「Ah Meng 012」变成一个看起来很正常的号码。
+   */
+  if (/[A-Za-z]/.test(raw)) return null
+  const plus = raw.startsWith('+')
+  const digits = raw.replace(/\D/g, '')
+  if (!digits) return null
+
+  /* 自己打了 + 的：当他知道自己在写哪国的号，只查长度 */
+  if (plus) return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null
+
+  /*
+   * 没打 + 的，三种写法都往马来西亚身上套：
+   *
+   *   60…  已经带了国码
+   *   0…   本地写法，去掉那个 0
+   *   1…   连 0 都省了（存在通讯录里常见）
+   */
+  let national = digits
+  if (national.startsWith(DEFAULT_CC)) national = national.slice(DEFAULT_CC.length)
+  else if (national.startsWith('0')) national = national.slice(1)
+
+  return isMalaysianMobile(national) ? `+${DEFAULT_CC}${national}` : null
+}
+
+/**
+ * 去掉 0 和国码之后，这是不是一个马来西亚手机号。
+ *
+ * 马来西亚手机一律 01X 开头，所以去掉那个 0 之后必然以 1 打头。
+ * 长度要分两档，不能笼统写成「8 到 9 位」：
+ *
+ *   011-XXXX XXXX   去掉 0 之后 10 位
+ *   01X-XXX XXXX    去掉 0 之后 9 位（010、012…019，除了 011）
+ *
+ * 一开始图省事写的是 `^1\d{8,9}$`，结果 `012-345 67890`（012 那一档
+ * 多打了一位）照收不误，归一化成一个**根本不存在的号**。
+ * 这种错最坏的地方是它会占掉一个号 —— 真正的机主哪天来注册，
+ * 撞上的是「这个号已经有人了」。
+ *
+ * **固定电话（03、04 这些）故意不收**：验证码是从 WhatsApp 发过去的，
+ * 一个座机号收不到 —— 当场说「这个号收不到 WhatsApp」，
+ * 比让他等一条永远不会来的消息强得多。
+ */
+function isMalaysianMobile(national: string): boolean {
+  if (national.startsWith('11')) return /^11\d{8}$/.test(national)
+  return /^1[02-9]\d{7}$/.test(national)
+}
+
+/** 是不是一个能用的号。normalizePhone 认得出就算 */
+export const isPhone = (input: string): boolean => normalizePhone(input) !== null
+
+/**
+ * `+60123456789` → `+60 12-345 6789`，给人看的。
+ *
+ * 只排版马来西亚的号；别的国家原样返回 —— 各国的分节法都不一样，
+ * 瞎断比不断还难读。
+ */
+export function prettyPhone(e164: string): string {
+  const m = /^\+60(1\d)(\d{3,4})(\d{4})$/.exec(e164)
+  if (!m) return e164
+  return `+60 ${m[1]}-${m[2]} ${m[3]}`
+}
+
+/**
+ * 遮一半，用在「验证码发到 +60 12-•••• 6789」这种地方。
+ *
+ * 留头留尾是让人确认「这是我那个号」，中间盖住是因为这句话会
+ * 显示在别人也看得到的屏幕上（球馆里手机是传着看的）。
+ */
+export function maskPhone(e164: string): string {
+  const pretty = prettyPhone(e164)
+  /* 从后往前数，留最后 4 位；再往前的数字换成圆点 */
+  let left = 0
+  return pretty
+    .split('')
+    .reverse()
+    .map((ch) => {
+      if (!/\d/.test(ch)) return ch
+      left += 1
+      return left <= 4 ? ch : '•'
+    })
+    .reverse()
+    .join('')
+    /* 国码那两位别盖 —— 盖了就认不出是哪个国家 */
+    .replace(/^\+••/, `+${DEFAULT_CC}`)
+}
+
+/** 验证码：6 位数字 */
+export const CODE_LEN = 6
+
+/** 人打的验证码里只留数字，最多 6 位 */
+export const cleanCode = (input: string): string =>
+  input.replace(/\D/g, '').slice(0, CODE_LEN)
+
+export const isCode = (input: string): boolean =>
+  new RegExp(`^\\d{${CODE_LEN}}$`).test(input)
