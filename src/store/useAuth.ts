@@ -198,10 +198,33 @@ export async function signUp(email: string, password: string): Promise<AuthResul
  * ------------------------------------------------------------------ */
 
 /**
- * 发一条验证码过去。
+ * 验证码从哪条道发出去。
  *
- * `channel: 'whatsapp'` —— 走 WhatsApp 不走短信。马来西亚上了年纪的人
- * 用 WhatsApp 比用短信熟，而且那条消息落在他天天在看的那个 App 里。
+ * -------------------------------------------------------------------
+ * 为什么默认 WhatsApp
+ *
+ * 一是便宜：查下来马来西亚一条 WhatsApp 认证模板大约 RM 0.1–0.2，
+ * 而 Twilio 到马来西亚的国际短信是 USD 0.2594 一条（≈ RM 1.17）——
+ * **差六到十几倍**。
+ *
+ * 二是马来西亚对 A2P 短信另有一堆要求（发送方会被改写成短码、每条
+ * 必须带「RM 0.00」头和品牌名，否则被运营商过滤），也就是说短信
+ * 发出去了还不一定到得了。
+ *
+ * -------------------------------------------------------------------
+ * 什么时候该改成 'sms'
+ *
+ * WhatsApp 那条要过 Meta 的企业验证和模板审核，几天起步、还可能被
+ * 打回；短信没有这一关。**急着上线就先改成 'sms'，批下来再改回来**
+ * —— 就是下面这一个词，别处一个字都不用动。
+ *
+ * 单独拎出来当常量，就是为了让这件事是「改一个词」而不是
+ * 「去代码里找那一处」。
+ */
+const OTP_CHANNEL: 'whatsapp' | 'sms' = 'whatsapp'
+
+/**
+ * 发一条验证码过去。
  *
  * **号码必须是已经归一化过的**（lib/phone 的 normalizePhone）。
  * 不归一化的话，同一个人用三种写法会注册出三个账号 —— 而他看到的
@@ -215,7 +238,7 @@ export async function sendPhoneCode(e164: string): Promise<AuthResult> {
   }
   const { error } = await supabase.auth.signInWithOtp({
     phone: e164,
-    options: { channel: 'whatsapp' },
+    options: { channel: OTP_CHANNEL },
   })
   return error ? { ok: false, error: readableError(error.message) } : { ok: true }
 }
