@@ -69,6 +69,54 @@ export function readableError(message: string): string {
       'This email is not verified yet — open the link in your inbox. Check your spam folder too.',
     )
   }
+  /* ---------------------------------------------------------------- *
+    手机号那条路上的几句。
+    它们和邮箱那几句一样要紧 —— 这一屏是陌生人见到这个 App 的第一屏，
+    而手机号这条本来就是做给「连邮箱都嫌麻烦」的人用的：
+    说错一句，他连第一步都迈不过去。
+  * ---------------------------------------------------------------- */
+  if (m.includes('invalid phone') || m.includes('unable to validate phone')) {
+    return pick('这个号码不对，检查一下', 'That number does not look right')
+  }
+  /*
+   * 验证码错了和过期了，Supabase 回的是同一句。
+   * 不分开猜 —— 两种的下一步都是「再要一条」，说成一句反而清楚。
+   */
+  if (m.includes('token has expired') || m.includes('invalid otp') || m.includes('otp_expired')) {
+    return pick('验证码不对，或者已经过期了 —— 重新要一条', 'That code is wrong or has expired — ask for a new one')
+  }
+  /*
+   * 后台还没配发消息那一端。
+   *
+   * 这一句**用户什么都做不了**，所以不提任何后台名词，
+   * 只告诉他还有另一条路能走。
+   */
+  if (
+    m.includes('provider is not enabled') ||
+    m.includes('phone provider') ||
+    m.includes('sms provider') ||
+    m.includes('unsupported phone provider')
+  ) {
+    return pick(
+      '手机号登录暂时用不了，先用邮箱注册吧',
+      'Phone sign-in is not available right now — use email for now',
+    )
+  }
+  if (m.includes('error sending') || m.includes('failed to send')) {
+    return pick(
+      '验证码发不出去 —— 确认这个号码能收 WhatsApp，或者改用邮箱',
+      'Could not send the code — check this number can receive WhatsApp, or use email',
+    )
+  }
+  /*
+   * 「等 X 秒再试」是 Supabase 给验证码那条路的防刷。
+   * 把秒数留着：一句带数字的话，人会真的等；一句「太频繁了」，
+   * 人只会一直点。
+   */
+  const wait = /after (\d+) seconds?/.exec(m)
+  if (wait) {
+    return pick(`太快了，等 ${wait[1]} 秒再要一次`, `Too fast — wait ${wait[1]} seconds`)
+  }
   if (m.includes('rate limit') || m.includes('too many requests')) {
     return pick('太频繁了，等一会儿再试', 'Too many attempts — wait a bit')
   }

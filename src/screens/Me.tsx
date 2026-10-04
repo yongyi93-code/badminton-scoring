@@ -72,6 +72,7 @@ import { FeedbackSheet } from '@/components/FeedbackSheet'
 import { DeleteAccountSheet } from '@/components/DeleteAccount'
 import { PhotoSheet } from '@/components/Photo'
 import { PasswordSheet } from '@/components/PasswordSheet'
+import { PhoneAuth } from '@/components/PhoneAuth'
 import { BanNotice, useMyBan } from '@/components/BanNotice'
 import { useInstallHow } from '@/lib/install'
 
@@ -92,6 +93,13 @@ const ARROW = (
 function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT()
   const push = useNav((s) => s.push)
+  /*
+   * 先选用什么进来：手机号还是邮箱。
+   *
+   * 手机号摆在前面、并且是默认 —— 这条路本来就是为「连邮箱都嫌麻烦」
+   * 的人加的，把它放第二个等于白加。
+   */
+  const [way, setWay] = useState<'phone' | 'email'>('phone')
   const [mode, setMode] = useState<'in' | 'up' | 'forgot'>('in')
   /** 重设邮件发出去之后显示的那句话 */
   const [sent, setSent] = useState<string | null>(null)
@@ -188,14 +196,42 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
       open={open}
       onClose={onClose}
       title={
-        mode === 'forgot'
-          ? t('忘记密码', 'Forgot password')
-          : mode === 'in'
-            ? t('登录', 'Sign in')
-            : t('注册', 'Create an account')
+        way === 'phone'
+          ? t('用手机号进来', 'Continue with phone')
+          : mode === 'forgot'
+            ? t('忘记密码', 'Forgot password')
+            : mode === 'in'
+              ? t('登录', 'Sign in')
+              : t('注册', 'Create an account')
       }
     >
       <div className="space-y-4">
+        {/* ------------------------------------------------------------ *
+          手机号 / 邮箱。
+
+          忘记密码那一档不显示这一条：那时候人正在一条很窄的路上走，
+          半路给他一个岔口只会让他走丢。
+        * ------------------------------------------------------------ */}
+        {mode !== 'forgot' && (
+          <Segmented
+            value={way}
+            onChange={(v: 'phone' | 'email') => {
+              setWay(v)
+              setError(null)
+              setSent(null)
+              setPending(null)
+            }}
+            options={[
+              { value: 'phone', label: t('手机号', 'Phone') },
+              { value: 'email', label: t('邮箱', 'Email') },
+            ]}
+          />
+        )}
+
+        {way === 'phone' ? (
+          <PhoneAuth onDone={onClose} />
+        ) : (
+        <>
         {mode !== 'forgot' && (
           <Segmented
             value={mode}
@@ -350,6 +386,8 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
             'This password is only for syncing. Forget it and you can sign up with another email — nothing on this phone is lost.',
           )}
         </p>
+        </>
+        )}
       </div>
     </Sheet>
   )

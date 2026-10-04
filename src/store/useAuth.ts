@@ -183,6 +183,64 @@ export async function signUp(email: string, password: string): Promise<AuthResul
 }
 
 
+/* ------------------------------------------------------------------ *
+ * 手机号那条路
+ *
+ * 和邮箱那条的区别不只是「填的东西不一样」：
+ *
+ *   邮箱   注册和登录是两件事（注册要设密码，登录要记得密码）
+ *   手机号 **只有一件事** —— 要一条验证码，填进去就进来了。
+ *          第一次来就是注册，以后来就是登录，人根本不用知道区别。
+ *
+ * 这正是做这条路的理由：这是给「连邮箱都嫌麻烦」的人用的，
+ * 而「注册还是登录」「密码是什么」是两道凭空多出来的坎。
+ * 没有密码，也就没有「忘了密码」。
+ * ------------------------------------------------------------------ */
+
+/**
+ * 发一条验证码过去。
+ *
+ * `channel: 'whatsapp'` —— 走 WhatsApp 不走短信。马来西亚上了年纪的人
+ * 用 WhatsApp 比用短信熟，而且那条消息落在他天天在看的那个 App 里。
+ *
+ * **号码必须是已经归一化过的**（lib/phone 的 normalizePhone）。
+ * 不归一化的话，同一个人用三种写法会注册出三个账号 —— 而他看到的
+ * 只是「登进去什么都没了」。所以这里再挡一道：形状不对就不发，
+ * 省一条钱，也省一个错号。
+ */
+export async function sendPhoneCode(e164: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+  if (!/^\+\d{8,15}$/.test(e164)) {
+    return { ok: false, error: pick('这个号码不对，检查一下', 'That number does not look right') }
+  }
+  const { error } = await supabase.auth.signInWithOtp({
+    phone: e164,
+    options: { channel: 'whatsapp' },
+  })
+  return error ? { ok: false, error: readableError(error.message) } : { ok: true }
+}
+
+/**
+ * 填验证码，进来。
+ *
+ * type 是 `'sms'` 而不是 `'whatsapp'` —— 这一点容易写错：
+ * channel 管的是「从哪条道发出去」，而 verifyOtp 的 type 管的是
+ * 「这是手机那一类的码」。装在这个仓库里的那份类型定义写着
+ * `MobileOtpType = 'sms' | 'phone_change' | …`，根本没有 whatsapp 这一档。
+ */
+export async function verifyPhoneCode(e164: string, code: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: noCloud() }
+  const { error } = await supabase.auth.verifyOtp({
+    phone: e164,
+    token: code,
+    type: 'sms',
+  })
+  return error ? { ok: false, error: readableError(error.message) } : { ok: true }
+}
+
+/** 当前登录用的手机号，没有就是 null（拿邮箱注册的人就没有） */
+export const currentPhone = (): string | null => current.session?.user.phone ?? null
+
 /**
  * 把验证邮件再发一遍。
  *
