@@ -1,4 +1,5 @@
 import { pick } from '@/lib/i18n'
+import { channelName } from '@/lib/phone'
 
 /* ------------------------------------------------------------------ *
  * 注册登录这一屏上说的话，和它那两条岔路
@@ -104,8 +105,8 @@ export function readableError(message: string): string {
   }
   if (m.includes('error sending') || m.includes('failed to send')) {
     return pick(
-      '验证码发不出去 —— 确认这个号码能收 WhatsApp，或者改用邮箱',
-      'Could not send the code — check this number can receive WhatsApp, or use email',
+      `验证码发不出去 —— 确认这个号码能收${channelName(true)}，或者改用邮箱`,
+      `Could not send the code — check this number can receive ${channelName(false)}, or use email`,
     )
   }
   /*

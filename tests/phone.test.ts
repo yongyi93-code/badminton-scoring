@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  OTP_CHANNEL,
+  channelName,
   cleanCode,
   isCode,
   isPhone,
@@ -128,5 +130,27 @@ describe('验证码', () => {
     expect(isCode('123456')).toBe(true)
     expect(isCode('12345')).toBe(false)
     expect(isCode('1234567')).toBe(false)
+  })
+})
+
+describe('验证码走哪条道', () => {
+  /*
+   * 这几条钉的是一件容易被忘的事：**改了那个开关，界面要跟着改口**。
+   * 写死「WhatsApp」的话，哪天切成短信，App 会一直教人去 WhatsApp
+   * 里找一条永远不会到的消息。
+   */
+  it('两条道各有各的说法', () => {
+    expect(channelName(true, 'whatsapp')).toBe('WhatsApp')
+    expect(channelName(false, 'whatsapp')).toBe('WhatsApp')
+    expect(channelName(true, 'sms')).toBe('短信')
+    expect(channelName(false, 'sms')).toBe('SMS')
+  })
+
+  it('不传就按现在设的那条道', () => {
+    expect(channelName(true)).toBe(channelName(true, OTP_CHANNEL))
+  })
+
+  it('现在设的是这两个之一，没写错字', () => {
+    expect(['sms', 'whatsapp']).toContain(OTP_CHANNEL)
   })
 })

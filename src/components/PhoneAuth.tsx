@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { useT } from '@/lib/i18n'
+import { useT, lang } from '@/lib/i18n'
 import { Button, Field, cx, inputClass } from '@/components/ui'
 import { sendPhoneCode, verifyPhoneCode } from '@/store/useAuth'
 import {
   CODE_LEN,
+  channelName,
   cleanCode,
   isCode,
   maskPhone,
@@ -38,6 +39,8 @@ const COOLDOWN = 60
 
 export function PhoneAuth({ onDone }: { onDone: () => void }) {
   const t = useT()
+  /* 「短信」还是「WhatsApp」—— 跟 OTP_CHANNEL 同一个开关，不会说假话 */
+  const via = channelName(lang() === 'zh')
   const [step, setStep] = useState<'num' | 'code'>('num')
   const [input, setInput] = useState('')
   /** 真正发出去的那个号（已归一化）。填码那一步只认它，不认输入框 */
@@ -101,8 +104,8 @@ export function PhoneAuth({ onDone }: { onDone: () => void }) {
       <div className="space-y-4">
         <p className="text-ink-700 text-label">
           {t(
-            '填手机号，我们用 WhatsApp 发一个 6 位数的码过去。不用设密码，也不用邮箱。',
-            'Enter your phone number — we send a 6-digit code over WhatsApp. No password, no email.',
+            `填手机号，我们用${via}发一个 6 位数的码过去。不用设密码，也不用邮箱。`,
+            `Enter your phone number — we send a 6-digit code by ${via}. No password, no email.`,
           )}
         </p>
 
@@ -142,7 +145,7 @@ export function PhoneAuth({ onDone }: { onDone: () => void }) {
           disabled={!e164 || busy}
           onClick={() => void send()}
         >
-          {busy ? t('发送中…', 'Sending…') : t('用 WhatsApp 发验证码', 'Send code on WhatsApp')}
+          {busy ? t('发送中…', 'Sending…') : t(`用${via}发验证码`, `Send code by ${via}`)}
         </Button>
       </div>
     )
@@ -155,8 +158,8 @@ export function PhoneAuth({ onDone }: { onDone: () => void }) {
     <div className="space-y-4">
       <p className="text-ink-700 text-label">
         {t(
-          `验证码发到 ${sentTo ? maskPhone(sentTo) : ''} 的 WhatsApp 了。`,
-          `We sent a code to ${sentTo ? maskPhone(sentTo) : ''} on WhatsApp.`,
+          `验证码用${via}发到 ${sentTo ? maskPhone(sentTo) : ''} 了。`,
+          `We sent a code by ${via} to ${sentTo ? maskPhone(sentTo) : ''}.`,
         )}
       </p>
 
