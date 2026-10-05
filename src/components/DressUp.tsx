@@ -138,7 +138,24 @@ export function DressUpView({
     let alive = true
     const el = ref.current
     if (!el) return
-    paint(el, sex, picks, crop, maxPx).then(() => alive && setReady(true))
+    /*
+     * 在 DOM 上留一个「还没画完」的记号。
+     *
+     * 出图那一步（lib/shareImage）要等这些画布都画完才能动手 —— 而它
+     * 拿到的只是一个 DOM 节点，看不见这里的 React 状态。所以记号写在
+     * 节点自己身上，那是两边唯一都看得见的地方。
+     *
+     * 不等的后果是真出过的：战绩卡导出来，别的全对，**头像一个个
+     * 都是空的灰圈** —— 因为这些画布是异步画的（要先把几层衣服的图
+     * 读进来），而出图那一刻它们还是空白。本机素材是热的，一下就画完，
+     * 所以在我这儿永远重现不出来；手机上第一次打开、走流量，就中招。
+     */
+    el.dataset.paint = 'pending'
+    paint(el, sex, picks, crop, maxPx).then(() => {
+      if (!alive) return
+      el.dataset.paint = 'done'
+      setReady(true)
+    })
     return () => {
       alive = false
     }

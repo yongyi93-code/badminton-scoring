@@ -36,13 +36,60 @@ export type ShareOutcome =
  * （用户点了生成图再切去微信就中招）。这里只用它把节点转成自包含的 SVG，
  * 再自己画到 canvas 上，全程不依赖动画帧。
  */
+/** 1×1 全透明 PNG。读不到的图拿它顶位，见下面 imagePlaceholder 那段 */
+const TRANSPARENT_PX =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+
+/**
+ * 等节点里所有还在画的画布画完。
+ *
+ * 认的是 DressUp 在画布上留的那个记号（data-paint="pending"）——
+ * 出图这一侧只拿得到一个 DOM 节点，看不见 React 状态，所以两边
+ * 约好在节点上碰头。
+ *
+ * 等不到也照样往下走：**一张缺了头像的卡，好过一张导不出来的卡**。
+ * 所以这里只是尽力等，不是一道门。
+ */
+async function waitForCanvases(node: HTMLElement, timeoutMs = 4000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!node.querySelector('[data-paint="pending"]')) return
+    await new Promise((r) => setTimeout(r, 60))
+  }
+}
+
 async function nodeToPngBlob(node: HTMLElement, scale = 2): Promise<Blob> {
   const width = node.offsetWidth
   const height = node.offsetHeight
   if (!width || !height) throw new Error(pick('分享卡片还没渲染出来', 'The share card has not rendered yet'))
 
+  /*
+   * 先等画布画完。
+   *
+   * 角色头像是一张异步画的 canvas（components/DressUp）—— 要先把几层
+   * 衣服的图读进来才画得出。不等的话导出来的是**一圈空的灰圈**，
+   * 而卡片别的地方全对，所以没人会想到是头像在赛跑。
+   *
+   * 本机素材是热的，一下就画完，在开发机上永远重现不出来；
+   * 手机上第一次打开、走流量，就中招。
+   */
+  await waitForCanvases(node)
+
   const toSvg = await loadToSvg()
-  const svgUrl = await toSvg(node, { width, height, cacheBust: true })
+  const svgUrl = await toSvg(node, {
+    width,
+    height,
+    cacheBust: true,
+    /*
+     * 读不到的图用一张透明占位顶上，别让整张卡废掉。
+     *
+     * 实测：节点里只要有一张跨域又没给 CORS 头的图，toSvg 直接
+     * 抛出来，**一张图都导不出**。而那张图可能只是某个球友的头像 ——
+     * 为了他一个人的照片，整桌人的战绩都分享不出去，不值。
+     * 给了占位就是：那一个位置空着，别的照常。
+     */
+    imagePlaceholder: TRANSPARENT_PX,
+  })
 
   const img = new Image()
   img.decoding = 'sync'
