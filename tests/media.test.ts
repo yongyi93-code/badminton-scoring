@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MEDIA_ACCEPT,
   VIDEO_MAX_BYTES,
+  VIDEO_MAX_MB,
   VIDEO_TYPES,
   checkMedia,
   isVideo,
@@ -110,8 +111,9 @@ describe('这个文件能不能发', () => {
   const file = (type: string, mb: number) => ({ type, size: mb * 1024 * 1024 })
 
   it('一段小视频可以', () => {
-    expect(checkMedia(file('video/mp4', 8))).toBeNull()
-    expect(checkMedia(file('video/quicktime', 8))).toBeNull()
+    /* 3MB：离上限远一点，别让这条顺手变成边界测试（边界有自己那两条） */
+    expect(checkMedia(file('video/mp4', 3))).toBeNull()
+    expect(checkMedia(file('video/quicktime', 3))).toBeNull()
   })
 
   it('太大的那段发不了，而且要说出多大', () => {
@@ -120,8 +122,34 @@ describe('这个文件能不能发', () => {
     expect(msg).toContain('45')
   })
 
+  /*
+   * 这一条钉的是「说的和拦的是同一个数」。
+   *
+   * 那句话里的上限原来是手打的「20MB」。改常量而忘了改那句的话，
+   * App 会一边拦掉 9MB 的片子、一边告诉人「最多 20MB」—— 而他会以为
+   * 是 App 坏了，一直重试。这种错不报错，只会让人困惑。
+   */
+  it('那句话里的上限 = 真正拦人的那个上限', () => {
+    /*
+     * 故意拿一段**远大于**上限的片子来问。
+     *
+     * 第一版写的是「刚好超一个字节」，结果那句话里的片子大小也被
+     * 四舍五入成 8MB —— 于是「包含 8」这个断言在文案写死 20MB 时
+     * 照样是绿的。变异测试当场把这条照出来了：改坏了它不红。
+     *
+     * 45MB 和 8MB 两个数不会互相掩护，这才问得出真话。
+     */
+    const msg = checkMedia(file('video/mp4', 45)) ?? ''
+    expect(msg).toContain(`${VIDEO_MAX_MB}MB`)
+    expect(msg).toContain('45')
+  })
+
+  it('上限是 8MB —— 按流量算出来的，改之前先读 media.ts 开头那段', () => {
+    expect(VIDEO_MAX_MB).toBe(8)
+  })
+
   /* 正好卡在上限上要放过去 —— 桶那边收的也是 <= */
-  it('正好 20MB 可以', () => {
+  it('正好卡在上限上可以', () => {
     expect(checkMedia({ type: 'video/mp4', size: VIDEO_MAX_BYTES })).toBeNull()
   })
 

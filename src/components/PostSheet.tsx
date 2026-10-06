@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n'
 import { Button, Sheet, cx, inputClass } from '@/components/ui'
-import { MAX_VIDEOS, MEDIA_ACCEPT, checkMedia, isVideoType } from '@/lib/media'
+import { MAX_VIDEOS, MEDIA_ACCEPT, VIDEO_MAX_MB, checkMedia, isVideoType } from '@/lib/media'
 import {
   BODY_MAX,
   MAX_PHOTOS,
@@ -491,9 +491,10 @@ export function PostSheet({
               拦住 —— 与其让人拍完三十秒才被拒，不如先说。
             */}
             <p className="text-ink-500 text-caption">
+              {/* 上限从常量算，别手打 —— 手打的那个数迟早和真拦人的那个对不上 */}
               {t(
-                '视频不压，原样上传 —— 所以一条里只能放一段，而且要小于 20MB（大概十几秒）。拍长了会发不出去。',
-                'Videos are uploaded as-is, not compressed — one per post, under 20MB (roughly 15 seconds). Longer clips will be rejected.',
+                `视频不压，原样上传 —— 所以一条里只能放一段，而且要小于 ${VIDEO_MAX_MB}MB（大概十几秒）。拍长了会发不出去。`,
+                `Videos are uploaded as-is, not compressed — one per post, under ${VIDEO_MAX_MB}MB (roughly 15 seconds). Longer clips will be rejected.`,
               )}
             </p>
           </div>

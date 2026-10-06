@@ -37,7 +37,7 @@ describe('录出来多大', () => {
    * 有人把码率调高的话这条会先红，而不是等某个人录满 15 秒才发现
    * 发不出去。
    */
-  it('录满 15 秒也撞不到 20MB 那个上限', () => {
+  it('录满 15 秒也撞不到上传那个上限', () => {
     expect(estimateBytes(MAX_RECORD_MS)).toBeLessThan(VIDEO_MAX_BYTES)
   })
 
@@ -46,7 +46,7 @@ describe('录出来多大', () => {
   })
 
   it('算的是这两个码率加起来', () => {
-    /* 1 秒 = (2_500_000 + 96_000) / 8 字节 */
+    /* 1 秒 = (VIDEO_BPS + AUDIO_BPS) / 8 字节 */
     expect(estimateBytes(1000)).toBe(Math.round((VIDEO_BPS + AUDIO_BPS) / 8))
   })
 })

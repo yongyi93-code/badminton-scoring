@@ -15,7 +15,7 @@ import { checkFile, randomPath } from '@/lib/photo'
  * —— 15 秒的片子就等 15 秒，而且 Safari 上能不能编出来还要看系统版本。
  * 为了一个发 Story 的动作让人盯着转圈等十几秒，这个交易不划算。
  *
- * 所以这一版直接传原文件，代价改成明码标价的一条：**上限 20 MB**。
+ * 所以这一版直接传原文件，代价改成明码标价的一条：**上限 8 MB**。
  * 超了当场说「拍短一点」，不是传到一半失败。
  *
  * -------------------------------------------------------------------
@@ -24,9 +24,18 @@ import { checkFile, randomPath } from '@/lib/photo'
  * 存储不是问题：Story 24 小时后连文件一起删（028 + cleanup-stories），
  * 桶不会越积越多。
  *
- * 真正花钱的是**下行流量** —— 一段 20 MB 的视频，球群里十个人点开看
- * 就是 200 MB。免费版一个月 5 GB，也就是二十几段。这个数字写在这儿，
- * 不是写在某个人的记忆里：以后要调，先读这一段。
+ * 真正花钱的是**下行流量**，而且是按「每个看的人」乘上去的：
+ * 一段片子 × 看的人数。球群里十个人点开，一段 20 MB 就是 200 MB，
+ * 免费额度二十几段就见底 —— 那时候 Story 会**整片黑，而且没有任何
+ * 警报**，你只会收到「怎么看不了了」。
+ *
+ * 所以上限从 20 MB 压到了 8 MB（2026-10，上线前）。
+ *
+ * 这一刀砍掉的几乎只有相册里挑的长片：自己录的本来就不大 ——
+ * 相机那边是 15 秒上限、2.5 Mbps（lib/camera.ts），
+ * 15 × 2.5 / 8 ≈ 4.7 MB，离 8 MB 还有一截。
+ *
+ * 要再调先读这一段，别只改数字。
  *
  * 时长没有单独卡。卡时长挡的和卡大小挡的是同一件事（片子太大），
  * 而多一道判断就多一种「明明能发却说不行」的出错方式。
@@ -41,7 +50,10 @@ import { checkFile, randomPath } from '@/lib/photo'
 export const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm']
 
 /** 一段视频最多多大。上面那段写了这个数是怎么来的 */
-export const VIDEO_MAX_BYTES = 20 * 1024 * 1024
+export const VIDEO_MAX_BYTES = 8 * 1024 * 1024
+
+/** 上限换成「多少 MB」，给人看的。只有这一处算，省得文案和常量各说各的 */
+export const VIDEO_MAX_MB = Math.round(VIDEO_MAX_BYTES / (1024 * 1024))
 
 /** 一条里最多几段视频 */
 export const MAX_VIDEOS = 1
@@ -111,7 +123,7 @@ export function mediaPath(uid: string, type: string): string {
  * 图片那半交给 checkFile —— 那边已经有一份规矩了，抄第二份迟早会和
  * 第一份不一样。这里只加视频那半。
  *
- * 在**选完、还没开始传**的时候判：传一段 20 MB 的视频要好几十秒，
+ * 在**选完、还没开始传**的时候判：传一段几 MB 的视频要好几十秒，
  * 而那几十秒之后再说「不行」，人已经等过了。
  */
 export function checkMedia(f: { type: string; size: number }): string | null {
@@ -122,9 +134,16 @@ export function checkMedia(f: { type: string; size: number }): string | null {
   }
   if (f.size > VIDEO_MAX_BYTES) {
     const mb = Math.round(f.size / (1024 * 1024))
+    /*
+     * 上限从常量算出来，不写死。
+     *
+     * 原来这句里的「20MB」是手打的 —— 改常量而忘了改这句的话，
+     * App 会一边拦掉 9MB 的片子、一边告诉人「最多 20MB」，
+     * 而他会以为是 App 坏了，一直重试。
+     */
     return pick(
-      `这段视频 ${mb}MB，太大了 —— 拍短一点（最多 20MB）`,
-      `That clip is ${mb}MB — too large. Keep it shorter (20MB max)`,
+      `这段视频 ${mb}MB，太大了 —— 拍短一点（最多 ${VIDEO_MAX_MB}MB）`,
+      `That clip is ${mb}MB — too large. Keep it shorter (${VIDEO_MAX_MB}MB max)`,
     )
   }
   return null
