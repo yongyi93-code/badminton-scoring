@@ -73,6 +73,7 @@ import { DeleteAccountSheet } from '@/components/DeleteAccount'
 import { PhotoSheet } from '@/components/Photo'
 import { PasswordSheet } from '@/components/PasswordSheet'
 import { PhoneAuth } from '@/components/PhoneAuth'
+import { PHONE_AUTH_READY } from '@/lib/phone'
 import { BanNotice, useMyBan } from '@/components/BanNotice'
 import { useInstallHow } from '@/lib/install'
 
@@ -99,7 +100,7 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
    * 手机号摆在前面、并且是默认 —— 这条路本来就是为「连邮箱都嫌麻烦」
    * 的人加的，把它放第二个等于白加。
    */
-  const [way, setWay] = useState<'phone' | 'email'>('phone')
+  const [way, setWay] = useState<'phone' | 'email'>(PHONE_AUTH_READY ? 'phone' : 'email')
   const [mode, setMode] = useState<'in' | 'up' | 'forgot'>('in')
   /** 重设邮件发出去之后显示的那句话 */
   const [sent, setSent] = useState<string | null>(null)
@@ -212,7 +213,7 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
           忘记密码那一档不显示这一条：那时候人正在一条很窄的路上走，
           半路给他一个岔口只会让他走丢。
         * ------------------------------------------------------------ */}
-        {mode !== 'forgot' && (
+        {PHONE_AUTH_READY && mode !== 'forgot' && (
           <Segmented
             value={way}
             onChange={(v: 'phone' | 'email') => {

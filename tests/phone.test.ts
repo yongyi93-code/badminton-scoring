@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   OTP_CHANNEL,
+  PHONE_AUTH_READY,
   channelName,
   cleanCode,
   isCode,
@@ -152,5 +153,19 @@ describe('验证码走哪条道', () => {
 
   it('现在设的是这两个之一，没写错字', () => {
     expect(['sms', 'whatsapp']).toContain(OTP_CHANNEL)
+  })
+})
+
+describe('手机号登录这道闸', () => {
+  /*
+   * 这不是在测一个常量，是在钉一条规矩：**没配好发信的那一端之前，
+   * 那条路不许露面**。露了的结果是陌生人打开 App、点注册，第一眼
+   * 看到的是一条走不通的路 —— 而第一屏就碰壁的人不会再试第二次。
+   *
+   * Twilio 配好了就把它改成 true，这条测试会跟着红，提醒改的人
+   * 顺手确认一遍：真的能发出去了吗？
+   */
+  it('还没配发信那一端，所以是关着的', () => {
+    expect(PHONE_AUTH_READY).toBe(false)
   })
 })
