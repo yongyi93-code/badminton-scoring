@@ -70,7 +70,6 @@ export function SessionSetup() {
   const back = useNav((s) => s.back)
   const replace = useNav((s) => s.replace)
 
-  const lastVenue = sessions[0]?.venue ?? ''
   const knownVenues = useMemo(() => recentVenues(sessions).slice(0, 6), [sessions])
   const lastCourts = sessions[0]?.courtCount ?? 2
 
@@ -81,7 +80,21 @@ export function SessionSetup() {
    * 要约明天晚上八点的，改一下就是。
    */
   const [time, setTime] = useState(nextHalfHour())
-  const [venue, setVenue] = useState(lastVenue)
+  /*
+   * 球馆**不预填**，空着。
+   *
+   * 原来填的是「上一场在哪打的」。可 sessions 是整个球群同步下来的 ——
+   * 上一场是**谁**打的都算，于是不管谁开局，框里都躺着别人那个球馆。
+   * 用户看到的就是「怎么老是 twin ark」。
+   *
+   * 而且这不只是碍眼：那个值是**真的会被存下去**的。手快一点直接开局，
+   * 这一场就记到了一个他根本没去过的球馆名下 —— 球馆榜、球馆地址
+   * 全跟着脏，而且事后没人看得出来是怎么脏的。
+   *
+   * 省事那一面没丢：下面那排历史球馆的小按钮一点就填上，
+   * 最近去过的本来就排在最前面。区别只是**由他点，不是替他决定**。
+   */
+  const [venue, setVenue] = useState('')
   const [courtCount, setCourtCount] = useState(lastCourts)
   /** 人数上限，0 = 不限 */
   const [maxPlayers, setMaxPlayers] = useState(0)
@@ -472,11 +485,16 @@ export function SessionSetup() {
             label={t('球馆', 'Venue')}
             hint={t('排行榜可以按球馆分开看，所以同一个场馆尽量用同一个名字', 'The leaderboard can be filtered by venue, so spell the same place the same way')}
           >
+            {/*
+              提示语里不拿真实球馆当例子。
+              原来英文那句写的是 "e.g. Twin Ark" —— 那是这个球群自己的
+              场地，漏进了一句所有人都会看到的话里。
+            */}
             <input
               className={inputClass}
               value={venue}
               onChange={(e) => setVenue(e.target.value)}
-              placeholder={t('例如 城中羽球馆', 'e.g. Twin Ark')}
+              placeholder={t('球馆名字', 'Venue name')}
             />
             {knownVenues.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
