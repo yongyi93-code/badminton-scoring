@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { useApp } from '@/store/useApp'
-import { fetchCards, type Card } from '@/lib/profile'
+import { loadCards, type Card } from '@/lib/profile'
+import { shouldLoadCards } from '@/lib/cardLoad'
 
 /* ------------------------------------------------------------------ *
  * 一份名片表，全 App 共用
@@ -29,18 +30,31 @@ import { fetchCards, type Card } from '@/lib/profile'
 
 type State = {
   cards: Map<string, Card>
-  /** 拉过一次没有。用来避免每次挂载都发请求 */
-  loaded: boolean
-  load: (force?: boolean) => Promise<void>
+  /**
+   * 上一次**拉成功**时登录的是谁。undefined = 从来没成功过。
+   *
+   * 这里原来是一个 `loaded: boolean`，而那个布尔同时漏掉了两件事：
+   * 分不出「拉失败」和「真的没有」，也分不出「换人了」。
+   * 两个窟窿都表现成「头像不见了」，一行报错都没有 ——
+   * 整段原委写在 lib/cardLoad.ts 开头。
+   */
+  loadedFor: string | null | undefined
+  load: (uid: string | null, force?: boolean) => Promise<void>
 }
 
 export const useCards = create<State>((set, get) => ({
   cards: new Map(),
-  loaded: false,
-  load: async (force = false) => {
-    if (get().loaded && !force) return
-    const cards = await fetchCards()
-    set({ cards, loaded: true })
+  loadedFor: undefined,
+  load: async (uid, force = false) => {
+    if (!force && !shouldLoadCards({ loadedFor: get().loadedFor, uid })) return
+    const res = await loadCards()
+    /*
+     * 失败就什么都不记：表留着旧的（总比突然全变卡通强），
+     * loadedFor 也不动 —— 下次问起来还是「该拉」，于是回前台
+     * 那一下自然就重试了。
+     */
+    if (!res.ok) return
+    set({ cards: res.cards, loadedFor: uid })
   },
 }))
 
@@ -49,20 +63,45 @@ export const useCards = create<State>((set, get) => ({
  *
  * 不做的话，换完头像回到上一屏，看到的还是旧的那张 —— 而人会再换一次。
  */
-export const refreshCards = () => useCards.getState().load(true)
+export const refreshCards = () =>
+  useCards.getState().load(useCards.getState().loadedFor ?? null, true)
 
 /**
  * 开 App 拉一次。挂在最外层，所以每一屏都不用自己操心。
  *
- * 跟着球员表变一次：球员是云端同步下来的，第一次开 App 时它是空的，
- * 等同步回来才知道谁是谁 —— 那一刻正好也是该有照片的时候。
+ * 三个时机，各补一个窟窿：
+ *
+ *   换人       登录 / 登出 / 换账号。这张表是按「谁在看」过滤的 ——
+ *              登录前拉到的基本是空的，不跟着重拉的话，他登录之后
+ *              整个 App 的头像还是卡通，直到彻底关掉重开
+ *   球员表变   球员是云端同步下来的，开 App 头几秒还是空的，
+ *              等同步回来那一刻正好也是该有照片的时候
+ *   回前台     上面两次要是都拉失败了（地铁里开的 App），
+ *              这是唯一的重试机会，而且不花定时器
+ *
+ * uid 收成参数、不在这里 import useAuth：useAuth 一被 import 就会挂上
+ * supabase 的会话监听，而这个 store 被每一个画头像的地方间接 import 到。
+ * 那等于谁碰一下头像就拖起一整个客户端 —— 测试里当场就炸了。
  */
-export function useLoadCards(): void {
+export function useLoadCards(uid: string | null): void {
   const players = useApp((s) => s.players)
   const load = useCards((s) => s.load)
+
   useEffect(() => {
-    void load()
-  }, [load, players.length])
+    void load(uid)
+  }, [load, uid, players.length])
+
+  useEffect(() => {
+    /*
+     * 只认「回到前台」。visibilitychange 两个方向都会触发，
+     * 切出去那一下去拉是白花一个请求 —— 那时候没人在看。
+     */
+    const onShow = () => {
+      if (document.visibilityState === 'visible') void load(uid)
+    }
+    document.addEventListener('visibilitychange', onShow)
+    return () => document.removeEventListener('visibilitychange', onShow)
+  }, [load, uid])
 }
 
 /**

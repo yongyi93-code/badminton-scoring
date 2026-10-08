@@ -37,6 +37,7 @@ import { useOpenFromPush } from '@/lib/openFromPush'
 import { useBroadcastPlaying } from '@/lib/nowPlaying'
 import { useSeedMyName } from '@/lib/profile'
 import { useLoadCards } from '@/store/useCards'
+import { useAuth } from '@/store/useAuth'
 import { useOpenBoardSync } from '@/store/useOpenBoard'
 
 export default function App() {
@@ -80,8 +81,11 @@ export default function App() {
    * 挂在最外层而不是各屏自己拉：头像出现在十来屏上，各拉各的话
    * 切一次 tab 就是一个新请求，而且会出现「排行榜上已经是新照片、
    * 看板上还是旧的」——它们只隔一个手势。
+   *
+   * 登录的是谁要从这里喂进去：那张表是按「谁在看」过滤的，换了人
+   * 就得重拉 —— 不然他登录之后，整个 App 的头像还是卡通的。
    */
-  useLoadCards()
+  useLoadCards(useAuth().session?.user.id ?? null)
   /* 公开球局：拉别人的，推自己的（见 store/useOpenBoard.ts） */
   useOpenBoardSync()
 

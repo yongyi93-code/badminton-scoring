@@ -101,8 +101,27 @@ export function nameOf(sources: {
  * 头像退回换装角色。这一块是锦上添花，不该因为它挂了就让整屏出错。
  */
 export async function fetchCards(): Promise<Map<string, Card>> {
+  return (await loadCards()).cards
+}
+
+/**
+ * 同上，但**说得出自己是成功还是失败**。
+ *
+ * 多这一个布尔是因为「拉失败」和「真的一张都没有」在上面那个签名里
+ * 长得一模一样 —— 两种都是一张空表。而缓存那一层必须分得开：
+ * 把失败当成功记了账，这一整次使用里头像就都没了，没有一行报错，
+ * 人只会觉得这个 App 时好时坏。理由写在 lib/cardLoad.ts 里。
+ *
+ * 只有需要记账的地方（store/useCards）才用这个；一次性读的屏幕
+ * 用上面那个就行，它们下次进来本来就会再拉一遍。
+ */
+export async function loadCards(): Promise<{ ok: boolean; cards: Map<string, Card> }> {
   const out = new Map<string, Card>()
-  if (!supabase) return out
+  /*
+   * 没接云端：这不是失败，是这台机器上**本来就没有**名片这回事。
+   * 报成失败的话，调用方会一直重试一件永远不会成的事。
+   */
+  if (!supabase) return { ok: true, cards: out }
   const { data, error } = await supabase
     .from('profiles')
     /*
@@ -115,7 +134,7 @@ export async function fetchCards(): Promise<Map<string, Card>> {
     .limit(500)
   if (error) {
     console.warn('名片没拿到:', error.message)
-    return out
+    return { ok: false, cards: out }
   }
   for (const row of (data ?? []) as {
     uid: string
@@ -128,7 +147,7 @@ export async function fetchCards(): Promise<Map<string, Card>> {
       photo: photoUrl(row.photo_path),
     })
   }
-  return out
+  return { ok: true, cards: out }
 }
 
 /**
