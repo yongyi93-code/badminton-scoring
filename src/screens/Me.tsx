@@ -112,6 +112,18 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
    * 「我没收到」。
    */
   const [pending, setPending] = useState<string | null>(null)
+  /**
+   * 注册成功了，现在**只剩一件事**：去邮箱点那个链接。
+   *
+   * 有这个状态是因为少了它那一屏在说假话：注册完表单原样留在那儿，
+   * 邮箱、密码框、「注册并登录」全都还在，密码框还是空的 ——
+   * 看起来就像「还要再填一次密码才算完」。其实这一屏已经没他的事了。
+   *
+   * 它和 pending 不是一回事：登录时被「邮箱还没验证」挡回来也会设
+   * pending（为了给「重发」按钮），但那时候表单**必须留着** ——
+   * 他点完链接回来就是要在这儿登录的。
+   */
+  const [parked, setParked] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -122,6 +134,7 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
     setError(null)
     setSent(null)
     setPending(null)
+    setParked(false)
 
     if (mode === 'forgot') {
       const res = await sendPasswordReset(email)
@@ -153,10 +166,11 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
        */
       if (res.confirm) {
         setPending(res.confirm)
+        setParked(true)
         setSent(
           t(
-            `注册好了。我们往 ${res.confirm} 发了一封验证邮件 —— 点开里面那个链接就能用了。找不到就翻一下垃圾邮件。`,
-            `You are signed up. We sent a verification email to ${res.confirm} — open the link in it and you are in. Check your spam folder if it is not there.`,
+            `注册好了。我们往 ${res.confirm} 发了一封验证邮件 —— 去邮箱点开里面那个链接就能用了。这一屏不用再填什么。找不到就翻一下垃圾邮件。`,
+            `You are signed up. We sent a verification email to ${res.confirm} — open the link in it and you are in. Nothing more to fill in here. Check your spam folder if it is not there.`,
           ),
         )
         return
@@ -164,9 +178,40 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
       onClose()
       return
     }
+    /*
+     * 这个邮箱已经有人用了。
+     *
+     * 不画红字：他没做错什么，只是走错了门 —— 直接把他挪到「登录」，
+     * 邮箱留着，密码清掉。写成报错的话，一个本来一步就能进来的人
+     * 会以为注册失败，然后换个邮箱再注册一个账号 —— 而他的战绩在旧那个里。
+     */
+    if (res.already) {
+      setMode('in')
+      setPassword('')
+      setSent(res.error)
+      return
+    }
     setError(res.error)
     /* 登录被挡是因为没验证邮箱 —— 顺手把「重发」摆出来 */
     if (res.unconfirmed) setPending(email.trim())
+  }
+
+  /**
+   * 从「去邮箱点链接」那一屏退回表单。
+   *
+   * 两个出口都要有：点完链接回来的（去登录）、和邮箱打错了的（重新注册）。
+   * 少了后者，一个把地址打错一个字母的人就只能关掉整个弹层重来 ——
+   * 而他关掉之后第一反应是再点一次「注册」，又回到同一屏。
+   */
+  const leaveParked = (next: 'in' | 'up') => {
+    setParked(false)
+    setPending(null)
+    setSent(null)
+    setError(null)
+    setPassword('')
+    setMode(next)
+    /* 换一个邮箱：旧的那个清掉，不然他会以为只要改一改就行 */
+    if (next === 'up') setEmail('')
   }
 
   const resend = async () => {
@@ -221,6 +266,7 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
               setError(null)
               setSent(null)
               setPending(null)
+              setParked(false)
             }}
             options={[
               { value: 'phone', label: t('手机号', 'Phone') },
@@ -231,6 +277,39 @@ function AuthSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         {way === 'phone' ? (
           <PhoneAuth onDone={onClose} />
+        ) : parked ? (
+          /* ------------------------------------------------------------ *
+            注册完了，只剩「去邮箱点一下」这一件事。
+
+            所以整张表单让位。留着的话，一个空的密码框加一个灰掉的
+            「注册并登录」摆在眼前 —— 人会以为还要在这儿再填一次密码
+            才算注册成功，而其实这一屏已经没他的事了。
+          * ------------------------------------------------------------ */
+          <>
+            {sent && <p className="text-brand-600 text-label">{sent}</p>}
+            {error && <p className="text-danger-600 text-label">{error}</p>}
+
+            {pending && (
+              <Button variant="soft" block disabled={busy} onClick={() => void resend()}>
+                {t('没收到？再发一封', 'Did not get it? Send again')}
+              </Button>
+            )}
+
+            {/*
+              点完链接多半会自己跳回 App 并登录好 —— 这个按钮是给
+              「在电脑上点的链接」那种人留的退路。
+            */}
+            <Button variant="primary" size="lg" block onClick={() => leaveParked('in')}>
+              {t('点好了，去登录', 'Done — sign in')}
+            </Button>
+
+            <button
+              className="text-ink-500 block w-full text-center text-caption"
+              onClick={() => leaveParked('up')}
+            >
+              {t('邮箱打错了？换一个重新注册', 'Wrong email? Sign up with another')}
+            </button>
+          </>
         ) : (
         <>
         {mode !== 'forgot' && (

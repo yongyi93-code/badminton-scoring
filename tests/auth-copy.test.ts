@@ -55,8 +55,10 @@ describe('不许把开发者的话说给用户听', () => {
 })
 
 describe('注册之后该往哪走', () => {
+  const 新人 = { hasSession: false, alreadyRegistered: false, email: 'a@b.com' }
+
   it('拿到 session 就是进去了', () => {
-    expect(signUpOutcome(true, 'a@b.com')).toEqual({ ok: true })
+    expect(signUpOutcome({ ...新人, hasSession: true })).toEqual({ ok: true })
   })
 
   /*
@@ -68,15 +70,52 @@ describe('注册之后该往哪走', () => {
    * 彻底卡在门口。
    */
   it('没拿到 session 不是失败 —— 是「去点一下链接」', () => {
-    const r = signUpOutcome(false, 'a@b.com')
+    const r = signUpOutcome(新人)
     expect(r.ok).toBe(true)
     expect(r).toHaveProperty('confirm', 'a@b.com')
   })
 
   /* 邮箱要带出来：界面得把它显示给人看（常打错），也要拿它去重发 */
   it('把邮箱带出来', () => {
-    const r = signUpOutcome(false, '  Yy@Example.com ')
+    const r = signUpOutcome({ ...新人, email: '  Yy@Example.com ' })
     expect(r.ok && r.confirm).toBe('  Yy@Example.com ')
+  })
+
+  /* ---------------------------------------------------------------- *
+    这个邮箱已经有人用了
+
+    线上真的坑到人的就是这一条：用一个已经注册、已经验证过的邮箱
+    再注册一次，Supabase **不报错也不发信**，只回一个空壳用户。
+    旧代码只看有没有 session，于是这一条和「要去验证邮箱」长得
+    一模一样 —— App 当面说「验证邮件发出去了」，而那封信不存在。
+    他会一直等、一直点重发、翻垃圾邮件，最后认定这个 App 坏了。
+  * ---------------------------------------------------------------- */
+  it('空壳用户 = 这个邮箱已经注册过了，绝不能说成「发了验证邮件」', () => {
+    const r = signUpOutcome({ ...新人, alreadyRegistered: true })
+    expect(r.ok).toBe(false)
+    /* 最要紧的一条：不许带 confirm —— 带了界面就会去说那封不存在的信 */
+    expect(r).not.toHaveProperty('confirm')
+  })
+
+  it('这句话要把他往「登录」上指，而且不提邮件', () => {
+    const r = signUpOutcome({ ...新人, alreadyRegistered: true })
+    const msg = r.ok ? '' : r.error
+    expect(msg).toContain('注册过了')
+    expect(msg).toContain('登录')
+    /* 一个字都不许提邮件 —— 没有那封信，提了他就会去等 */
+    expect(msg).not.toContain('邮件')
+  })
+
+  it('界面要认得出这是「走错门」而不是报错', () => {
+    /* 认不出就画成红字，而红字会让他换个邮箱另开一个账号 —— 战绩在旧那个里 */
+    const r = signUpOutcome({ ...新人, alreadyRegistered: true })
+    expect(r.ok === false && r.already).toBe(true)
+  })
+
+  it('进去了就不管这个邮箱是不是旧的', () => {
+    /* 关掉邮箱验证时，老用户走注册也会直接拿到 session —— 那就是进去了 */
+    const r = signUpOutcome({ ...新人, hasSession: true, alreadyRegistered: true })
+    expect(r).toEqual({ ok: true })
   })
 })
 

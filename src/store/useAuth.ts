@@ -180,7 +180,23 @@ export async function signUp(email: string, password: string): Promise<AuthResul
     options: { emailRedirectTo: authRedirect() },
   })
   if (error) return { ok: false, error: readableError(error.message) }
-  return signUpOutcome(Boolean(data.session), email.trim())
+  /*
+   * identities 是空数组 = 这个邮箱已经注册过了。
+   *
+   * Supabase 在这种情况下既不报错也不发信，只回一个空壳用户 —— 它
+   * 不想让人拿注册接口去扫「谁有账号」。代价是**老实的用户也被瞒着**：
+   * 不认这一条的话，App 会告诉他「验证邮件发出去了」，而那封信不存在。
+   *
+   * 用 Array.isArray 兜一道：万一哪天这个字段没回来（undefined），
+   * 宁可走回「去邮箱点链接」那条，也不要凭空说「这个邮箱有人用了」——
+   * 后者会把一个真正的新用户挡在门外。
+   */
+  const identities = data.user?.identities
+  return signUpOutcome({
+    hasSession: Boolean(data.session),
+    alreadyRegistered: Array.isArray(identities) && identities.length === 0,
+    email: email.trim(),
+  })
 }
 
 

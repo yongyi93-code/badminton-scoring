@@ -32,6 +32,14 @@ export type AuthResult =
       error: string
       /** 登录被挡是因为邮箱还没验证 —— 界面要顺手给个「重发」按钮 */
       unconfirmed?: boolean
+      /**
+       * 注册时发现这个邮箱早就注册过了。
+       *
+       * 放在 ok:false 这边是因为「账号没建成」，但它**不该画成红色报错**：
+       * 他什么都没做错，只是走错了门。界面认出这一条之后该做的事是
+       * 把他切到「登录」，而不是让他对着一句红字发愣。
+       */
+      already?: boolean
     }
 
 /**
@@ -130,20 +138,45 @@ export function readableError(message: string): string {
 /**
  * 注册回来之后该给界面什么。
  *
- * 拆出来是为了测得到 —— 这一步的两条路在界面上差别很大，而它本身
- * 只是一个 if：
+ * 拆出来是为了测得到 —— 这一步的三条路在界面上差别很大，而它本身
+ * 只是两个 if：
  *
- *   有 session   已经登录进去了，关掉弹层就行
- *   没有 session 后台开着邮箱验证。**这不是失败**：账号建好了，
- *                只差他去点一下那个链接
+ *   有 session        已经登录进去了，关掉弹层就行
+ *   这个邮箱有人用了  **没建成**，该让他去登录
+ *   都不是            账号建好了，只差他去点一下那封邮件里的链接
  *
- * 第二条原来是当成失败返回的，弹出来的是红色报错框，里面还写着
- * 「在 Supabase 后台把 Confirm email 关掉」—— 一句他既看不懂、
- * 也做不到的话。人看到红色会再注册一遍，然后撞上「这个邮箱已经
- * 注册过了」，于是彻底卡在门口。
+ * -------------------------------------------------------------------
+ * 中间那一条是补上的，而它是线上真的坑到人的那一条
+ *
+ * 用一个已经注册过、而且已经验证过的邮箱再注册一次，Supabase
+ * **不报错、也不发信**，只回一个空壳用户（这是它防「拿注册接口
+ * 扫谁有没有账号」的设计，装在这个仓库里的那份 auth-js 的注释原话是
+ * 「an obfuscated/fake user object is returned」）。
+ *
+ * 旧代码只看有没有 session，于是这一条和「要去验证邮箱」长得一模一样 ——
+ * App 当着他的面说「我们往 … 发了一封验证邮件」，而那封信**根本不存在**。
+ * 他会一直等、一直点重发、翻垃圾邮件，最后认定这个 App 坏了。
+ *
+ * 这种错最毒的地方是它不报错：日志里那一行是干干净净的 200。
  */
-export function signUpOutcome(hasSession: boolean, email: string): AuthResult {
-  return hasSession ? { ok: true } : { ok: true, confirm: email }
+export function signUpOutcome(d: {
+  hasSession: boolean
+  /** Supabase 回了个空壳用户（identities 是空的）—— 这个邮箱已经有人用了 */
+  alreadyRegistered: boolean
+  email: string
+}): AuthResult {
+  if (d.hasSession) return { ok: true }
+  if (d.alreadyRegistered) {
+    return {
+      ok: false,
+      already: true,
+      error: pick(
+        '这个邮箱已经注册过了 —— 已经帮你切到「登录」，填密码就行。密码忘了就点下面那个「忘记密码了？」。',
+        'That email is already registered — switched you to Sign in. Enter your password, or use “Forgot your password?” below.',
+      ),
+    }
+  }
+  return { ok: true, confirm: d.email }
 }
 
 /* ------------------------------------------------------------------ *
