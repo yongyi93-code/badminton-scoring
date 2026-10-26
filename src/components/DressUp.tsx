@@ -34,6 +34,8 @@ function load(src: string): Promise<HTMLImageElement> {
       img.src = src
     })
     cache.set(src, p)
+    // A failed download must be retryable on the next render.
+    void p.catch(() => { if (cache.get(src) === p) cache.delete(src) })
   }
   return p
 }
@@ -155,6 +157,8 @@ export function DressUpView({
       if (!alive) return
       el.dataset.paint = 'done'
       setReady(true)
+    }).catch(() => {
+      if (alive) el.dataset.paint = 'error'
     })
     return () => {
       alive = false

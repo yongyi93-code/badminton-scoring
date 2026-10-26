@@ -103,21 +103,21 @@ export function Avatar({
    *
    * 失败就退回角色，和从来没设过照片一模一样。
    */
-  const [broken, setBroken] = useState(false)
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null)
   const sizes = {
     sm: 'size-7 text-[11px]',
     md: 'size-10 text-sm',
     lg: 'size-16 text-xl',
   }
 
-  const kind = faceKind({ url, broken, hasCharacter: Boolean(avatar) })
+  const kind = faceKind({ url, broken: Boolean(url && brokenUrl === url), hasCharacter: Boolean(avatar) })
 
   if (kind === 'photo' && url) {
     return (
       <img
         src={url}
         alt={name}
-        onError={() => setBroken(true)}
+        onError={() => setBrokenUrl(url)}
         /*
          * 懒加载 + 异步解码：一屏十几个圆圈，同步解码会让整屏卡一下。
          * 这两个属性是白送的，加了没有代价。
@@ -142,6 +142,7 @@ export function Avatar({
           sizes[size],
           className,
         )}
+        data-avatar-name={name}
       >
         <span className="h-full w-full overflow-hidden rounded-full bg-fill">
           <AvatarFace

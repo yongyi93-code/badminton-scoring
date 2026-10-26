@@ -1,5 +1,6 @@
 import { pick } from './i18n'
 import { isInAppBrowser } from './install'
+import { shareFallback, shareSnapshot } from './shareAssets'
 
 /*
  * html-to-image 是用到才下的。
@@ -36,10 +37,6 @@ export type ShareOutcome =
  * （用户点了生成图再切去微信就中招）。这里只用它把节点转成自包含的 SVG，
  * 再自己画到 canvas 上，全程不依赖动画帧。
  */
-/** 1×1 全透明 PNG。读不到的图拿它顶位，见下面 imagePlaceholder 那段 */
-const TRANSPARENT_PX =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
-
 /**
  * 等节点里所有还在画的画布画完。
  *
@@ -75,21 +72,25 @@ async function nodeToPngBlob(node: HTMLElement, scale = 2): Promise<Blob> {
    */
   await waitForCanvases(node)
 
-  const toSvg = await loadToSvg()
-  const svgUrl = await toSvg(node, {
-    width,
-    height,
-    cacheBust: true,
-    /*
-     * 读不到的图用一张透明占位顶上，别让整张卡废掉。
-     *
-     * 实测：节点里只要有一张跨域又没给 CORS 头的图，toSvg 直接
-     * 抛出来，**一张图都导不出**。而那张图可能只是某个球友的头像 ——
-     * 为了他一个人的照片，整桌人的战绩都分享不出去，不值。
-     * 给了占位就是：那一个位置空着，别的照常。
-     */
-    imagePlaceholder: TRANSPARENT_PX,
-  })
+  const [toSvg, snapshot] = await Promise.all([loadToSvg(), shareSnapshot(node)])
+  // Keep inherited CSS variables and sizing, without modifying the live React tree.
+  const holder = document.createElement('div')
+  holder.style.cssText = 'position:fixed;left:-20000px;top:0;pointer-events:none'
+  holder.setAttribute('aria-hidden', 'true')
+  snapshot.style.width = `${width}px`
+  holder.appendChild(snapshot)
+  node.parentElement!.appendChild(holder)
+  let svgUrl: string
+  try {
+    svgUrl = await toSvg(snapshot, {
+      width,
+      height,
+      cacheBust: false,
+      imagePlaceholder: shareFallback(),
+    })
+  } finally {
+    holder.remove()
+  }
 
   const img = new Image()
   img.decoding = 'sync'
