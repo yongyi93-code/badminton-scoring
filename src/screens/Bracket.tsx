@@ -12,7 +12,10 @@ import {
   cx,
   inputClass,
 } from '@/components/ui'
-import { entrantMap, useTournament } from '@/store/useTournament'
+import { canManage, canScore, entrantMap, useTournament } from '@/store/useTournament'
+import { useAuth } from '@/store/useAuth'
+import { friendUids, useSocial } from '@/store/useSocial'
+import { useCards } from '@/store/useCards'
 import {
   champion,
   roundCount,
@@ -54,6 +57,10 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
   const push = useNav((s) => s.push)
   const tour = useTournament((s) => s.list.find((x) => x.id === tournamentId))
   const score = useTournament((s) => s.score)
+  const setEditors = useTournament((s) => s.setEditors)
+  const me = useAuth().session?.user.id ?? null
+  const cards = useCards((s) => s.cards)
+  const [pickingEditors, setPickingEditors] = useState(false)
 
   const [editing, setEditing] = useState<{ round: number; index: number } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -71,14 +78,22 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
             icon="🗂"
             title={t('这场比赛不在了', 'That tournament is gone')}
             hint={t(
-              '比赛存在这台手机上 —— 清过浏览器数据的话就没了。',
-              'Tournaments live on this phone, so clearing browser data removes them.',
+              '可能被开比赛的人删掉了；没登录时建的比赛只存在那台手机上。',
+              'It may have been deleted by its host. Tournaments made while signed out live only on that phone.',
             )}
           />
         </Body>
       </Screen>
     )
   }
+
+  /*
+   * 谁能干什么，和数据库那边（supabase/032）同一套：
+   * 开比赛的人什么都能改；记分员只能填分；其余登录的人只能看。
+   */
+  const scorer = canScore(tour, me)
+  const host = canManage(tour, me)
+  const nameOf = (uid: string) => cards.get(uid)?.name ?? t('（没名字）', '(no name)')
 
   const rounds = roundCount(tour.size)
   const champ = champion(tour.matches)
@@ -197,7 +212,9 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
                             byId={byId}
                             zh={zh}
                             dead={isDead(tour.matches, m.round, m.index)}
-                            onTap={() => setEditing({ round: m.round, index: m.index })}
+                            onTap={
+                              scorer ? () => setEditing({ round: m.round, index: m.index }) : undefined
+                            }
                           />
                         </div>
                       ))}
@@ -215,14 +232,52 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
           抽完签才发现名字打错了、有人临时退赛、有人补上 —— 这些在
           球馆里是常事，而原来抽完就定死了，只能删掉整场重来一遍。
         */}
-        <Button block onClick={() => push({ name: 'tournamentSetup', tournamentId: tour.id })}>
-          {t('改名单', 'Edit entries')}
-        </Button>
+        {!scorer && (
+          <div className="border-line bg-fill rounded-card border p-3.5">
+            <p className="text-ink-700 text-caption">
+              {t(
+                `这场是 ${tour.hostName ?? '别人'} 开的，你只能看。比分会自动更新；要帮忙记分的话，请开比赛的人把你加成记分员。`,
+                `${tour.hostName ?? 'Someone else'} runs this one, so it’s view-only for you. Scores update live; ask them to add you as a scorer if you’re helping.`,
+              )}
+            </p>
+          </div>
+        )}
+        {scorer && !host && (
+          <p className="text-brand-700 text-caption">
+            {t(
+              `你是这场的记分员 —— 点一场就能填分。改名单、加人只有开比赛的人（${tour.hostName ?? '主办'}）能做。`,
+              `You’re a scorer here — tap a match to enter the score. Only the host (${tour.hostName ?? 'organiser'}) can change entries or scorers.`,
+            )}
+          </p>
+        )}
+
+        {host && (
+          <Button block onClick={() => push({ name: 'tournamentSetup', tournamentId: tour.id })}>
+            {t('改名单', 'Edit entries')}
+          </Button>
+        )}
+
+        {/*
+          记分员：开比赛的人点名谁能帮着填分。
+
+          只有上了云的比赛才有这回事 —— 本机那份别人根本看不到，
+          加了也白加。没登录的时候这个按钮不出现。
+        */}
+        {host && tour.hostUid && (
+          <Button block onClick={() => setPickingEditors(true)}>
+            {(tour.editors ?? []).length
+              ? t(
+                  `记分员（${(tour.editors ?? []).length}）：${(tour.editors ?? []).map(nameOf).join('、')}`,
+                  `Scorers (${(tour.editors ?? []).length}): ${(tour.editors ?? []).map(nameOf).join(', ')}`,
+                )
+              : t('＋ 加记分员', '+ Add scorers')}
+          </Button>
+        )}
 
         <p className="text-ink-500 text-caption">
           {t(
-            '点一场比赛填比分。上游改了结果，后面几轮会跟着重算 —— 那几场原来的比分也就作废了。改名字不会动到赛表，加人删人才会重排。',
-            'Tap a match to enter the score. Changing an earlier result re-flows the rounds after it, and clears the scores that no longer apply. Fixing a name leaves the bracket alone; adding or removing entries redraws it.',
+            '点一场比赛填比分（开比赛的人和记分员才能填）。上游改了结果，后面几轮会跟着重算 —— 那几场原来的比分也就作废了。改名字不会动到赛表，加人删人才会重排。',
+            'Tap a match to enter the score (host and scorers only). Changing an earlier result re-flows the rounds after it, and clears the scores that no longer apply. Fixing a name leaves the bracket alone; adding or removing entries redraws it.',
           )}
         </p>
       </Body>
@@ -240,8 +295,97 @@ export function Bracket({ tournamentId }: { tournamentId: string }) {
         }}
       />
 
+      {host && tour.hostUid && (
+        <EditorSheet
+          open={pickingEditors}
+          current={tour.editors ?? []}
+          nameOf={nameOf}
+          onClose={() => setPickingEditors(false)}
+          onSave={(uids) => {
+            setEditors(tour.id, uids)
+            setPickingEditors(false)
+          }}
+        />
+      )}
+
       <Toast message={toast} onClose={() => setToast(null)} />
     </Screen>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * 挑记分员
+ *
+ * 从好友里挑：要加一个人，总得先认得出他是谁，而 App 里「认得出的人」
+ * 就是好友 —— 别人的名片按规矩本来就看不到（022/023）。
+ * 已经是记分员、但后来不是好友了的人也列着，好让开比赛的人能把他去掉。
+ * ------------------------------------------------------------------ */
+
+function EditorSheet({
+  open,
+  current,
+  nameOf,
+  onClose,
+  onSave,
+}: {
+  open: boolean
+  current: string[]
+  nameOf: (uid: string) => string
+  onClose: () => void
+  onSave: (uids: string[]) => void
+}) {
+  const t = useT()
+  const social = useSocial()
+  const friends = friendUids(social)
+  const [picked, setPicked] = useState<string[]>(current)
+  /* 每次打开都从现在的名单起步，不留上次没存的勾 */
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setPicked(current)
+  }
+  const people = [...new Set([...current, ...friends])]
+  const toggle = (uid: string) =>
+    setPicked((p) => (p.includes(uid) ? p.filter((x) => x !== uid) : [...p, uid]))
+
+  return (
+    <Sheet open={open} onClose={onClose} title={t('谁能帮着填分', 'Who can enter scores')}>
+      <div className="space-y-3">
+        <p className="text-ink-500 text-caption">
+          {t(
+            '勾上的人能在自己手机上给这场比赛填分。改名单、加减记分员、删比赛还是只有你能做。',
+            'People you tick can enter scores from their own phone. Only you can change entries, scorers, or delete the tournament.',
+          )}
+        </p>
+        {people.length === 0 ? (
+          <p className="text-ink-700 text-[15px]">
+            {t(
+              '你还没有好友。先在「好友」里加上要帮你记分的人，再回来勾他。',
+              'You have no friends added yet. Add the people helping you under Friends, then tick them here.',
+            )}
+          </p>
+        ) : (
+          <div className="border-line rounded-card divide-line divide-y overflow-hidden border">
+            {people.map((uid) => (
+              <label key={uid} className="flex items-center gap-3 px-3.5 py-3">
+                <input
+                  type="checkbox"
+                  className="size-5 shrink-0"
+                  checked={picked.includes(uid)}
+                  onChange={() => toggle(uid)}
+                />
+                <span className="text-ink-900 min-w-0 flex-1 truncate text-[15px]">
+                  {nameOf(uid)}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+        <Button block variant="primary" size="lg" onClick={() => onSave(picked)}>
+          {t('存下来', 'Save')}
+        </Button>
+      </div>
+    </Sheet>
   )
 }
 
@@ -262,7 +406,8 @@ function MatchCard({
   zh: boolean
   /** 这一格永远不会有人（空枝），不是「还没打到」。见 bracket.isDead */
   dead: boolean
-  onTap: () => void
+  /** 没有 = 只能看（不是记分员） */
+  onTap?: () => void
 }) {
   /* 空枝：点它没有任何意义，所以它不是按钮 */
   if (dead) {
@@ -330,10 +475,10 @@ function MatchCard({
   return (
     <button
       onClick={bye ? undefined : onTap}
-      disabled={bye}
+      disabled={bye || !onTap}
       className={cx(
         'border-line bg-surface rounded-card w-full space-y-1 border px-2.5 py-2 text-left',
-        !bye && 'active:bg-fill',
+        !bye && onTap && 'active:bg-fill',
         done && 'border-brand-600/40',
       )}
     >

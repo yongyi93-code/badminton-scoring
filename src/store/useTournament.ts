@@ -51,7 +51,45 @@ export type Tournament = {
   size: number
   matches: BracketMatch[]
   createdAt: number
+
+  /* ---- 上云之后才有的几栏。本机还没推上去的比赛这几栏都是空的 ---- */
+  /** 开比赛的人。空 = 只在这台手机上（还没上云），那就是自己的 */
+  hostUid?: string
+  /** 开比赛的人点名的记分员 */
+  editors?: string[]
+  /** 开比赛的人叫什么，列表上用 */
+  hostName?: string | null
+  /** 云端那一行的版本号。写的时候带上，对不上就说明别人先改了 */
+  version?: number
 }
+
+/** 一笔改动：拿一张表，给回改完的那张。纯函数 —— 撞车时要拿最新那版重算一遍 */
+export type TournamentOp = (t: Tournament) => Tournament
+
+/**
+ * 云端那一层挂进来的写入口（lib/tournamentSync.ts）。
+ *
+ * 用挂钩而不是直接 import：同步那一层要 import 这个 store，
+ * 这里再 import 回去就成了环，测试里也会平白拖起一个 supabase 客户端。
+ * 没挂（没登录、没接云端、跑测试）就只改本机。
+ */
+type CloudWriter = {
+  create: (t: Tournament) => void
+  write: (id: string, op: TournamentOp) => void
+  remove: (id: string) => void
+}
+let cloud: CloudWriter | null = null
+export const setCloudWriter = (w: CloudWriter | null) => {
+  cloud = w
+}
+
+/** 能不能填比分：开比赛的人、记分员，或者本机还没上云的比赛 */
+export const canScore = (t: Tournament, me: string | null | undefined): boolean =>
+  !t.hostUid || (!!me && (t.hostUid === me || (t.editors ?? []).includes(me)))
+
+/** 能不能改名单、加记分员、删比赛：只有开比赛的人 */
+export const canManage = (t: Tournament, me: string | null | undefined): boolean =>
+  !t.hostUid || (!!me && t.hostUid === me)
 
 type State = {
   list: Tournament[]
@@ -84,6 +122,16 @@ type State = {
   score: (id: string, round: number, index: number, a: number, b: number) => void
   remove: (id: string) => void
   rename: (id: string, name: string) => void
+  /** 开比赛的人定记分员 */
+  setEditors: (id: string, uids: string[]) => void
+
+  /* ---- 下面这几个只给同步那一层用：把云端的样子落到本机，不再往回推 ---- */
+  /** 一场从云端来的，整张换掉（或者加进来） */
+  putRemote: (t: Tournament) => void
+  /** 云端删掉了 */
+  dropRemote: (id: string) => void
+  /** 退出登录：云端来的全清掉，本机没上云的留着 */
+  dropAllRemote: () => void
 }
 
 const newId = () =>
@@ -139,100 +187,128 @@ export function needsRedraw(
   return key(before.entrants) !== key(after.entrants)
 }
 
+/* ------------------------------------------------------------------ *
+ * 每一种改动都是一个纯函数。
+ *
+ * 存档那一层（下面的 store）只是「拿出来 → 套一下 → 放回去」。
+ * 抽出来是为了云端：两台手机同时改，后到的那一笔要拿最新那版
+ * **重新套一遍**，而不是把自己手上那份整张盖上去。
+ * ------------------------------------------------------------------ */
+
+export const opUpdate =
+  (draft: Parameters<State['update']>[1]): TournamentOp =>
+  (t) => {
+    const redraw = needsRedraw(t, {
+      entrants: draft.entrants,
+      mode: draft.mode,
+      slots: draft.slots?.map((e) => e?.id ?? null),
+    })
+    const size = redraw ? (draft.slots?.length ?? drawSize(draft.entrants.length)) : t.size
+    return {
+      ...t,
+      name: draft.name.trim(),
+      date: draft.date,
+      doubles: draft.doubles,
+      mode: draft.mode,
+      entrants: draft.entrants,
+      size,
+      /*
+       * 不用重排的时候，matches 原样留着 —— 比分、已经打上来的人，
+       * 一个都不动。新名字是通过 entrants 那份查出来的。
+       */
+      matches: redraw
+        ? buildBracket(slotsFor(draft.entrants, draft.mode, size, draft.slots))
+        : t.matches,
+    }
+  }
+
+export const opRedraw =
+  (mode: DrawMode): TournamentOp =>
+  (t) => {
+    /*
+     * 人数可能变了（有人退赛、有人补上），所以表大小重算。
+     * 已经填的比分全没了 —— 重抽签本来就是这个意思，
+     * 界面上必须先问一句。
+     */
+    const size = drawSize(t.entrants.length)
+    return { ...t, mode, size, matches: buildBracket(slotsFor(t.entrants, mode, size)) }
+  }
+
+export const opScore =
+  (round: number, index: number, a: number, b: number): TournamentOp =>
+  (t) => ({ ...t, matches: setMatchScore(t.matches, round, index, a, b) })
+
+export const opRename =
+  (name: string): TournamentOp =>
+  (t) => ({ ...t, name: name.trim() })
+
+export const opEditors =
+  (uids: string[]): TournamentOp =>
+  (t) => ({ ...t, editors: [...new Set(uids)].filter((u) => u !== t.hostUid) })
+
 /** 已经填了比分的场次数。重排之前要拿它问一句「这些都不要了？」 */
 export const playedCount = (t: Tournament): number =>
   t.matches.filter((m) => m.scoreA !== undefined).length
 
 export const useTournament = create<State>()(
   persist(
-    (set) => ({
-      list: [],
+    (set, get) => {
+      /* 本机先改（界面立刻有反应），再交给云端那一层 */
+      const mutate = (id: string, op: TournamentOp) => {
+        set((s) => ({ list: s.list.map((t) => (t.id === id ? op(t) : t)) }))
+        cloud?.write(id, op)
+      }
 
-      create(draft) {
-        const size = draft.slots?.length ?? drawSize(draft.entrants.length)
-        const t: Tournament = {
-          id: newId(),
-          name: draft.name.trim(),
-          date: draft.date,
-          doubles: draft.doubles,
-          mode: draft.mode,
-          entrants: draft.entrants,
-          size,
-          matches: buildBracket(slotsFor(draft.entrants, draft.mode, size, draft.slots)),
-          createdAt: Date.now(),
-        }
-        set((s) => ({ list: [t, ...s.list] }))
-        return t
-      },
+      return {
+        list: [],
 
-      update(id, draft) {
-        set((s) => ({
-          list: s.list.map((t) => {
-            if (t.id !== id) return t
-            const redraw = needsRedraw(t, {
-              entrants: draft.entrants,
-              mode: draft.mode,
-              slots: draft.slots?.map((e) => e?.id ?? null),
-            })
-            const size = redraw ? (draft.slots?.length ?? drawSize(draft.entrants.length)) : t.size
-            return {
-              ...t,
-              name: draft.name.trim(),
-              date: draft.date,
-              doubles: draft.doubles,
-              mode: draft.mode,
-              entrants: draft.entrants,
-              size,
-              /*
-               * 不用重排的时候，matches 原样留着 —— 比分、已经打上来的人，
-               * 一个都不动。新名字是通过 entrants 那份查出来的。
-               */
-              matches: redraw
-                ? buildBracket(slotsFor(draft.entrants, draft.mode, size, draft.slots))
-                : t.matches,
-            }
-          }),
-        }))
-      },
+        create(draft) {
+          const size = draft.slots?.length ?? drawSize(draft.entrants.length)
+          const t: Tournament = {
+            id: newId(),
+            name: draft.name.trim(),
+            date: draft.date,
+            doubles: draft.doubles,
+            mode: draft.mode,
+            entrants: draft.entrants,
+            size,
+            matches: buildBracket(slotsFor(draft.entrants, draft.mode, size, draft.slots)),
+            createdAt: Date.now(),
+          }
+          set((s) => ({ list: [t, ...s.list] }))
+          cloud?.create(t)
+          return t
+        },
 
-      redraw(id, mode) {
-        set((s) => ({
-          list: s.list.map((t) => {
-            if (t.id !== id) return t
-            /*
-             * 人数可能变了（有人退赛、有人补上），所以表大小重算。
-             * 已经填的比分全没了 —— 重抽签本来就是这个意思，
-             * 界面上必须先问一句。
-             */
-            const size = drawSize(t.entrants.length)
-            return {
-              ...t,
-              mode,
-              size,
-              matches: buildBracket(slotsFor(t.entrants, mode, size)),
-            }
-          }),
-        }))
-      },
+        update: (id, draft) => mutate(id, opUpdate(draft)),
+        redraw: (id, mode) => mutate(id, opRedraw(mode)),
+        score: (id, round, index, a, b) => mutate(id, opScore(round, index, a, b)),
+        rename: (id, name) => mutate(id, opRename(name)),
+        setEditors: (id, uids) => mutate(id, opEditors(uids)),
 
-      score(id, round, index, a, b) {
-        set((s) => ({
-          list: s.list.map((t) =>
-            t.id === id ? { ...t, matches: setMatchScore(t.matches, round, index, a, b) } : t,
-          ),
-        }))
-      },
+        remove(id) {
+          const t = get().list.find((x) => x.id === id)
+          set((s) => ({ list: s.list.filter((x) => x.id !== id) }))
+          if (t?.hostUid) cloud?.remove(id)
+        },
 
-      remove(id) {
-        set((s) => ({ list: s.list.filter((t) => t.id !== id) }))
-      },
+        putRemote(t) {
+          set((s) =>
+            s.list.some((x) => x.id === t.id)
+              ? { list: s.list.map((x) => (x.id === t.id ? t : x)) }
+              : { list: [t, ...s.list].sort((a, b) => b.createdAt - a.createdAt) },
+          )
+        },
 
-      rename(id, name) {
-        set((s) => ({
-          list: s.list.map((t) => (t.id === id ? { ...t, name: name.trim() } : t)),
-        }))
-      },
-    }),
+        dropRemote(id) {
+          set((s) => ({ list: s.list.filter((x) => x.id !== id) }))
+        },
+
+        dropAllRemote() {
+          set((s) => ({ list: s.list.filter((x) => !x.hostUid) }))
+        },
+      }
+    },
     {
       /*
        * 和球局那份分开存。

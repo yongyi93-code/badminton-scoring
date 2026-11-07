@@ -5,6 +5,7 @@ import { pick } from '@/lib/i18n'
 import { arrivedFromRecovery, supabase } from '@/lib/supabase'
 import { flushNow, startSync, stopSync } from '@/lib/sync'
 import { startSocial, stopSocial } from '@/store/useSocial'
+import { startTournamentSync, stopTournamentSync } from '@/lib/tournamentSync'
 import { clearSignCache } from '@/lib/moments'
 import { useApp } from '@/store/useApp'
 /* 那几句话和那两条岔路在 lib 里 —— 理由见那个文件开头 */
@@ -90,9 +91,12 @@ function follow(session: Session | null) {
      * 只是因为「什么时候该开」是同一件事 —— 有人登录了。
      */
     startSocial()
+    /* 淘汰赛表：和上面两套都分开（它跨球群，见 supabase/032） */
+    startTournamentSync(session.user.id)
   } else {
     stopSync()
     stopSocial()
+    stopTournamentSync()
   }
 }
 
