@@ -1,8 +1,15 @@
 import { useState } from 'react'
 import { useT, lang } from '@/lib/i18n'
 import { useNav } from '@/store/useNav'
-import { Body, Button, Card, EmptyState, Screen, Sheet, TopBar } from '@/components/ui'
-import { entrantMap, useTournament, type Tournament } from '@/store/useTournament'
+import { Body, Button, Card, EmptyState, Screen, SectionTitle, Sheet, TopBar } from '@/components/ui'
+import {
+  canManage,
+  canScore,
+  entrantMap,
+  useTournament,
+  type Tournament,
+} from '@/store/useTournament'
+import { useAuth } from '@/store/useAuth'
 import { champion, roundCount, slotLabel } from '@/lib/bracket'
 
 /* ------------------------------------------------------------------ *
@@ -20,6 +27,13 @@ export function Tournaments() {
   const list = useTournament((s) => s.list)
   const remove = useTournament((s) => s.remove)
   const [confirming, setConfirming] = useState<Tournament | null>(null)
+  const me = useAuth().session?.user.id ?? null
+  /*
+   * 分两堆：我开的 / 我能记分的放上面，别人的（只能看）放下面。
+   * 登录的人都看得到所有比赛，全混在一起的话，自己那场会被淹掉。
+   */
+  const mine = list.filter((x) => canScore(x, me))
+  const others = list.filter((x) => !canScore(x, me))
 
   return (
     <Screen>
@@ -48,21 +62,49 @@ export function Tournaments() {
             }
           />
         ) : (
-          <div className="space-y-3">
-            {list.map((tr) => (
-              <Row key={tr.id} tour={tr} onOpen={() => push({ name: 'bracket', tournamentId: tr.id })} onDelete={() => setConfirming(tr)} />
-            ))}
-          </div>
+          <>
+            {mine.length > 0 && (
+              <div className="space-y-3">
+                {mine.map((tr) => (
+                  <Row
+                    key={tr.id}
+                    tour={tr}
+                    me={me}
+                    onOpen={() => push({ name: 'bracket', tournamentId: tr.id })}
+                    onDelete={canManage(tr, me) ? () => setConfirming(tr) : undefined}
+                  />
+                ))}
+              </div>
+            )}
+            {others.length > 0 && (
+              <div className="space-y-3">
+                <SectionTitle>{t('其他人的比赛（只能看）', 'Other tournaments (view only)')}</SectionTitle>
+                {others.map((tr) => (
+                  <Row
+                    key={tr.id}
+                    tour={tr}
+                    me={me}
+                    onOpen={() => push({ name: 'bracket', tournamentId: tr.id })}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/*
-          比赛只存在这台手机上，所以这句话要说在前面，不是等出事了才说。
+          存在哪儿，要说在前面，不是等出事了才说。
         */}
         <p className="text-ink-500 text-caption">
-          {t(
-            '比赛存在这台手机上，不上云 —— 清了浏览器数据就没了。办完记得把赛表导成图存一份。',
-            'Tournaments are stored on this phone only. Clearing browser data removes them, so export the bracket as an image when you’re done.',
-          )}
+          {me
+            ? t(
+                '比赛存在云端，登录的人都看得到，比分实时更新。只有开比赛的人和他加的记分员能填分。',
+                'Tournaments are saved online: anyone signed in can watch, and scores update live. Only the host and the scorers they add can enter scores.',
+              )
+            : t(
+                '还没登录，比赛只存在这台手机上 —— 清了浏览器数据就没了。登录之后会自动传上云端，别人也能看。',
+                'You’re signed out, so tournaments stay on this phone only. Sign in and they upload automatically for others to watch.',
+              )}
         </p>
       </Body>
 
@@ -74,8 +116,8 @@ export function Tournaments() {
         <div className="space-y-3">
           <p className="text-ink-700 text-[15px]">
             {t(
-              `「${confirming?.name}」整张赛表和所有比分都会没了，找不回来。`,
-              `“${confirming?.name}” — the whole bracket and every score goes, for good.`,
+              `「${confirming?.name}」整张赛表和所有比分都会没了，找不回来 —— 记分员和看的人那边也一起没了。`,
+              `“${confirming?.name}” — the whole bracket and every score goes, for good, for scorers and viewers too.`,
             )}
           </p>
           <Button
@@ -100,12 +142,15 @@ export function Tournaments() {
 
 function Row({
   tour,
+  me,
   onOpen,
   onDelete,
 }: {
   tour: Tournament
+  me: string | null
   onOpen: () => void
-  onDelete: () => void
+  /** 没有 = 不是开比赛的人，不给删 */
+  onDelete?: () => void
 }) {
   const t = useT()
   const zh = lang() === 'zh'
@@ -124,6 +169,13 @@ function Row({
               `${tour.date} · ${tour.entrants.length} ${tour.doubles ? 'teams' : 'players'} · ${roundCount(tour.size)} rounds`,
             )}
           </p>
+          {tour.hostUid && tour.hostUid !== me && (
+            <p className="text-ink-500 mt-0.5 text-caption">
+              {canScore(tour, me)
+                ? t(`${tour.hostName ?? '别人'} 开的 · 你是记分员`, `Hosted by ${tour.hostName ?? 'someone'} · you’re a scorer`)
+                : t(`${tour.hostName ?? '别人'} 开的`, `Hosted by ${tour.hostName ?? 'someone'}`)}
+            </p>
+          )}
           <p className="mt-1 text-caption">
             {champ ? (
               <span className="text-brand-700 font-semibold">
@@ -136,13 +188,15 @@ function Row({
             )}
           </p>
         </button>
-        <button
-          onClick={onDelete}
-          aria-label={t('删掉这场比赛', 'Delete')}
-          className="text-ink-500 active:text-danger-600 shrink-0 px-2 py-1 text-caption"
-        >
-          ✕
-        </button>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            aria-label={t('删掉这场比赛', 'Delete')}
+            className="text-ink-500 active:text-danger-600 shrink-0 px-2 py-1 text-caption"
+          >
+            ✕
+          </button>
+        )}
       </div>
     </Card>
   )
