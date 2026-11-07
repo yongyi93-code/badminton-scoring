@@ -5,6 +5,7 @@ import {
   drawSize,
   placeRanked,
   rankEntrants,
+  slotsOf,
   setScore as setMatchScore,
   type BracketMatch,
   type DrawMode,
@@ -68,7 +69,15 @@ type State = {
    */
   update: (
     id: string,
-    draft: { name: string; date: string; doubles: boolean; entrants: Entrant[]; mode: DrawMode },
+    draft: {
+      name: string
+      date: string
+      doubles: boolean
+      entrants: Entrant[]
+      mode: DrawMode
+      /** 手动排时第一轮每一格是谁 */
+      slots?: (Entrant | null)[]
+    },
   ) => void
   /** 重新抽一次签。整张表推倒重来 —— 所以界面上要问一句 */
   redraw: (id: string, mode: DrawMode) => void
@@ -109,11 +118,19 @@ function slotsFor(
  * 没理由为这个把比分清掉。
  */
 export function needsRedraw(
-  before: { entrants: Entrant[]; mode: DrawMode },
-  after: { entrants: Entrant[]; mode: DrawMode },
+  before: { entrants: Entrant[]; mode: DrawMode; matches?: BracketMatch[] },
+  after: { entrants: Entrant[]; mode: DrawMode; slots?: (string | null)[] },
 ): boolean {
   if (before.mode !== after.mode) return true
   if (before.entrants.length !== after.entrants.length) return true
+  /*
+   * 手动排：表就是主办方摆的那几格。格子动了就是换了对阵；
+   * 种子号在这一档不起作用，改了也不用重排。
+   */
+  if (after.mode === 'manual' && after.slots && before.matches) {
+    const was = slotsOf(before.matches)
+    return was.length !== after.slots.length || was.some((x, i) => x !== after.slots![i])
+  }
   const key = (list: Entrant[]) =>
     list
       .map((e) => `${e.id}:${e.seed ?? ''}`)
@@ -132,7 +149,7 @@ export const useTournament = create<State>()(
       list: [],
 
       create(draft) {
-        const size = drawSize(draft.entrants.length)
+        const size = draft.slots?.length ?? drawSize(draft.entrants.length)
         const t: Tournament = {
           id: newId(),
           name: draft.name.trim(),
@@ -152,8 +169,12 @@ export const useTournament = create<State>()(
         set((s) => ({
           list: s.list.map((t) => {
             if (t.id !== id) return t
-            const redraw = needsRedraw(t, { entrants: draft.entrants, mode: draft.mode })
-            const size = redraw ? drawSize(draft.entrants.length) : t.size
+            const redraw = needsRedraw(t, {
+              entrants: draft.entrants,
+              mode: draft.mode,
+              slots: draft.slots?.map((e) => e?.id ?? null),
+            })
+            const size = redraw ? (draft.slots?.length ?? drawSize(draft.entrants.length)) : t.size
             return {
               ...t,
               name: draft.name.trim(),
@@ -167,7 +188,7 @@ export const useTournament = create<State>()(
                * 一个都不动。新名字是通过 entrants 那份查出来的。
                */
               matches: redraw
-                ? buildBracket(slotsFor(draft.entrants, draft.mode, size))
+                ? buildBracket(slotsFor(draft.entrants, draft.mode, size, draft.slots))
                 : t.matches,
             }
           }),

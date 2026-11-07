@@ -14,7 +14,18 @@ import {
   inputClass,
 } from '@/components/ui'
 import { needsRedraw, playedCount, useTournament } from '@/store/useTournament'
-import { drawSize, type DrawMode, type Entrant } from '@/lib/bracket'
+import {
+  drawSize,
+  placeInSlot,
+  reconcileSlots,
+  roundName,
+  roundCount,
+  slotLabel,
+  slotsOf,
+  type DrawMode,
+  type Entrant,
+  type SlotIds,
+} from '@/lib/bracket'
 import {
   addRow,
   canRemove,
@@ -66,8 +77,13 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
   const [name, setName] = useState(editing?.name ?? '')
   const [date, setDate] = useState(editing?.date ?? todayISO())
   const [doubles, setDoubles] = useState(editing?.doubles ?? true)
-  const [mode, setMode] = useState<Exclude<DrawMode, 'manual'>>(
-    editing && editing.mode !== 'manual' ? editing.mode : 'seeded',
+  const [mode, setMode] = useState<DrawMode>(editing?.mode ?? 'seeded')
+  /*
+   * 手动排时第一轮每一格是谁（参赛者 id，null = 轮空）。
+   * 回去改一场手动排的比赛，从现成的表上读回来。
+   */
+  const [slotState, setSlots] = useState<SlotIds>(() =>
+    editing?.mode === 'manual' ? slotsOf(editing.matches) : [],
   )
   const [rows, setRows] = useState<EntryRow[]>(() =>
     editing
@@ -113,6 +129,25 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
   })
 
   /*
+   * 名单随时在变（边填边加人），摆好的格子每次都跟着名单对一遍：
+   * 留着的人不动，删掉的人让出位置，新来的人填进空格。
+   */
+  const byId = new Map(entrants.map((e) => [e.id, e]))
+  const slots = useMemo(
+    () =>
+      reconcileSlots(
+        slotState,
+        entrants.map((e) => e.id),
+        size,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slotState, entrants.map((e) => e.id).join('|'), size],
+  )
+  const manual = mode === 'manual'
+  const manualSlots = manual ? slots.map((id) => (id ? (byId.get(id) ?? null) : null)) : undefined
+  const place = (i: number, id: string | null) => setSlots(placeInSlot(slots, i, id))
+
+  /*
    * 改完之后这张表还是不是原来那张。
    *
    * 只改了名字 → 不用重排，比分全留着。
@@ -120,7 +155,8 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
    * 只能重排，已经填的比分跟着作废 —— 这句话要在按钮上说清楚，
    * 不能等人点完了才发现。
    */
-  const willRedraw = !!editing && needsRedraw(editing, { entrants, mode })
+  const willRedraw =
+    !!editing && needsRedraw(editing, { entrants, mode, slots: manual ? slots : undefined })
   const losing = editing && willRedraw ? playedCount(editing) : 0
 
   /*
@@ -131,11 +167,25 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
 
   const start = () => {
     if (editing) {
-      update(editing.id, { name, date, doubles, entrants, mode })
+      update(editing.id, {
+        name,
+        date,
+        doubles,
+        entrants,
+        mode,
+        slots: manualSlots,
+      })
       back()
       return
     }
-    const made = create({ name, date, doubles, entrants, mode })
+    const made = create({
+      name,
+      date,
+      doubles,
+      entrants,
+      mode,
+      slots: manualSlots,
+    })
     replace({ name: 'bracket', tournamentId: made.id })
   }
 
@@ -185,18 +235,24 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
             options={[
               { value: 'seeded', label: t('按种子排', 'Seeded') },
               { value: 'random', label: t('全随机', 'Random') },
+              { value: 'manual', label: t('自己安排', 'Manual') },
             ]}
           />
           <p className="text-ink-500 mt-2 text-caption">
-            {mode === 'seeded'
+            {manual
               ? t(
-                  '标了种子的按号入座 —— 1 号和 2 号只可能在决赛碰面，1 号最早在半决赛碰 3/4 号。其余的人随机填空。轮空优先给高种子。',
-                  'Seeds take their standard positions — 1 and 2 can only meet in the final, and 1 meets 3 or 4 no earlier than the semis. Everyone else fills in at random, and byes go to the top seeds.',
+                  '第一轮谁打谁由你来定。先在下面填好报名名单，再到「第一轮对阵」里给每一格选人 —— 选了别人那格的人，两个会对调。',
+                  'You decide who plays whom in round one. Fill in the entries, then pick a name for each slot under “First-round matches” — picking someone already placed swaps the two.',
                 )
-              : t(
-                  '所有人一起抽，种子那一列当不存在。',
-                  'Everyone drawn together — the seed column is ignored.',
-                )}
+              : mode === 'seeded'
+                ? t(
+                    '标了种子的按号入座 —— 1 号和 2 号只可能在决赛碰面，1 号最早在半决赛碰 3/4 号。其余的人随机填空。轮空优先给高种子。',
+                    'Seeds take their standard positions — 1 and 2 can only meet in the final, and 1 meets 3 or 4 no earlier than the semis. Everyone else fills in at random, and byes go to the top seeds.',
+                  )
+                : t(
+                    '所有人一起抽，种子那一列当不存在。',
+                    'Everyone drawn together — the seed column is ignored.',
+                  )}
           </p>
         </div>
 
@@ -217,7 +273,9 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
                       ensureTail(i)
                     }}
                     placeholder={
-                      doubles ? t(`第 ${i + 1} 队 · 队员一`, `Team ${i + 1} · player 1`) : t(`第 ${i + 1} 人`, `Player ${i + 1}`)
+                      doubles
+                        ? t(`第 ${i + 1} 队 · 队员一`, `Team ${i + 1} · player 1`)
+                        : t(`第 ${i + 1} 人`, `Player ${i + 1}`)
                     }
                   />
                   {doubles && (
@@ -244,7 +302,7 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
                   敲进去的字被那个「只留数字」的过滤全吃掉，
                   看起来就是「名字填下去没显示」。
                 */}
-                <div className="w-20 shrink-0">
+                <div className={cx('w-20 shrink-0', manual && 'hidden')}>
                   <input
                     className={cx(inputClass, 'text-center')}
                     value={r.seed}
@@ -296,6 +354,66 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
           </Button>
         </div>
 
+        {/* ---------------------------------------------------------- *
+          手动排：第一轮每一场两个下拉框。
+
+          每个人在表上恰好一格 —— 选一个已经摆了的人，是和他对调，
+          不是复制。所以不用另外查「有没有人摆了两次、有没有人漏了」，
+          这种表根本摆不出来。
+        * ---------------------------------------------------------- */}
+        {manual && filled.length >= 2 && (
+          <div>
+            <SectionTitle>
+              {t('第一轮对阵', 'First-round matches')} ·{' '}
+              {roundName(0, roundCount(size), t('zh', 'en') === 'zh')}
+            </SectionTitle>
+            <div className="space-y-2">
+              {Array.from({ length: size / 2 }, (_, m) => (
+                <div key={m} className="border-line bg-surface rounded-card border p-3">
+                  <p className="text-ink-500 mb-2 text-caption">
+                    {t(`第 ${m + 1} 场`, `Match ${m + 1}`)}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {[m * 2, m * 2 + 1].map((i, k) => (
+                      <div key={i} className="contents">
+                        {k === 1 && <span className="text-ink-500 shrink-0 text-caption">vs</span>}
+                        <div className="min-w-0 flex-1">
+                          <select
+                            className={inputClass}
+                            value={slots[i] ?? ''}
+                            onChange={(e) => place(i, e.target.value || null)}
+                            aria-label={t(
+                              `第 ${m + 1} 场 ${k === 0 ? '上' : '下'}方`,
+                              `Match ${m + 1}, side ${k === 0 ? 'A' : 'B'}`,
+                            )}
+                          >
+                            {(byes > 0 || slots[i] === null) && (
+                              <option value="">{t('（轮空）', '(Bye)')}</option>
+                            )}
+                            {entrants.map((e) => (
+                              <option key={e.id} value={e.id}>
+                                {slotLabel(e, true)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {slots.some((x, i) => i % 2 === 0 && x === null && slots[i + 1] === null) && (
+              <p className="text-ink-500 mt-2 text-caption">
+                {t(
+                  '有一场两边都是轮空 —— 这一枝整个是空的，下一轮对面的人会直接晋级。想让每个轮空都对着一个人，就把人挪过去。',
+                  'One match has a bye on both sides — that branch is empty and the player across from it in the next round goes straight through. Move someone in if you want every bye paired with a player.',
+                )}
+              </p>
+            )}
+          </div>
+        )}
+
         {/*
           排之前就把表的样子说出来。
 
@@ -311,8 +429,10 @@ export function TournamentSetup({ tournamentId }: { tournamentId?: string }) {
               )}
               {byes > 0 &&
                 t(
-                  `，${byes} 个轮空（优先给种子）`,
-                  `, ${byes} ${byes === 1 ? 'bye' : 'byes'} (given to the top seeds)`,
+                  manual ? `，${byes} 个轮空` : `，${byes} 个轮空（优先给种子）`,
+                  manual
+                    ? `, ${byes} ${byes === 1 ? 'bye' : 'byes'}`
+                    : `, ${byes} ${byes === 1 ? 'bye' : 'byes'} (given to the top seeds)`,
                 )}
             </p>
           </div>

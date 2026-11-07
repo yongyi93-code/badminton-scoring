@@ -173,7 +173,12 @@ export function firstRound(slots: (Entrant | null)[]): BracketMatch[] {
   for (let i = 0; i < slots.length; i += 2) {
     const a = slots[i]
     const b = slots[i + 1]
-    const m: BracketMatch = { round: 0, index: i / 2, a: a?.id ?? null, b: b?.id ?? null }
+    const m: BracketMatch = {
+      round: 0,
+      index: i / 2,
+      a: a?.id ?? null,
+      b: b?.id ?? null,
+    }
     /* 一边空 = 另一边轮空晋级。两边都空 = 这一格整个是空的 */
     if (a && !b) m.winner = a.id
     else if (!a && b) m.winner = b.id
@@ -356,4 +361,80 @@ export function champion(matches: BracketMatch[]): string | null {
 export function slotLabel(e: Entrant | undefined | null, zh: boolean): string {
   if (!e) return zh ? '轮空' : 'Bye'
   return e.names.join(' / ')
+}
+
+/* ------------------------------------------------------------------ *
+ * 手动排：主办方自己定第一轮谁打谁
+ *
+ * 手动那一档存的是「每一格是谁」—— 一个长度等于表大小的数组，
+ * 放参赛者 id，null 是轮空。下面几个函数守着同一句话：
+ *
+ *   **名单上每个人在表上恰好出现一次，空格数 = 轮空数。**
+ *
+ * 界面上只有「这一格换成谁」一种操作，实现成**对调**：把 X 放进
+ * 第 i 格，X 原来那格就换成第 i 格原来的人。这样不管怎么点，
+ * 都不会出现一个人摆两格、或者有人从表上消失。
+ * ------------------------------------------------------------------ */
+
+export type SlotIds = (string | null)[]
+
+/**
+ * 手动排的起手式：按名单顺序摆进标准位置。
+ *
+ * 不是简单地一格一格往下填 —— 那样轮空全挤在表的最底下，凑出几场
+ * 「轮空对轮空」。借 seedOrder 摆，轮空就自然分散、各自对着一个人，
+ * 主办方只需要在这个基础上换几个人。
+ */
+export function defaultSlots(ids: string[], size: number): SlotIds {
+  return seedOrder(size).map((rank) => ids[rank - 1] ?? null)
+}
+
+/** 现成的赛表 → 第一轮每一格是谁。回去改手动排的比赛时用 */
+export function slotsOf(matches: BracketMatch[]): SlotIds {
+  return matches
+    .filter((m) => m.round === 0)
+    .sort((x, y) => x.index - y.index)
+    .flatMap((m) => [m.a, m.b])
+}
+
+/**
+ * 把 id 放进第 i 格（null = 把这格设成轮空）。原来在那儿的人和它对调。
+ *
+ * 设轮空也是对调：找一个空格换过来。名单满表（没有轮空）时没有空格
+ * 可换，这一下就什么都不做 —— 界面上那时也不会给「轮空」这个选项。
+ */
+export function placeInSlot(slots: SlotIds, i: number, id: string | null): SlotIds {
+  const out = [...slots]
+  if (out[i] === id) return out
+  const j = id === null ? out.findIndex((x, k) => x === null && k !== i) : out.indexOf(id)
+  if (j < 0) return out
+  ;[out[i], out[j]] = [out[j], out[i]]
+  return out
+}
+
+/**
+ * 名单变了（加人、删人），把已经摆好的格子跟上。
+ *
+ * 表大小没变：留着的人原地不动，删掉的人那格变空，新来的人填进空格
+ * —— 优先填到「对面有人」的那种空格，让一个本来轮空的人有球打，
+ * 而不是凭空多出一场轮空。
+ *
+ * 表大小变了（比如 8 人变 9 人，表从 8 翻到 16）：原来的对阵在新表上
+ * 没有对应的位置，只能按「已经摆的顺序 + 新来的」重新起手。
+ */
+export function reconcileSlots(prev: SlotIds, ids: string[], size: number): SlotIds {
+  const keep = new Set(ids)
+  const placedOrder = prev.filter((x): x is string => x !== null && keep.has(x))
+  const placed = new Set(placedOrder)
+  const fresh = ids.filter((id) => !placed.has(id))
+
+  if (prev.length !== size) return defaultSlots([...placedOrder, ...fresh], size)
+
+  const out: SlotIds = prev.map((x) => (x !== null && keep.has(x) ? x : null))
+  for (const id of fresh) {
+    let k = out.findIndex((x, i) => x === null && out[i ^ 1] !== null)
+    if (k < 0) k = out.indexOf(null)
+    out[k] = id
+  }
+  return out
 }
